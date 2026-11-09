@@ -107,17 +107,18 @@ export class VaultContentService extends VaultAccountService {
   }
 
   async listFolders(): Promise<FolderView[]> {
-    return this.requireFastReadData()
+    return this.core
+      .requireFastReadData()
       .folders.map((folder) => ({ ...folder }))
       .sort((left, right) => left.position - right.position || compareText(left.name, right.name))
   }
 
   createFolder(request: FolderCreateRequest): Promise<FolderView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       assertUniqueFolderName(data, name)
       const folder: FolderView = {
-        id: this.validatedNewId(),
+        id: this.core.validatedNewId(),
         name,
         position: data.folders.length,
         createdAt: now,
@@ -129,7 +130,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   updateFolder(request: FolderUpdateRequest): Promise<FolderView[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const folder = findFolder(data, request.id)
       const name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
@@ -140,7 +141,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   reparentFolder(request: FolderReparentRequest): Promise<FolderView[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const folder = findFolder(data, request.id)
       if (request.parentId !== null) assertUuid(request.parentId)
@@ -216,7 +217,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   deleteFolder(request: FolderDeleteRequest): Promise<void> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       findFolder(data, request.id)
       recordSyncDeletion(data.sync, 'folder', request.id)
@@ -234,7 +235,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   reorderFolders(request: FolderReorderRequest): Promise<FolderView[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       if (!Array.isArray(request.orderedIds) || request.orderedIds.length !== data.folders.length) {
         throw new VaultError('INVALID_INPUT')
       }
@@ -262,8 +263,8 @@ export class VaultContentService extends VaultAccountService {
    * for unprotected active logins and never leaves this method.
    */
   getHealthReport(): Promise<VaultHealthReport> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
       const summaryById = new Map<string, { id: string; name: string; subtitle: string }>()
       const candidates: VaultHealthItem[] = []
 
@@ -327,7 +328,7 @@ export class VaultContentService extends VaultAccountService {
       const unsecuredWebsites = analysis.unsecuredWebsites.map(({ id, name }) => ({ id, name }))
 
       return {
-        generatedAt: this.nowIso(),
+        generatedAt: this.core.nowIso(),
         totals: {
           analyzedCount: analysis.analyzedCount,
           weakPasswordCount: weakPasswords.length,
@@ -347,9 +348,9 @@ export class VaultContentService extends VaultAccountService {
    * Secret fields and organization-owned items never cross this boundary.
    */
   getInactiveTwoFactorReport(dataset: TwoFactorDirectoryDataset): Promise<InactiveTwoFactorReport> {
-    return this.exclusive(async () => {
-      const generation = this.generation
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const generation = this.core.generation
+      const data = this.core.requireData()
       const inputs: InactiveTwoFactorInput[] = []
 
       for (const login of data.logins) {
@@ -369,7 +370,7 @@ export class VaultContentService extends VaultAccountService {
       }
 
       const report = analyzeInactiveTwoFactor(inputs, dataset)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
       return report
     })
   }
@@ -380,7 +381,7 @@ export class VaultContentService extends VaultAccountService {
    * are sent to HIBP by the fixed-origin client.
    */
   async getExposedPasswordReport(): Promise<VaultHealthExposedReport> {
-    const snapshot = await this.exclusive(async () => this.captureExposedPasswordSnapshot())
+    const snapshot = await this.core.exclusive(async () => this.captureExposedPasswordSnapshot())
     const active = this.activeExposedPasswordOperation
     if (
       active &&
@@ -427,11 +428,11 @@ export class VaultContentService extends VaultAccountService {
   async getAccountBreachReport(
     request: VaultHealthAccountBreachRequest
   ): Promise<VaultHealthAccountBreachReport> {
-    const snapshot = await this.exclusive(async () => {
+    const snapshot = await this.core.exclusive(async () => {
       const email = this.normalizeAccountBreachEmail(request.email)
       const sync = this.requireSyncData()
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         email,
         client: this.getOrCreateSyncClient(sync)
       }
@@ -471,7 +472,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   async openHibpWebsite(): Promise<void> {
-    await this.exclusive(async () => this.requireData())
+    await this.core.exclusive(async () => this.core.requireData())
     await this.platform.openExternal('https://haveibeenpwned.com/')
   }
 
@@ -499,10 +500,10 @@ export class VaultContentService extends VaultAccountService {
     try {
       report = await client.getAccountBreachReport(email, signal)
     } catch (error) {
-      return this.exclusive(async () => {
-        this.requireData()
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        if (this.syncClient !== client || !this.requireData().sync) {
+      return this.core.exclusive(async () => {
+        this.core.requireData()
+        if (generation !== this.core.generation) throw new VaultError('LOCKED')
+        if (this.syncClient !== client || !this.core.requireData().sync) {
           throw new VaultError('SYNC_AUTH_REQUIRED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'AUTH_REQUIRED') {
@@ -512,22 +513,22 @@ export class VaultContentService extends VaultAccountService {
       })
     }
 
-    return this.exclusive(async () => {
-      this.requireData()
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      if (this.syncClient !== client || !this.requireData().sync) {
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
+      if (this.syncClient !== client || !this.core.requireData().sync) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
       if (report.status === 'unavailable') {
         return {
-          generatedAt: this.nowIso(),
+          generatedAt: this.core.nowIso(),
           status: 'unavailable',
           reason: report.reason,
           breaches: []
         }
       }
       return {
-        generatedAt: this.nowIso(),
+        generatedAt: this.core.nowIso(),
         status: 'complete',
         breaches: report.breaches.map((breach) => ({
           name: breach.name,
@@ -544,7 +545,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   private captureExposedPasswordSnapshot(): ExposedPasswordSnapshot {
-    const data = this.requireData()
+    const data = this.core.requireData()
     const passwords: string[] = []
     const candidates: ExposedPasswordSnapshot['candidates'][number][] = []
     let protectedSkippedCount = 0
@@ -577,7 +578,7 @@ export class VaultContentService extends VaultAccountService {
         }
       }
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         revision: revisionHash.digest('hex'),
         candidates,
         hashes,
@@ -599,16 +600,16 @@ export class VaultContentService extends VaultAccountService {
     try {
       counts = await client.lookupSha1Hashes(snapshot.hashes, signal)
     } catch {
-      return this.exclusive(async () => {
-        this.requireData()
-        if (snapshot.generation !== this.generation) throw new VaultError('LOCKED')
+      return this.core.exclusive(async () => {
+        this.core.requireData()
+        if (snapshot.generation !== this.core.generation) throw new VaultError('LOCKED')
         throw new VaultError('HEALTH_CHECK_FAILED')
       })
     }
 
-    return this.exclusive(async () => {
-      this.requireData()
-      if (snapshot.generation !== this.generation) throw new VaultError('LOCKED')
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      if (snapshot.generation !== this.core.generation) throw new VaultError('LOCKED')
       const currentSnapshot = this.captureExposedPasswordSnapshot()
       try {
         if (currentSnapshot.revision !== snapshot.revision) {
@@ -626,7 +627,7 @@ export class VaultContentService extends VaultAccountService {
         .sort((first, second) => second.exposedCount - first.exposedCount)
 
       return {
-        generatedAt: this.nowIso(),
+        generatedAt: this.core.nowIso(),
         totals: {
           analyzedCount: snapshot.candidates.length,
           exposedPasswordCount: exposedPasswords.length,
@@ -638,7 +639,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   async listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
-    const data = this.requireFastReadData()
+    const data = this.core.requireFastReadData()
     const sort = request.sort ?? 'recent'
     if (sort !== 'recent' && sort !== 'name' && sort !== 'frequency') {
       throw new VaultError('INVALID_INPUT')
@@ -697,11 +698,13 @@ export class VaultContentService extends VaultAccountService {
   }
 
   async listOrganizations(): Promise<OrganizationView[]> {
-    return this.requireFastReadData().organizations.map((organization) => ({ ...organization }))
+    return this.core
+      .requireFastReadData()
+      .organizations.map((organization) => ({ ...organization }))
   }
 
   async listCollections(organizationId?: string): Promise<CollectionView[]> {
-    const data = this.requireFastReadData()
+    const data = this.core.requireFastReadData()
     if (organizationId !== undefined) assertUuid(organizationId)
     return data.collections
       .filter(
@@ -711,7 +714,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   async listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
-    const data = this.requireFastReadData()
+    const data = this.core.requireFastReadData()
     if (
       request.sort !== undefined &&
       request.sort !== 'recent' &&
@@ -757,9 +760,11 @@ export class VaultContentService extends VaultAccountService {
   }
 
   getSharedLogin(request: LoginIdRequest): Promise<SharedLoginView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = this.requireData().sharedLogins.find((candidate) => candidate.id === request.id)
+      const login = this.core
+        .requireData()
+        .sharedLogins.find((candidate) => candidate.id === request.id)
       if (!login || login.deletedAt !== null || login.archivedAt !== null) {
         throw new VaultError('NOT_FOUND')
       }
@@ -768,7 +773,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   listEmergencyAccess(): Promise<EmergencyAccessView[]> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.listEmergencyAccess) return []
@@ -782,9 +787,9 @@ export class VaultContentService extends VaultAccountService {
   }
 
   getLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       return toView(login)
     })
@@ -806,7 +811,9 @@ export class VaultContentService extends VaultAccountService {
     request.ids.forEach(assertUuid)
     // Writers clone, persist, then atomically replace this.data. This synchronous projection can
     // therefore read the last committed snapshot without waiting behind network-bound sync work.
-    const loginsById = new Map(this.requireFastReadData().logins.map((login) => [login.id, login]))
+    const loginsById = new Map(
+      this.core.requireFastReadData().logins.map((login) => [login.id, login])
+    )
     return request.ids.flatMap((id) => {
       const login = loginsById.get(id)
       return login && login.deletedAt === null && login.archivedAt === null && login.reprompt === 0
@@ -857,10 +864,10 @@ export class VaultContentService extends VaultAccountService {
     // History is cloned synchronously from the last committed snapshot so a background sync
     // cannot leave the explicit reveal action waiting behind network I/O. Lock starts by
     // blocking fast reads, and authorization is validated before this turn can yield.
-    const login = findLogin(this.requireFastReadData(), request.id)
+    const login = findLogin(this.core.requireFastReadData(), request.id)
     if (
       (login.reprompt === 1 || login.deletedAt !== null) &&
-      !validateAuthorization?.([login.id], { generation: this.generation })
+      !validateAuthorization?.([login.id], { generation: this.core.generation })
     ) {
       throw new VaultError('REPROMPT_REQUIRED')
     }
@@ -892,7 +899,7 @@ export class VaultContentService extends VaultAccountService {
   }
 
   restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       if (
         !Number.isSafeInteger(request.index) ||

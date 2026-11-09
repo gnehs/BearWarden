@@ -1,5 +1,4 @@
 import { createHash, randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
-import { AsyncLocalStorage } from 'node:async_hooks'
 import type {
   AttachmentOperationKind,
   AttachmentOperationStage,
@@ -38,11 +37,7 @@ import {
 import { resolveBitwardenUrls, type BitwardenEquivalentDomainSettings } from './bitwarden-http'
 import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
 import { EncryptedVaultStore } from './encrypted-vault-store'
-import {
-  deriveImageCacheKeys,
-  type EncryptedImageCache,
-  type ImageCacheKeys
-} from './encrypted-image-cache'
+import { type EncryptedImageCache, type ImageCacheKeys } from './encrypted-image-cache'
 import { ConcurrencyLimiter, ImageMemoryCache } from './image-memory-cache'
 import {
   PinUnlockCapability,
@@ -97,7 +92,7 @@ import {
   normalizeMasterPassword,
   normalizeSyncPassword
 } from './vault/parse-primitives'
-import { parseVaultData, parseVaultDataTagged, cloneData } from './vault/vault-data-parsing'
+import { cloneData } from './vault/vault-data-parsing'
 import {
   validRemoteDate,
   validRemoteDeletedDate,
@@ -120,6 +115,7 @@ import { parseStoredOrganization, parseStoredCollection } from './vault/org-coll
 import { cloneAttachments, validateRemoteAttachments } from './vault/attachments-parsing'
 import { VaultGeneratorService } from './vault/generator-service'
 import { VaultSendService } from './vault/send-service'
+import { VaultCore } from './vault/core'
 import { cloneGeneratorHistory } from './vault/generator-history'
 import { clonePasswordHistory } from './vault/password-history'
 import type {
@@ -305,20 +301,8 @@ function changesRemote(action: SyncAction): boolean {
  * lifecycle; this module must never import a higher service layer.
  */
 export class VaultServiceBase {
-  protected key: Buffer | null = null
-  protected salt: Buffer | null = null
-  protected data: VaultData | null = null
-  /** Blocks lock-free committed-snapshot reads before unlock and as soon as lock starts. */
-  protected fastReadsBlocked = true
   protected pinUnlockCapability: PinUnlockCapability | null = null
   protected pinLifecycleEpoch = 0
-  protected generation = 0
-  protected operationQueue: Promise<void> = Promise.resolve()
-  /** Marks the mutex holder and records the generation its operation started in. */
-  protected readonly exclusiveContext = new AsyncLocalStorage<{
-    active: boolean
-    generation: number
-  }>()
   protected syncClient: BitwardenSyncClient | null = null
   protected syncAbort: AbortController | null = null
   protected readonly notificationTokenAborts = new Set<AbortController>()
@@ -344,8 +328,6 @@ export class VaultServiceBase {
     canceledByUser: boolean
     committed: boolean
   } | null = null
-  protected readonly now: () => Date
-  protected readonly createId: () => string
   protected readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
   protected readonly fetch: typeof fetch
   protected readonly attachmentFiles: VaultAttachmentFileService | null
@@ -368,14 +350,45 @@ export class VaultServiceBase {
   protected readonly imageRequestAborts = new Set<AbortController>()
   protected activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
   protected activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
+  protected readonly core: VaultCore
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
     protected readonly platform: VaultPlatform,
     options: VaultServiceOptions = {}
   ) {
-    this.now = options.now ?? (() => new Date())
-    this.createId = options.createId ?? randomUUID
+    this.core = new VaultCore(store, {
+      now: options.now ?? (() => new Date()),
+      createId: options.createId ?? randomUUID
+    })
+    this.core.registerResource({
+      abort: () => {
+        this.abortImageRequests()
+        this.syncAbort?.abort()
+        this.abortNotificationTokenLeases()
+        this.abortAccountSecurityRequests()
+        this.abortNativeAttachmentBackups()
+        this.abortNativeAttachmentRestores()
+        this.activeExposedPasswordOperation?.abort.abort()
+        this.activeAccountBreachOperation?.abort.abort()
+      },
+      clear: () => {
+        this.activeExposedPasswordOperation = null
+        this.activeAccountBreachOperation = null
+        this.syncAbort = null
+        this.activeAttachmentOperation = null
+        this.syncInProgress = false
+        this.sessionDeauthorizationInProgress = false
+        this.generatorService.clearRuntimeState()
+        this.websiteIconCache.clear()
+        this.websiteIconRequests.clear()
+        this.cardCoverCache.clear()
+        this.cardCoverRequests.clear()
+      },
+      discard: () => {
+        this.syncClient = null
+      }
+    })
     this.fetch = options.fetch ?? fetch
     this.attachmentFiles = options.attachmentFiles ?? null
     this.imageCache = options.imageCache ?? null
@@ -387,44 +400,44 @@ export class VaultServiceBase {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       })
     this.generatorService = new VaultGeneratorService({
-      now: this.now,
-      createId: this.createId,
+      now: this.core.now,
+      createId: options.createId ?? randomUUID,
       randomInt: options.randomInt ?? nodeRandomInt,
       copyText: (text) => this.platform.copyText(text),
-      exclusive: (operation) => this.exclusive(operation),
+      exclusive: (operation) => this.core.exclusive(operation),
       assertUnlocked: () => {
-        this.requireData()
+        this.core.requireData()
       },
-      readPolicySet: () => currentBitwardenPolicySet(this.requireData()),
-      readHistory: () => this.requireData().generatorHistory,
+      readPolicySet: () => currentBitwardenPolicySet(this.core.requireData()),
+      readHistory: () => this.core.requireData().generatorHistory,
       commitHistory: async (history) => {
-        const current = this.requireData()
+        const current = this.core.requireData()
         const next = cloneData(current)
         next.generatorHistory = cloneGeneratorHistory(history)
-        next.updatedAt = this.nowIso()
-        await this.commit(next)
+        next.updatedAt = this.core.nowIso()
+        await this.core.commit(next)
       }
     })
     this.sendService = new VaultSendService({
       attachmentFiles: this.attachmentFiles,
-      exclusive: (operation) => this.exclusive(operation),
-      readData: () => this.requireData(),
+      exclusive: (operation) => this.core.exclusive(operation),
+      readData: () => this.core.requireData(),
       requireSyncData: () => this.requireSyncData(),
       getSyncClient: (sync) => this.getOrCreateSyncClient(sync),
-      currentGeneration: () => this.generation,
+      currentGeneration: () => this.core.generation,
       startSyncOperation: () => this.startSyncOperation(),
       finishSyncOperation: (abort) => this.finishSyncOperation(abort),
-      commitData: (data, generation) => this.commit(data, generation),
-      nowIso: () => this.nowIso(),
+      commitData: (data, generation) => this.core.commit(data, generation),
+      nowIso: () => this.core.nowIso(),
       clearSyncError: () => this.clearSyncErrorState(),
       mapSyncError: (error) => this.mapSyncError(error),
       copyText: (text) => this.platform.copyText(text),
-      assertMutationAllowed: () => assertSendMutationAllowed(this.requireData())
+      assertMutationAllowed: () => assertSendMutationAllowed(this.core.requireData())
     })
   }
 
   status(): Promise<VaultStatus> {
-    return this.exclusive(async () => this.currentStatus())
+    return this.core.exclusive(async () => this.core.currentStatus())
   }
 
   /**
@@ -432,25 +445,25 @@ export class VaultServiceBase {
    * re-enter normal service operations afterwards; this intentionally does not hold the mutex.
    */
   unlockedGeneration(): Promise<number> {
-    return this.exclusive(async () => {
-      this.requireData()
-      return this.generation
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      return this.core.generation
     })
   }
 
   /** Runs a short, main-process-only capability commit against one unlocked-vault epoch. */
   runUnlockedOperation<T>(operation: (generation: number) => Promise<T>): Promise<T> {
-    return this.exclusive(async () => {
-      this.requireData()
-      return operation(this.generation)
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      return operation(this.core.generation)
     })
   }
 
   setup(masterPassword: string): Promise<VaultStatus> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       if (await this.store.exists()) throw new VaultError('ALREADY_INITIALIZED')
       const password = normalizeMasterPassword(masterPassword)
-      const now = this.nowIso()
+      const now = this.core.nowIso()
       const initialData: VaultData = {
         version: DATA_VERSION,
         createdAt: now,
@@ -466,30 +479,29 @@ export class VaultServiceBase {
         nativeAttachmentRestore: null,
         masterPasswordChange: null
       }
-      const generation = this.generation
+      const generation = this.core.generation
       const material = await this.store.initialize(password, initialData)
       return this.installUnlockedVault({ data: initialData, ...material }, generation)
     })
   }
 
   unlock(masterPassword: string): Promise<VaultStatus> {
-    return this.exclusive(async () => {
-      if (this.data && this.key && this.salt) return { state: 'unlocked' }
+    return this.core.exclusive(async () => {
+      if (this.core.isUnlocked()) return { state: 'unlocked' }
       if (!(await this.store.exists())) throw new VaultError('NOT_INITIALIZED')
       const password = normalizeMasterPassword(masterPassword)
-      const generation = this.generation
+      const generation = this.core.generation
       const unlocked = await this.store.unlock(password)
       return this.installUnlockedVault(unlocked, generation)
     })
   }
 
   /**
-   * The shared unlock transition. Takes ownership of `unlocked.key` and `unlocked.salt`: they
-   * become the session key material, or are zeroed when the unlock fails. `validate` runs on the
-   * parsed vault before anything is installed. Key-material unlocks pass `startSync` so the
-   * connector starts, restoring the account key when the material carries one.
+   * Installs an unlocked vault through the core, then recovers interrupted journals. Key-material
+   * unlocks pass `startSync` so the connector starts, restoring the account key when the material
+   * carries one.
    */
-  protected async installUnlockedVault(
+  protected installUnlockedVault(
     unlocked: { data: unknown; key: Buffer; salt: Buffer },
     generation: number,
     options: {
@@ -497,53 +509,29 @@ export class VaultServiceBase {
       startSync?: { material: PinSyncKeyMaterial | null }
     } = {}
   ): Promise<VaultStatus> {
-    let installed = false
-    try {
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      const requiresMigration = isRecord(unlocked.data) && unlocked.data.version !== DATA_VERSION
-      const data = parseVaultDataTagged(unlocked.data)
-      options.validate?.(data)
-      this.data = data
-      this.key = unlocked.key
-      this.salt = unlocked.salt
-      installed = true
-      await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
-      if (options.startSync && this.data.sync) {
-        const { material } = options.startSync
-        if (material) {
-          this.syncClient ??= this.createSyncClient(this.data.sync)
-          this.syncClient.restorePinUnlockMaterial?.(material)
-        } else {
-          this.getOrCreateSyncClient(this.data.sync)
+    return this.core.install(unlocked, generation, {
+      validate: options.validate,
+      afterInstall: async (requiresMigration) => {
+        await this.recoverNativeAttachmentRestoreAfterUnlock(requiresMigration)
+        const sync = this.core.requireData().sync
+        if (options.startSync && sync) {
+          const { material } = options.startSync
+          if (material) {
+            this.syncClient ??= this.createSyncClient(sync)
+            this.syncClient.restorePinUnlockMaterial?.(material)
+          } else {
+            this.getOrCreateSyncClient(sync)
+          }
         }
       }
-      this.fastReadsBlocked = false
-      return { state: 'unlocked' }
-    } catch (error) {
-      if (installed) {
-        this.discardSession()
-      } else {
-        unlocked.key.fill(0)
-        unlocked.salt.fill(0)
-      }
-      throw error
-    }
-  }
-
-  /** Zeroes and drops the session key material, snapshot and sync connector. */
-  protected discardSession(): void {
-    this.key?.fill(0)
-    this.salt?.fill(0)
-    this.key = null
-    this.salt = null
-    this.data = null
-    this.syncClient = null
+    })
   }
 
   pinUnlockStatus(): import('../shared/vault-contract').PinUnlockStatus {
+    const data = this.core.currentData()
     if (
-      this.data &&
-      bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, this.data).state !==
+      data &&
+      bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data).state !==
         'not-applicable'
     ) {
       return { available: false, remainingAttempts: 0 }
@@ -558,15 +546,15 @@ export class VaultServiceBase {
     masterPassword: string
   }): Promise<import('../shared/vault-contract').PinUnlockStatus> {
     const lifecycleEpoch = this.pinLifecycleEpoch
-    const generation = this.generation
-    return this.exclusive(async () => {
+    const generation = this.core.generation
+    return this.core.exclusive(async () => {
       let capability: PinUnlockCapability | null = null
       let syncMaterial: PinSyncKeyMaterial | null = null
       try {
-        if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+        if (generation !== this.core.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
           throw new VaultError('LOCKED')
         }
-        const data = this.requireData()
+        const data = this.core.requireData()
         assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin, data)
         if (
           typeof request.pin !== 'string' ||
@@ -578,22 +566,15 @@ export class VaultServiceBase {
         ) {
           throw new VaultError('INVALID_INPUT')
         }
-        await this.assertMasterPassword(request.masterPassword)
-        if (!this.key || !this.salt) throw new VaultError('LOCKED')
+        await this.core.assertMasterPassword(request.masterPassword)
+        const { key, salt } = this.core.keyMaterial()
         const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
         syncMaterial = client?.pinUnlockMaterial?.() ?? null
-        capability = await PinUnlockCapability.create(
-          request.pin,
-          this.key,
-          this.salt,
-          syncMaterial
-        )
+        capability = await PinUnlockCapability.create(request.pin, key, salt, syncMaterial)
         if (
-          generation !== this.generation ||
+          generation !== this.core.generation ||
           lifecycleEpoch !== this.pinLifecycleEpoch ||
-          !this.data ||
-          !this.key ||
-          !this.salt
+          !this.core.isUnlocked()
         ) {
           throw new VaultError('LOCKED')
         }
@@ -626,19 +607,20 @@ export class VaultServiceBase {
    * Callers own the returned buffers and must zero them.
    */
   exportTouchIdUnlockMaterial(masterPassword: string): Promise<TouchIdUnlockMaterial> {
-    const generation = this.generation
-    return this.exclusive(async () => {
+    const generation = this.core.generation
+    return this.core.exclusive(async () => {
       let sync: PinSyncKeyMaterial | null = null
       try {
-        if (generation !== this.generation) throw new VaultError('LOCKED')
-        const data = this.requireData()
-        await this.assertMasterPassword(masterPassword)
-        if (generation !== this.generation || !this.data || !this.key || !this.salt) {
+        if (generation !== this.core.generation) throw new VaultError('LOCKED')
+        const data = this.core.requireData()
+        await this.core.assertMasterPassword(masterPassword)
+        if (generation !== this.core.generation || !this.core.isUnlocked()) {
           throw new VaultError('LOCKED')
         }
         const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
         sync = client?.pinUnlockMaterial?.() ?? null
-        const material = { key: Buffer.from(this.key), salt: Buffer.from(this.salt), sync }
+        const { key, salt } = this.core.keyMaterial()
+        const material = { key: Buffer.from(key), salt: Buffer.from(salt), sync }
         sync = null
         return material
       } finally {
@@ -655,10 +637,10 @@ export class VaultServiceBase {
    * `TOUCH_ID_UNAVAILABLE`, which tells the caller to discard the capsule.
    */
   unlockWithTouchIdMaterial(material: TouchIdUnlockMaterial): Promise<VaultStatus> {
-    const generation = this.generation
-    return this.exclusive(async () => {
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      if (this.data && this.key && this.salt) return { state: 'unlocked' }
+    const generation = this.core.generation
+    return this.core.exclusive(async () => {
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
+      if (this.core.isUnlocked()) return { state: 'unlocked' }
       let unlocked: Awaited<ReturnType<EncryptedVaultStore<unknown>['unlockWithKey']>>
       try {
         unlocked = await this.store.unlockWithKey(material.key, material.salt)
@@ -695,8 +677,8 @@ export class VaultServiceBase {
   }
 
   masterPasswordChangeStatus(): Promise<VaultMasterPasswordChangeStatus> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
       this.assertMasterPasswordChangeAccount(data)
       const journal = data.masterPasswordChange
       return {
@@ -708,7 +690,7 @@ export class VaultServiceBase {
   }
 
   changeMasterPassword(request: VaultMasterPasswordChangeRequest): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let currentPassword = ''
       let newPassword = ''
       let remoteRequest:
@@ -723,7 +705,7 @@ export class VaultServiceBase {
         if (hint !== null && (typeof hint !== 'string' || hint.length > 50)) {
           throw new VaultError('INVALID_INPUT')
         }
-        const current = this.requireData()
+        const current = this.core.requireData()
         assertNoPendingPersonalVaultPurge(current.sync)
         this.assertMasterPasswordChangeAccount(current)
         const existing = current.masterPasswordChange
@@ -741,7 +723,7 @@ export class VaultServiceBase {
           const sync = this.requireSyncData()
           const client = this.getOrCreateSyncClient(sync)
           if (!client.changeMasterPassword) throw new VaultError('SYNC_FAILED')
-          const now = this.nowIso()
+          const now = this.core.nowIso()
           const prepared = cloneData(current)
           prepared.masterPasswordChange = {
             phase: 'prepared',
@@ -750,7 +732,7 @@ export class VaultServiceBase {
             accountFingerprint: this.masterPasswordChangeAccountFingerprint(sync)
           }
           prepared.updatedAt = now
-          await this.commit(prepared)
+          await this.core.commit(prepared)
 
           abort = this.startSyncOperation()
           remoteRequest = { currentPassword, newPassword, hint, signal: abort.signal }
@@ -761,33 +743,33 @@ export class VaultServiceBase {
               error instanceof BitwardenDirectError &&
               error.code === 'MASTER_PASSWORD_CHANGE_UNKNOWN'
             ) {
-              this.generation += 1
+              this.core.advanceGeneration()
               this.invalidatePinUnlockCapability()
               this.syncClient = null
-              this.clearUnlockedRuntimeState()
+              this.core.teardown()
               throw new VaultError('SYNC_FAILED')
             }
-            const cleared = cloneData(this.requireData())
+            const cleared = cloneData(this.core.requireData())
             cleared.masterPasswordChange = null
-            cleared.updatedAt = this.nowIso()
-            await this.commit(cleared)
+            cleared.updatedAt = this.core.nowIso()
+            await this.core.commit(cleared)
             throw this.mapSyncError(error)
           }
 
-          const confirmed = cloneData(this.requireData())
+          const confirmed = cloneData(this.core.requireData())
           if (!confirmed.masterPasswordChange) throw new VaultError('SYNC_FAILED')
           confirmed.masterPasswordChange.phase = 'remote-confirmed'
-          confirmed.masterPasswordChange.updatedAt = this.nowIso()
+          confirmed.masterPasswordChange.updatedAt = this.core.nowIso()
           if (confirmed.sync) {
             confirmed.sync.state = { ...client.exportState(), session: null }
           }
           confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
           try {
-            await this.commit(confirmed)
+            await this.core.commit(confirmed)
           } catch (error) {
-            this.generation += 1
+            this.core.advanceGeneration()
             this.invalidatePinUnlockCapability()
-            this.clearUnlockedRuntimeState()
+            this.core.teardown()
             throw error
           }
         }
@@ -812,7 +794,7 @@ export class VaultServiceBase {
   resolveMasterPasswordChange(
     request: VaultMasterPasswordChangeResolutionRequest
   ): Promise<VaultMasterPasswordChangeResolution> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let currentPassword = ''
       let newPassword = ''
       let abort: AbortController | undefined
@@ -820,7 +802,7 @@ export class VaultServiceBase {
         currentPassword = normalizeMasterPassword(request.currentPassword)
         newPassword = normalizeMasterPassword(request.newPassword)
         if (currentPassword === newPassword) throw new VaultError('INVALID_INPUT')
-        const current = this.requireData()
+        const current = this.core.requireData()
         this.assertMasterPasswordChangeAccount(current)
         if (current.masterPasswordChange?.phase !== 'prepared') {
           throw new VaultError('INVALID_INPUT')
@@ -838,29 +820,29 @@ export class VaultServiceBase {
           if (currentPasswordProof === 'needs-reconnect') return { status: 'needs-reconnect' }
           if (currentPasswordProof === 'rejected') return { status: 'indeterminate' }
 
-          const cleared = cloneData(this.requireData())
+          const cleared = cloneData(this.core.requireData())
           this.assertMasterPasswordChangeAccount(cleared)
           if (cleared.masterPasswordChange?.phase !== 'prepared') {
             throw new VaultError('SYNC_FAILED')
           }
           cleared.masterPasswordChange = null
           if (cleared.sync) cleared.sync.state.session = null
-          cleared.updatedAt = this.nowIso()
-          await this.commit(cleared)
+          cleared.updatedAt = this.core.nowIso()
+          await this.core.commit(cleared)
           this.syncClient = null
           return { status: 'remote-not-changed' }
         }
 
-        const confirmed = cloneData(this.requireData())
+        const confirmed = cloneData(this.core.requireData())
         this.assertMasterPasswordChangeAccount(confirmed)
         if (confirmed.masterPasswordChange?.phase !== 'prepared') {
           throw new VaultError('SYNC_FAILED')
         }
         confirmed.masterPasswordChange.phase = 'remote-confirmed'
-        confirmed.masterPasswordChange.updatedAt = this.nowIso()
+        confirmed.masterPasswordChange.updatedAt = this.core.nowIso()
         if (confirmed.sync) confirmed.sync.state.session = null
         confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
-        await this.commit(confirmed)
+        await this.core.commit(confirmed)
         this.syncClient = null
         await this.finishMasterPasswordChange(currentPassword, newPassword)
         return { status: 'resolved' }
@@ -877,14 +859,14 @@ export class VaultServiceBase {
   unlockWithPin(request: { pin: string }): Promise<VaultStatus> {
     const capability = this.pinUnlockCapability
     const lifecycleEpoch = this.pinLifecycleEpoch
-    const generation = this.generation
-    return this.exclusive(async () => {
+    const generation = this.core.generation
+    return this.core.exclusive(async () => {
       let material: PinVaultKeyMaterial | null = null
       try {
-        if (generation !== this.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
+        if (generation !== this.core.generation || lifecycleEpoch !== this.pinLifecycleEpoch) {
           throw new VaultError('LOCKED')
         }
-        if (this.data && this.key && this.salt) return { state: 'unlocked' }
+        if (this.core.isUnlocked()) return { state: 'unlocked' }
         if (!capability?.status().available) throw new VaultError('PIN_DISABLED')
         if (
           typeof request.pin !== 'string' ||
@@ -898,7 +880,7 @@ export class VaultServiceBase {
         material = await materialPromise
         if (
           lifecycleEpoch !== this.pinLifecycleEpoch ||
-          generation !== this.generation ||
+          generation !== this.core.generation ||
           capability !== this.pinUnlockCapability
         ) {
           throw new VaultError('LOCKED')
@@ -927,7 +909,7 @@ export class VaultServiceBase {
           }
           throw this.mapPinUnlockError(error)
         }
-        this.discardSession()
+        this.core.discardSession()
         throw error
       } finally {
         request.pin = ''
@@ -940,53 +922,22 @@ export class VaultServiceBase {
   }
 
   lock(): Promise<VaultStatus> {
-    this.fastReadsBlocked = true
-    this.generation += 1
-    this.abortBackgroundOperations()
-    return this.exclusive(async () => {
+    this.core.beginLock()
+    return this.core.exclusive(async () => {
       try {
         await this.syncClient?.lock()
       } catch {
         // Local vault locking must never depend on the remote connector.
       }
-      this.clearUnlockedRuntimeState()
-      return this.currentStatus()
+      this.core.teardown()
+      return this.core.currentStatus()
     })
   }
 
   dispose(): void {
-    this.generation += 1
+    this.core.advanceGeneration()
     this.invalidatePinUnlockCapability()
-    this.clearUnlockedRuntimeState()
-  }
-
-  /** Aborts every in-flight background operation; new background work registers its abort here. */
-  protected abortBackgroundOperations(): void {
-    this.abortImageRequests()
-    this.syncAbort?.abort()
-    this.abortNotificationTokenLeases()
-    this.abortAccountSecurityRequests()
-    this.abortNativeAttachmentBackups()
-    this.abortNativeAttachmentRestores()
-    this.activeExposedPasswordOperation?.abort.abort()
-    this.activeAccountBreachOperation?.abort.abort()
-  }
-
-  protected clearUnlockedRuntimeState(): void {
-    this.fastReadsBlocked = true
-    this.abortBackgroundOperations()
-    this.activeExposedPasswordOperation = null
-    this.activeAccountBreachOperation = null
-    this.syncAbort = null
-    this.activeAttachmentOperation = null
-    this.syncInProgress = false
-    this.sessionDeauthorizationInProgress = false
-    this.discardSession()
-    this.generatorService.clearRuntimeState()
-    this.websiteIconCache.clear()
-    this.websiteIconRequests.clear()
-    this.cardCoverCache.clear()
-    this.cardCoverRequests.clear()
+    this.core.teardown()
   }
 
   protected abortImageRequests(): void {
@@ -999,12 +950,12 @@ export class VaultServiceBase {
    * result with `clearImageCacheKeys`, and must re-check `generation` before every cache write.
    */
   protected imageCacheKeys(): ImageCacheKeys | null {
-    if (!this.imageCache || !this.key || !this.salt || this.fastReadsBlocked) return null
-    return deriveImageCacheKeys(this.key, this.salt)
+    if (!this.imageCache) return null
+    return this.core.imageCacheKeys()
   }
 
   protected async currentSyncStatus(): Promise<SyncStatus> {
-    const data = this.requireData()
+    const data = this.core.requireData()
     if (!data.sync) {
       return this.syncLastError
         ? { configured: false, state: 'error', ...this.syncErrorStatusFields() }
@@ -1064,9 +1015,10 @@ export class VaultServiceBase {
   }
 
   async constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
-    return this.exclusive(async () => {
-      if (!this.data) return requested
-      const decision = bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.MaximumVaultTimeout, this.data)
+    return this.core.exclusive(async () => {
+      const data = this.core.currentData()
+      if (!data) return requested
+      const decision = bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.MaximumVaultTimeout, data)
       if (decision.state === 'not-applicable') return requested
       if (decision.state === 'fail-closed') return { type: 'appInactivity', minutes: 1 }
       const maximum = maximumVaultTimeoutMinutes(decision.policies)
@@ -1162,10 +1114,10 @@ export class VaultServiceBase {
     email: string
     masterPassword: string
   }): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let abort: AbortController | null = null
       try {
-        this.requireData()
+        this.core.requireData()
         const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
         const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
         const password = normalizeSyncPassword(request.masterPassword)
@@ -1229,7 +1181,7 @@ export class VaultServiceBase {
   }
 
   protected requireSyncData(): PersistedSyncData {
-    const sync = this.requireData().sync
+    const sync = this.core.requireData().sync
     if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     return sync
   }
@@ -1292,9 +1244,9 @@ export class VaultServiceBase {
   protected assertAccountWebAuthnOperationCurrent(
     lease: AccountWebAuthnOperationLease
   ): Promise<void> {
-    return this.exclusive(async () => {
-      this.requireData()
-      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
       if (this.syncClient !== lease.client || !lease.client.exportState().session) {
@@ -1304,16 +1256,16 @@ export class VaultServiceBase {
   }
 
   protected finishAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
-    return this.exclusive(async () => {
-      this.requireData()
-      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+    return this.core.exclusive(async () => {
+      this.core.requireData()
+      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
       if (this.syncClient !== lease.client || !lease.client.exportState().session) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
       await this.persistCurrentClientState()
-      if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+      if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
       if (this.syncClient !== lease.client || !lease.client.exportState().session) {
@@ -1324,7 +1276,7 @@ export class VaultServiceBase {
   }
 
   protected releaseAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       this.accountSecurityAborts.delete(lease.abort)
     })
   }
@@ -1333,7 +1285,7 @@ export class VaultServiceBase {
     error: unknown,
     lease: AccountWebAuthnOperationLease
   ): never {
-    if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+    if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
       throw new VaultError('LOCKED')
     }
     if (this.syncClient !== lease.client || !lease.client.exportState().session) {
@@ -1418,7 +1370,7 @@ export class VaultServiceBase {
   }): void {
     if (
       lease.abort.signal.aborted ||
-      lease.generation !== this.generation ||
+      lease.generation !== this.core.generation ||
       lease.client !== this.syncClient ||
       !lease.client.exportState().session
     ) {
@@ -1431,12 +1383,12 @@ export class VaultServiceBase {
     client: BitwardenSyncClient,
     generation: number
   ): LoginApprovalPrompt | null {
-    const now = this.now().getTime()
+    const now = this.core.now().getTime()
     const expiresAt = Date.parse(request.createdAt) + LOGIN_APPROVAL_TTL_MS
     for (const [token, session] of this.loginApprovalSessions) {
       if (
         session.expiresAt <= now ||
-        session.generation !== this.generation ||
+        session.generation !== this.core.generation ||
         session.client !== this.syncClient
       ) {
         this.loginApprovalSessions.delete(token)
@@ -1507,7 +1459,7 @@ export class VaultServiceBase {
   protected async recoverNativeAttachmentRestoreAfterUnlock(
     requiresMigration: boolean
   ): Promise<void> {
-    const current = this.requireData()
+    const current = this.core.requireData()
     this.assertMasterPasswordChangeAccount(current)
     const interrupted = current.nativeAttachmentRestore?.attachments.some(
       (attachment) => attachment.status === 'attempting'
@@ -1519,27 +1471,27 @@ export class VaultServiceBase {
     if (interrupted && next.nativeAttachmentRestore) {
       next.nativeAttachmentRestore = recoverInterruptedNativeAttachmentRestore(
         next.nativeAttachmentRestore,
-        this.nowIso()
+        this.core.nowIso()
       )
       next.updatedAt = next.nativeAttachmentRestore.updatedAt
     }
     if (completedPasswordChange) {
       next.masterPasswordChange = null
       if (next.sync) next.sync.state.session = null
-      next.updatedAt = this.nowIso()
+      next.updatedAt = this.core.nowIso()
     }
     if (preparedPurge && next.sync) {
       next.sync.pendingPersonalVaultPurge = null
-      next.updatedAt = this.nowIso()
+      next.updatedAt = this.core.nowIso()
     }
-    await this.commit(next)
+    await this.core.commit(next)
   }
 
   protected async finishMasterPasswordChange(
     currentPassword: string,
     newPassword: string
   ): Promise<void> {
-    const current = this.requireData()
+    const current = this.core.requireData()
     this.assertMasterPasswordChangeAccount(current)
     if (
       current.masterPasswordChange?.phase !== 'remote-confirmed' &&
@@ -1547,48 +1499,30 @@ export class VaultServiceBase {
     ) {
       throw new VaultError('SYNC_FAILED')
     }
-    if (!this.key || !this.salt) throw new VaultError('LOCKED')
+    await this.core.rekey(currentPassword, newPassword)
 
-    const alreadyRekeyed = await this.store.verifyMasterPassword(newPassword, this.key, this.salt)
-    if (!alreadyRekeyed) {
-      const stillUsesCurrent = await this.store.verifyMasterPassword(
-        currentPassword,
-        this.key,
-        this.salt
-      )
-      if (!stillUsesCurrent) throw new VaultError('INVALID_MASTER_PASSWORD')
-      const replacement = await this.store.rekey(currentPassword, newPassword)
-      const oldKey = this.key
-      const oldSalt = this.salt
-      this.key = replacement.key
-      this.salt = replacement.salt
-      oldKey.fill(0)
-      oldSalt.fill(0)
-    }
-
-    this.generation += 1
-    const generation = this.generation
+    const generation = this.core.advanceGeneration()
     this.invalidatePinUnlockCapability()
     this.syncAbort?.abort()
     this.abortNotificationTokenLeases()
     this.abortAccountSecurityRequests()
     this.syncClient = null
-    const localRekeyed = cloneData(this.requireData())
+    const localRekeyed = cloneData(this.core.requireData())
     if (!localRekeyed.masterPasswordChange) throw new VaultError('SYNC_FAILED')
     localRekeyed.masterPasswordChange.phase = 'local-rekeyed'
-    localRekeyed.masterPasswordChange.updatedAt = this.nowIso()
+    localRekeyed.masterPasswordChange.updatedAt = this.core.nowIso()
     if (localRekeyed.sync) localRekeyed.sync.state.session = null
     localRekeyed.updatedAt = localRekeyed.masterPasswordChange.updatedAt
-    await this.commit(localRekeyed, generation)
+    await this.core.commit(localRekeyed, generation)
 
     const complete = cloneData(localRekeyed)
     complete.masterPasswordChange = null
-    complete.updatedAt = this.nowIso()
-    await this.commit(complete, generation)
+    complete.updatedAt = this.core.nowIso()
+    await this.core.commit(complete, generation)
   }
 
   protected evictExpiredAuthenticatorSetupSessions(): void {
-    const now = this.now().getTime()
+    const now = this.core.now().getTime()
     for (const [sessionId, session] of this.authenticatorSetupSessions) {
       if (session.expiresAt <= now) this.deleteAuthenticatorSetupSession(sessionId)
     }
@@ -1599,7 +1533,7 @@ export class VaultServiceBase {
     const session = this.authenticatorSetupSessions.get(sessionId)
     if (
       !session ||
-      session.generation !== this.generation ||
+      session.generation !== this.core.generation ||
       session.client !== this.syncClient ||
       !session.client.exportState().session
     ) {
@@ -1618,7 +1552,7 @@ export class VaultServiceBase {
   }
 
   protected evictExpiredEmailTwoFactorSetupSessions(): void {
-    const now = this.now().getTime()
+    const now = this.core.now().getTime()
     for (const [sessionId, session] of this.emailTwoFactorSetupSessions) {
       if (session.expiresAt <= now) this.deleteEmailTwoFactorSetupSession(sessionId)
     }
@@ -1632,7 +1566,7 @@ export class VaultServiceBase {
     const session = this.emailTwoFactorSetupSessions.get(sessionId)
     if (!session) throw new VaultError('INVALID_INPUT')
     if (
-      session.generation !== this.generation ||
+      session.generation !== this.core.generation ||
       session.client !== this.syncClient ||
       !session.client.exportState().session
     ) {
@@ -1672,7 +1606,7 @@ export class VaultServiceBase {
     error: unknown,
     lease: { abort: AbortController; generation: number }
   ): never {
-    if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+    if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
       throw new VaultError('LOCKED')
     }
     if (error instanceof BitwardenDirectError) {
@@ -1782,7 +1716,7 @@ export class VaultServiceBase {
     reason?: import('../shared/vault-contract').SyncInvalidResponseReason
   ): void {
     this.syncLastError = code
-    this.syncLastErrorAt = this.nowIso()
+    this.syncLastErrorAt = this.core.nowIso()
     this.syncLastErrorDetail = code === 'SYNC_INVALID_RESPONSE' ? (detail ?? null) : null
     this.syncLastErrorReason = code === 'SYNC_INVALID_RESPONSE' ? (reason ?? null) : null
   }
@@ -1850,7 +1784,7 @@ export class VaultServiceBase {
     ) {
       throw new VaultError('INVALID_INPUT')
     }
-    const data = this.requireData()
+    const data = this.core.requireData()
     assertNoPendingPersonalVaultPurge(data.sync)
     const login = findLogin(data, request.id)
     assertActiveLogin(login)
@@ -1869,7 +1803,7 @@ export class VaultServiceBase {
   ): void {
     if (
       login.reprompt === 1 &&
-      !validateAuthorization?.([login.id], { generation: this.generation })
+      !validateAuthorization?.([login.id], { generation: this.core.generation })
     ) {
       throw new VaultError('REPROMPT_REQUIRED')
     }
@@ -1900,7 +1834,7 @@ export class VaultServiceBase {
 
   protected async persistCurrentClientState(): Promise<void> {
     const client = this.syncClient
-    const current = this.requireData()
+    const current = this.core.requireData()
     if (!client || !current.sync) return
     const state = client.exportState()
     const material = client.pinUnlockMaterial?.() ?? null
@@ -1922,8 +1856,8 @@ export class VaultServiceBase {
     if (!next.sync) return
     next.sync.state = state
     next.sync.unlockMaterial = unlockMaterial
-    next.updatedAt = this.nowIso()
-    await this.commit(next)
+    next.updatedAt = this.core.nowIso()
+    await this.core.commit(next)
   }
 
   protected async persistAttachmentMutation(
@@ -1944,24 +1878,24 @@ export class VaultServiceBase {
       remoteFolders,
       remoteLogins
     )
-    const syncedAt = this.nowIso()
+    const syncedAt = this.core.nowIso()
     if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     next.sync.state = client.exportState()
     next.sync.lastSyncAt = syncedAt
     next.updatedAt = syncedAt
-    await this.commit(next)
+    await this.core.commit(next)
   }
 
   protected async restorePreDispatchPurge(original: VaultData): Promise<void> {
     const restored = cloneData(original)
-    restored.updatedAt = this.nowIso()
-    await this.commit(restored)
+    restored.updatedAt = this.core.nowIso()
+    await this.core.commit(restored)
   }
 
   protected async reconcilePersonalVaultPurge(
     client: BitwardenSyncClient
   ): Promise<SyncPurgePersonalVaultResult> {
-    const current = this.requireData()
+    const current = this.core.requireData()
     const journal = current.sync?.pendingPersonalVaultPurge
     if (journal?.phase !== 'dispatched') throw new VaultError('SYNC_FAILED')
     try {
@@ -1987,9 +1921,9 @@ export class VaultServiceBase {
         remoteLogins.length + isolatedPersonalCipherIds.size
       pending.sync.pendingPersonalVaultPurge.remainingFolders = remoteFolders.length
       pending.sync.state = client.exportState()
-      pending.sync.lastSyncAt = this.nowIso()
+      pending.sync.lastSyncAt = this.core.nowIso()
       pending.updatedAt = pending.sync.lastSyncAt
-      await this.commit(pending)
+      await this.core.commit(pending)
       this.clearSyncErrorState()
       return {
         status: 'pending',
@@ -2028,9 +1962,9 @@ export class VaultServiceBase {
     complete.sync.pendingPersonalVaultPurge = null
     complete.sync.requiresFullSyncAfterCipherIsolation = false
     complete.sync.state = client.exportState()
-    complete.sync.lastSyncAt = this.nowIso()
+    complete.sync.lastSyncAt = this.core.nowIso()
     complete.updatedAt = complete.sync.lastSyncAt
-    await this.commit(complete)
+    await this.core.commit(complete)
     this.clearSyncErrorState()
     return { status: 'complete', removedItems, removedFolders }
   }
@@ -2040,15 +1974,15 @@ export class VaultServiceBase {
     client: BitwardenSyncClient,
     signal: AbortSignal
   ): Promise<SyncResult> {
-    const syncStartedAt = this.nowIso()
+    const syncStartedAt = this.core.nowIso()
     let source = current
     const pendingPurge = source.sync?.pendingPersonalVaultPurge
     if (pendingPurge?.phase === 'prepared') {
       const cleared = cloneData(source)
       if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
       cleared.sync.pendingPersonalVaultPurge = null
-      cleared.updatedAt = this.nowIso()
-      await this.commit(cleared)
+      cleared.updatedAt = this.core.nowIso()
+      await this.core.commit(cleared)
       source = cleared
     } else if (pendingPurge?.phase === 'dispatched') {
       const reconciled = await this.reconcilePersonalVaultPurge(client)
@@ -2072,7 +2006,7 @@ export class VaultServiceBase {
       // Persist the full-sync requirement before any later parsing, shared-vault read, or mutation
       // can fail. Otherwise a revision fast path could hide the quarantined personal ciphers.
       await this.persistCipherIsolationRecovery([], initialIsolatedPersonalCipherIds)
-      source = this.requireData()
+      source = this.core.requireData()
       sync = source.sync
       if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     }
@@ -2341,7 +2275,7 @@ export class VaultServiceBase {
       )
     }
     next.updatedAt = syncedAt
-    await this.commit(next)
+    await this.core.commit(next)
     this.applyBitwardenPolicyRuntimeState(next)
     this.clearSyncErrorState()
     return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
@@ -2378,7 +2312,7 @@ export class VaultServiceBase {
     completed.sync.state = client.exportState()
     completed.sync.lastSyncAt = syncStartedAt
     completed.updatedAt = syncStartedAt
-    await this.commit(completed)
+    await this.core.commit(completed)
     this.applyBitwardenPolicyRuntimeState(completed)
     this.clearSyncErrorState()
     return {
@@ -2540,7 +2474,7 @@ export class VaultServiceBase {
     if (pending.intent === 'hard-delete') {
       if (current) await client.hardDeleteLogin(pending.remoteId, signal)
       data.sync.pendingLoginMutation = null
-      await this.commit(cloneData(data))
+      await this.core.commit(cloneData(data))
       return
     }
 
@@ -2590,7 +2524,7 @@ export class VaultServiceBase {
     }
 
     data.sync.pendingLoginMutation = null
-    await this.commit(cloneData(data))
+    await this.core.commit(cloneData(data))
   }
 
   protected localSyncSnapshot(data: VaultData): SyncSnapshot {
@@ -2812,7 +2746,7 @@ export class VaultServiceBase {
     completedLinks: readonly SyncLink[],
     newlyIsolatedRemoteIds: ReadonlySet<string>
   ): Promise<void> {
-    const recovery = cloneData(this.requireData())
+    const recovery = cloneData(this.core.requireData())
     if (!recovery.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     recovery.sync.requiresFullSyncAfterCipherIsolation = true
 
@@ -2834,8 +2768,8 @@ export class VaultServiceBase {
       // cipher. Persisting the assigned remote ID prevents retry from creating a duplicate.
       recovery.sync.loginMappings.push({ ...link })
     }
-    recovery.updatedAt = this.nowIso()
-    await this.commit(recovery)
+    recovery.updatedAt = this.core.nowIso()
+    await this.core.commit(recovery)
   }
 
   protected loginImportCandidate(
@@ -2940,7 +2874,7 @@ export class VaultServiceBase {
 
     data.sync.pendingLoginImport = {
       phase: 'prepared',
-      startedAt: this.nowIso(),
+      startedAt: this.core.nowIso(),
       entries: preparedEntries.map((entry) => {
         const candidate = expected.get(entry.localId)!
         return {
@@ -2951,9 +2885,9 @@ export class VaultServiceBase {
         }
       })
     }
-    data.updatedAt = this.nowIso()
+    data.updatedAt = this.core.nowIso()
     try {
-      await this.commit(cloneData(data))
+      await this.core.commit(cloneData(data))
     } catch (error) {
       await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
       throw error
@@ -2964,9 +2898,9 @@ export class VaultServiceBase {
       throw new BitwardenDirectError('ABORTED')
     }
     data.sync.pendingLoginImport.phase = 'dispatched'
-    data.updatedAt = this.nowIso()
+    data.updatedAt = this.core.nowIso()
     try {
-      await this.commit(cloneData(data))
+      await this.core.commit(cloneData(data))
     } catch (error) {
       // A lock that raced this write leaves 'dispatched' on disk; the abort path reverts it.
       if (!signal.aborted) {
@@ -2978,8 +2912,8 @@ export class VaultServiceBase {
     if (signal.aborted) {
       try {
         data.sync.pendingLoginImport.phase = 'prepared'
-        data.updatedAt = this.nowIso()
-        await this.commit(cloneData(data))
+        data.updatedAt = this.core.nowIso()
+        await this.core.commit(cloneData(data))
       } finally {
         await client.discardPreparedLoginImport!(discardToken).catch(() => undefined)
       }
@@ -3095,8 +3029,8 @@ export class VaultServiceBase {
       pending.phase === 'prepared' || unmatchedEntries.length === 0
         ? null
         : { ...pending, entries: unmatchedEntries.map((entry) => ({ ...entry })) }
-    data.updatedAt = this.nowIso()
-    await this.commit(cloneData(data))
+    data.updatedAt = this.core.nowIso()
+    await this.core.commit(cloneData(data))
     return unmatched
   }
 
@@ -3251,7 +3185,7 @@ export class VaultServiceBase {
       } else if (action.kind === 'pull-update') {
         const folder = findFolder(data, action.localId)
         folder.name = action.remote.name
-        folder.updatedAt = this.nowIso()
+        folder.updatedAt = this.core.nowIso()
       } else if (action.kind === 'delete-local') {
         this.deleteLocalFolder(data, action.localId)
       } else if (action.kind === 'delete-remote') {
@@ -3261,12 +3195,12 @@ export class VaultServiceBase {
         this.createLocalFolder(data, action.conflictName)
         const primary = findFolder(data, action.local.id)
         primary.name = action.remote.name
-        primary.updatedAt = this.nowIso()
+        primary.updatedAt = this.core.nowIso()
       } else if (action.reason === 'remote-deleted') {
         if (!action.local) throw new VaultError('SYNC_FAILED')
         const local = findFolder(data, action.local.id)
         local.name = action.conflictName
-        local.updatedAt = this.nowIso()
+        local.updatedAt = this.core.nowIso()
         result.remoteId = (await client.createFolder(action.conflictName, signal)).id
       } else {
         if (!action.remote) throw new VaultError('SYNC_FAILED')
@@ -3297,7 +3231,7 @@ export class VaultServiceBase {
           remoteFolderId: folderId,
           expectedRemoteFingerprints: [...action.resumeFingerprints]
         }
-        await this.commit(cloneData(data))
+        await this.core.commit(cloneData(data))
       }
       await this.updateRemoteLogin(
         client,
@@ -3311,7 +3245,7 @@ export class VaultServiceBase {
       if (composite) {
         if (!data.sync) throw new VaultError('SYNC_FAILED')
         data.sync.pendingLoginMutation = null
-        await this.commit(cloneData(data))
+        await this.core.commit(cloneData(data))
       }
     } else if (action.kind === 'pull-create') {
       const folderId = this.resolveFolderReference(action.localFolder, completed, 'localId')
@@ -3336,7 +3270,7 @@ export class VaultServiceBase {
       if (!action.local) throw new VaultError('SYNC_FAILED')
       const local = findLogin(data, action.local.id)
       local.name = action.conflictName
-      local.updatedAt = this.nowIso()
+      local.updatedAt = this.core.nowIso()
       const folderId = this.resolveFolderReference(action.remoteFolder, completed, 'remoteId')
       result.remoteId = (
         await client.createLogin(
@@ -3380,9 +3314,9 @@ export class VaultServiceBase {
   }
 
   protected createLocalFolder(data: VaultData, name: string): FolderView {
-    const now = this.nowIso()
+    const now = this.core.nowIso()
     const folder: FolderView = {
-      id: this.validatedNewId(),
+      id: this.core.validatedNewId(),
       name: normalizeRequiredString(name, MAX_NAME_LENGTH),
       position: data.folders.length,
       createdAt: now,
@@ -3397,7 +3331,7 @@ export class VaultServiceBase {
       .filter((folder) => folder.id !== id)
       .sort((left, right) => left.position - right.position)
       .map((folder, position) => ({ ...folder, position }))
-    const now = this.nowIso()
+    const now = this.core.nowIso()
     for (const login of data.logins) {
       if (login.folderId === id) {
         login.folderId = null
@@ -3412,7 +3346,7 @@ export class VaultServiceBase {
   ): {
     itemMappings: { sourceItemId: string; localItemId: string }[]
   } {
-    const now = this.nowIso()
+    const now = this.core.nowIso()
     const sourceFolderIds = new Set<string>()
     const sourceItemIds = new Set<string>()
     const importedFolderIds = new Map<string, string>()
@@ -3428,7 +3362,7 @@ export class VaultServiceBase {
       }
       sourceFolderIds.add(source.id)
       const folder: FolderView = {
-        id: this.validatedNewId(),
+        id: this.core.validatedNewId(),
         name: uniqueImportedFolderName(data, normalizeRequiredString(source.name, MAX_NAME_LENGTH)),
         position: data.folders.length,
         createdAt: now,
@@ -3466,7 +3400,7 @@ export class VaultServiceBase {
     const operation = {
       abort: this.startSyncOperation(),
       client,
-      generation: this.generation
+      generation: this.core.generation
     }
     this.nativeAttachmentRestoreAborts.add(operation.abort)
     return operation
@@ -3484,7 +3418,7 @@ export class VaultServiceBase {
   }): void {
     if (
       operation.abort.signal.aborted ||
-      operation.generation !== this.generation ||
+      operation.generation !== this.core.generation ||
       operation.client !== this.syncClient ||
       !operation.client.exportState().session
     ) {
@@ -3561,14 +3495,14 @@ export class VaultServiceBase {
     )
     if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
     next.sync.state = client.exportState()
-    next.sync.lastSyncAt = this.nowIso()
+    next.sync.lastSyncAt = this.core.nowIso()
     return next
   }
 
   protected async persistFailedNativeAttachmentRestoreAttempt(
     key: NativeAttachmentRestoreAttachmentKey
   ): Promise<void> {
-    const current = this.data
+    const current = this.core.currentData()
     if (!current?.nativeAttachmentRestore) return
     const target = current.nativeAttachmentRestore.attachments.find(
       (attachment) =>
@@ -3581,10 +3515,10 @@ export class VaultServiceBase {
       next.nativeAttachmentRestore!,
       key,
       null,
-      this.nowIso()
+      this.core.nowIso()
     )
     next.updatedAt = next.nativeAttachmentRestore.updatedAt
-    await this.commit(next)
+    await this.core.commit(next)
   }
 
   protected async nativeAttachmentRestoreCandidateMatches(
@@ -3632,11 +3566,11 @@ export class VaultServiceBase {
     source: SyncLogin,
     folderId: string | null
   ): StoredLogin {
-    const now = this.nowIso()
+    const now = this.core.nowIso()
     const createdAt = source.createdAt ?? now
     const updatedAt = source.updatedAt ?? createdAt
     const login: StoredLogin = {
-      id: this.validatedNewId(),
+      id: this.core.validatedNewId(),
       type: normalizeItemType(source.type),
       name: normalizeRequiredString(source.name, MAX_NAME_LENGTH),
       notes: normalizeNullableString(source.notes, MAX_NOTES_LENGTH),
@@ -3674,8 +3608,8 @@ export class VaultServiceBase {
       favorite: normalized.favorite,
       usageCount: 0,
       lastUsedAt: null,
-      createdAt: normalized.createdAt ?? this.nowIso(),
-      updatedAt: normalized.updatedAt ?? this.nowIso(),
+      createdAt: normalized.createdAt ?? this.core.nowIso(),
+      updatedAt: normalized.updatedAt ?? this.core.nowIso(),
       deletedAt: normalized.deletedAt,
       archivedAt: normalized.archivedAt,
       reprompt: normalized.reprompt,
@@ -3721,7 +3655,7 @@ export class VaultServiceBase {
     login.archivedAt = source.archivedAt
     login.reprompt = source.reprompt
     if (source.createdAt) login.createdAt = source.createdAt
-    login.updatedAt = source.updatedAt ?? this.nowIso()
+    login.updatedAt = source.updatedAt ?? this.core.nowIso()
   }
 
   protected remoteDraft(login: SyncLogin, folderId: string | null): BitwardenLoginDraft {
@@ -3810,93 +3744,29 @@ export class VaultServiceBase {
     request: LoginIdRequest,
     operation: (login: StoredLogin) => Promise<T>
   ): Promise<T> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const current = this.requireData()
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       const currentLogin = findLogin(current, request.id)
       assertActiveLogin(currentLogin)
       const result = await operation(currentLogin)
       const next = cloneData(current)
       const usedLogin = findLogin(next, request.id)
-      const now = this.nowIso()
+      const now = this.core.nowIso()
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
-      await this.commit(next)
+      await this.core.commit(next)
       return result
     })
-  }
-
-  protected mutate<T>(mutation: (data: VaultData, now: string) => T): Promise<T> {
-    return this.exclusive(async () => {
-      const next = cloneData(this.requireData())
-      assertNoPendingPersonalVaultPurge(next.sync)
-      const now = this.nowIso()
-      const result = mutation(next, now)
-      next.updatedAt = now
-      await this.commit(next)
-      return result
-    })
-  }
-
-  /**
-   * The only path that replaces the committed snapshot: validates, encrypts and writes `next`,
-   * then installs it. Throws `LOCKED` when the vault was locked after `generation` was captured
-   * (by default, when the current exclusive operation started); the write is kept.
-   */
-  protected async commit(next: VaultData, generation = this.operationGeneration()): Promise<void> {
-    if (!this.key || !this.salt) throw new VaultError('LOCKED')
-    // Never persist data the read path would reject: a write-time bug must fail the current
-    // operation loudly instead of locking the user out of the vault at the next unlock.
-    parseVaultData(next)
-    await this.store.write(next, this.key, this.salt)
-    // Memory must match disk once the write landed. Operations queued ahead of lock()'s teardown
-    // still read this snapshot, and rebuilding from an older one would overwrite this write.
-    // dispose() has already torn the session down, so nothing may be reinstalled after it.
-    if (this.key && this.salt) this.data = next
-    if (generation !== this.generation) throw new VaultError('LOCKED')
-  }
-
-  private operationGeneration(): number {
-    const context = this.exclusiveContext.getStore()
-    if (!context?.active) throw new VaultError('INTERNAL_ERROR')
-    return context.generation
-  }
-
-  protected requireData(): VaultData {
-    if (!this.data || !this.key || !this.salt) throw new VaultError('LOCKED')
-    return this.data
-  }
-
-  protected requireFastReadData(): VaultData {
-    if (this.fastReadsBlocked) throw new VaultError('LOCKED')
-    return this.requireData()
-  }
-
-  protected async currentStatus(): Promise<VaultStatus> {
-    if (this.data && this.key && this.salt) return { state: 'unlocked' }
-    return { state: (await this.store.exists()) ? 'locked' : 'uninitialized' }
   }
 
   protected assertExpectedPasskeyGeneration(value: unknown): asserts value is number {
     if (!Number.isSafeInteger(value) || (value as number) < 0) {
       throw new VaultError('INVALID_INPUT')
     }
-    if (value !== this.generation) throw new VaultError('LOCKED')
-  }
-
-  protected async assertMasterPassword(candidateValue: unknown): Promise<void> {
-    if (typeof candidateValue !== 'string') throw new VaultError('INVALID_MASTER_PASSWORD')
-    const candidate = candidateValue.normalize('NFC')
-    if (candidate.length === 0 || candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
-      throw new VaultError('INVALID_MASTER_PASSWORD')
-    }
-    const generation = this.generation
-    if (!this.key || !this.salt) throw new VaultError('LOCKED')
-    const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
-    if (generation !== this.generation) throw new VaultError('LOCKED')
-    if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
+    if (value !== this.core.generation) throw new VaultError('LOCKED')
   }
 
   protected invalidatePinUnlockCapability(): void {
@@ -3910,37 +3780,5 @@ export class VaultServiceBase {
     if (error.code === 'INVALID_PIN') return new VaultError('INVALID_PIN')
     if (error.code === 'RATE_LIMITED') return new VaultError('RATE_LIMITED')
     return new VaultError('PIN_DISABLED')
-  }
-
-  protected validatedNewId(): string {
-    const id = this.createId()
-    assertUuid(id)
-    return id
-  }
-
-  protected nowIso(): string {
-    const value = this.now()
-    if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-      throw new VaultError('INTERNAL_ERROR')
-    }
-    return value.toISOString()
-  }
-
-  protected async exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const inherited = this.exclusiveContext.getStore()
-    if (inherited?.active) return operation()
-    const previous = this.operationQueue
-    let release!: () => void
-    this.operationQueue = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    await previous
-    const context = { active: true, generation: this.generation }
-    try {
-      return await this.exclusiveContext.run(context, operation)
-    } finally {
-      context.active = false
-      release()
-    }
   }
 }

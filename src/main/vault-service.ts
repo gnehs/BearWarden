@@ -124,7 +124,8 @@ import type {
   PasskeyVaultCreateRequest,
   PasskeyVaultCreateResult,
   PasskeyVaultAssertionRequest,
-  PasskeyVaultAssertionResult
+  PasskeyVaultAssertionResult,
+  VaultData
 } from './vault/types'
 import type { ItemReadAuthorizationValidator } from './vault-service-base'
 import { VaultTransferService } from './vault-transfer-service'
@@ -164,9 +165,17 @@ const WEBSITE_ICON_RETRY_MS = 10 * 60 * 1000
 
 /** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
 export class VaultService extends VaultTransferService {
+  /**
+   * Test-only view of the committed in-memory snapshot, for planting records the public API cannot
+   * create and trapping reads of protected fields. Production code must not call it.
+   */
+  committedSnapshotForTesting(): VaultData | null {
+    return this.core.currentData()
+  }
+
   createSharedLogin(request: SharedLoginCreateRequest): Promise<SharedLoginView> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
       if (
         !current.organizations.some((organization) => organization.id === request.organizationId)
@@ -192,9 +201,9 @@ export class VaultService extends VaultTransferService {
       const uris = createRequestUris(request, type)
       fields.uri = uriAlias(uris)
       const customFields = normalizeCustomFields([], request.customFields ?? [], type)
-      const now = this.nowIso()
+      const now = this.core.nowIso()
       const login: StoredSharedLogin = {
-        id: this.validatedNewId(),
+        id: this.core.validatedNewId(),
         type,
         name: normalizeRequiredString(request.name, MAX_NAME_LENGTH),
         notes: normalizeNullableString(request.notes, MAX_NOTES_LENGTH),
@@ -224,7 +233,7 @@ export class VaultService extends VaultTransferService {
         ...fields
       }
 
-      const generation = this.generation
+      const generation = this.core.generation
       const abort = this.startSyncOperation()
       let remote
       try {
@@ -235,14 +244,18 @@ export class VaultService extends VaultTransferService {
           abort.signal
         )
       } catch (error) {
-        if (abort.signal.aborted || generation !== this.generation || this.syncClient !== client) {
+        if (
+          abort.signal.aborted ||
+          generation !== this.core.generation ||
+          this.syncClient !== client
+        ) {
           throw new VaultError('LOCKED')
         }
         throw this.mapSyncError(error)
       } finally {
         this.finishSyncOperation(abort)
       }
-      if (generation !== this.generation || this.syncClient !== client) {
+      if (generation !== this.core.generation || this.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
       const created = this.sharedLoginFromRemote(remote)
@@ -256,15 +269,15 @@ export class VaultService extends VaultTransferService {
       created.collectionIds = collections.map((collection) => collection.id)
       const next = cloneData(current)
       next.sharedLogins.push(created)
-      next.updatedAt = this.nowIso()
-      await this.commit(next, generation)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next, generation)
       return toSharedView(created)
     })
   }
 
   private findEditableSharedLogin(id: string): StoredSharedLogin {
     assertUuid(id)
-    const login = this.requireData().sharedLogins.find((candidate) => candidate.id === id)
+    const login = this.core.requireData().sharedLogins.find((candidate) => candidate.id === id)
     if (
       !login ||
       login.deletedAt !== null ||
@@ -279,7 +292,7 @@ export class VaultService extends VaultTransferService {
 
   private findReadableSharedLogin(id: string): StoredSharedLogin {
     assertUuid(id)
-    const login = this.requireData().sharedLogins.find((candidate) => candidate.id === id)
+    const login = this.core.requireData().sharedLogins.find((candidate) => candidate.id === id)
     if (
       !login ||
       login.deletedAt !== null ||
@@ -293,7 +306,7 @@ export class VaultService extends VaultTransferService {
   }
 
   revealSharedSecret(request: ItemFieldRequest): Promise<string> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       assertSecretField(login.type, request.field as VaultSecretField)
       return login[request.field] as string
@@ -301,7 +314,7 @@ export class VaultService extends VaultTransferService {
   }
 
   revealSharedEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findEditableSharedLogin(request.id)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       if (!login.viewPassword) return { fields: {}, customFields: [] }
@@ -330,8 +343,8 @@ export class VaultService extends VaultTransferService {
   }
 
   updateSharedLogin(request: SharedLoginUpdateRequest): Promise<SharedLoginView> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const login = this.findEditableSharedLogin(request.id)
       if (
         request.expectedUpdatedAt !== undefined &&
@@ -386,13 +399,13 @@ export class VaultService extends VaultTransferService {
         desired.password !== previousPassword
       ) {
         desired.passwordHistory = [
-          { password: previousPassword, lastUsedDate: this.nowIso() },
+          { password: previousPassword, lastUsedDate: this.core.nowIso() },
           ...desired.passwordHistory
         ].slice(0, MAX_PASSWORD_HISTORY)
-        desired.passwordRevisionDate = this.nowIso()
+        desired.passwordRevisionDate = this.core.nowIso()
       }
 
-      const generation = this.generation
+      const generation = this.core.generation
       const abort = this.startSyncOperation()
       let remote
       try {
@@ -402,14 +415,18 @@ export class VaultService extends VaultTransferService {
           abort.signal
         )
       } catch (error) {
-        if (abort.signal.aborted || generation !== this.generation || this.syncClient !== client) {
+        if (
+          abort.signal.aborted ||
+          generation !== this.core.generation ||
+          this.syncClient !== client
+        ) {
           throw new VaultError('LOCKED')
         }
         throw this.mapSyncError(error)
       } finally {
         this.finishSyncOperation(abort)
       }
-      if (generation !== this.generation || this.syncClient !== client) {
+      if (generation !== this.core.generation || this.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
       const updated = this.sharedLoginFromRemote(remote)
@@ -419,14 +436,14 @@ export class VaultService extends VaultTransferService {
       const index = next.sharedLogins.findIndex((candidate) => candidate.id === login.id)
       if (index < 0) throw new VaultError('NOT_FOUND')
       next.sharedLogins[index] = updated
-      next.updatedAt = this.nowIso()
-      await this.commit(next, generation)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next, generation)
       return toSharedView(updated)
     })
   }
 
   copySharedField(request: ItemFieldRequest): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       assertCopyField(login.type, request.field)
       const value =
@@ -441,7 +458,7 @@ export class VaultService extends VaultTransferService {
   }
 
   revealSharedCustomField(request: CustomFieldRequest): Promise<string> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       const field = customFieldFromSource(login, request.source)
@@ -451,7 +468,7 @@ export class VaultService extends VaultTransferService {
   }
 
   copySharedCustomField(request: CustomFieldRequest): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       const value = customFieldValue(login, customFieldFromSource(login, request.source))
@@ -461,23 +478,23 @@ export class VaultService extends VaultTransferService {
   }
 
   getSharedTotp(request: LoginIdRequest): Promise<TotpCodeView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
-      return generateTotp(login.totp, this.now())
+      return generateTotp(login.totp, this.core.now())
     })
   }
 
   copySharedTotp(request: LoginIdRequest): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
-      await this.platform.copyText(generateTotp(login.totp, this.now()).code)
+      await this.platform.copyText(generateTotp(login.totp, this.core.now()).code)
     })
   }
 
   openSharedLoginUri(request: LoginOpenUriRequest): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const login = this.findReadableSharedLogin(request.id)
       assertCopyField(login.type, 'uri')
       const selectedUri = loginUriAt(login, request.uriIndex)
@@ -523,9 +540,9 @@ export class VaultService extends VaultTransferService {
    * unsupported public keys are omitted rather than allowing unusable identities onto the wire.
    */
   listSshAgentIdentities(): Promise<SshAgentVaultIdentity[]> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
-      const generation = this.generation
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
+      const generation = this.core.generation
       const identities: SshAgentVaultIdentity[] = []
       for (const login of data.logins) {
         if (login.type !== 'sshKey' || login.deletedAt !== null || login.archivedAt !== null) {
@@ -569,9 +586,9 @@ export class VaultService extends VaultTransferService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
-      if (request.expectedGeneration !== this.generation) throw new VaultError('LOCKED')
+      if (request.expectedGeneration !== this.core.generation) throw new VaultError('LOCKED')
 
-      const matches = this.requireData().logins.filter((login) => {
+      const matches = this.core.requireData().logins.filter((login) => {
         if (login.type !== 'sshKey' || login.deletedAt !== null || login.archivedAt !== null) {
           return false
         }
@@ -590,10 +607,10 @@ export class VaultService extends VaultTransferService {
         request.data,
         request.rsaHash
       )
-      if (request.expectedGeneration !== this.generation) throw new VaultError('LOCKED')
+      if (request.expectedGeneration !== this.core.generation) throw new VaultError('LOCKED')
       return {
         itemId: login.id,
-        generation: this.generation,
+        generation: this.core.generation,
         algorithm: signature.algorithm,
         signature: signature.signature
       }
@@ -609,17 +626,17 @@ export class VaultService extends VaultTransferService {
     validate: (ids: readonly string[], state: { generation: number }) => boolean,
     operation: (authorize: (ids: readonly string[]) => void) => Promise<T>
   ): Promise<T> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let didAuthorize = false
       const authorize = (ids: readonly string[]): void => {
         didAuthorize = true
         let requiresReprompt = false
         for (const id of ids) {
           assertUuid(id)
-          const login = findLogin(this.requireData(), id)
+          const login = findLogin(this.core.requireData(), id)
           if (login.reprompt === 1) requiresReprompt = true
         }
-        if (requiresReprompt && !validate(ids, { generation: this.generation })) {
+        if (requiresReprompt && !validate(ids, { generation: this.core.generation })) {
           throw new VaultError('REPROMPT_REQUIRED')
         }
       }
@@ -630,25 +647,23 @@ export class VaultService extends VaultTransferService {
   }
 
   authorizeLogin(request: LoginAuthorizeRequest): Promise<number> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      findLogin(this.requireData(), request.id)
+      findLogin(this.core.requireData(), request.id)
       if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
       const candidate = request.masterPassword.normalize('NFC')
       if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
         throw new VaultError('INVALID_MASTER_PASSWORD')
       }
-      const generation = this.generation
-      if (!this.key || !this.salt) throw new VaultError('LOCKED')
-      const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const generation = this.core.generation
+      const valid = await this.core.verifyMasterPassword(candidate)
       if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
       return generation
     })
   }
 
   authorizeLogins(request: LoginAuthorizeManyRequest): Promise<number> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       if (
         !Array.isArray(request.ids) ||
         request.ids.length === 0 ||
@@ -659,24 +674,22 @@ export class VaultService extends VaultTransferService {
       }
       for (const id of request.ids) {
         assertUuid(id)
-        findLogin(this.requireData(), id)
+        findLogin(this.core.requireData(), id)
       }
       if (typeof request.masterPassword !== 'string') throw new VaultError('INVALID_INPUT')
       const candidate = request.masterPassword.normalize('NFC')
       if (candidate.length > MAX_MASTER_PASSWORD_LENGTH) {
         throw new VaultError('INVALID_MASTER_PASSWORD')
       }
-      const generation = this.generation
-      if (!this.key || !this.salt) throw new VaultError('LOCKED')
-      const valid = await this.store.verifyMasterPassword(candidate, this.key, this.salt)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      const generation = this.core.generation
+      const valid = await this.core.verifyMasterPassword(candidate)
       if (!valid) throw new VaultError('INVALID_MASTER_PASSWORD')
       return generation
     })
   }
 
   createLogin(request: LoginCreateRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const folderId = normalizeFolderId(data, request.folderId)
       const type = normalizeItemType(request.type ?? 'login')
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
@@ -687,7 +700,7 @@ export class VaultService extends VaultTransferService {
       fields.uri = uriAlias(uris)
       const customFields = normalizeCustomFields([], request.customFields ?? [], type)
       const login: StoredLogin = {
-        id: this.validatedNewId(),
+        id: this.core.validatedNewId(),
         type,
         name: normalizeRequiredString(request.name, MAX_NAME_LENGTH),
         notes: normalizeNullableString(request.notes, MAX_NOTES_LENGTH),
@@ -716,14 +729,14 @@ export class VaultService extends VaultTransferService {
   }
 
   cloneLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const source = findLogin(data, request.id)
       assertActiveLogin(source)
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
       assertPersonalItemTypeAllowed(source.type, data)
       const clone: StoredLogin = {
-        id: this.validatedNewId(),
+        id: this.core.validatedNewId(),
         type: source.type,
         name: cloneItemName(source.name),
         notes: source.notes,
@@ -754,7 +767,7 @@ export class VaultService extends VaultTransferService {
   }
 
   archiveLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -766,7 +779,7 @@ export class VaultService extends VaultTransferService {
   }
 
   archiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const logins = resolveLoginBatch(data, request, (login) => {
         assertActiveLogin(login)
         if (login.archivedAt !== null) throw new VaultError('INVALID_INPUT')
@@ -780,7 +793,7 @@ export class VaultService extends VaultTransferService {
   }
 
   unarchiveLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -792,7 +805,7 @@ export class VaultService extends VaultTransferService {
   }
 
   unarchiveLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const logins = resolveLoginBatch(data, request, (login) => {
         assertActiveLogin(login)
         if (login.archivedAt === null) throw new VaultError('INVALID_INPUT')
@@ -806,7 +819,7 @@ export class VaultService extends VaultTransferService {
   }
 
   updateLogin(request: LoginUpdateRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -884,7 +897,7 @@ export class VaultService extends VaultTransferService {
   }
 
   deletePasskey(request: PasskeyDeleteRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       if (
         typeof request.credentialId !== 'string' ||
@@ -919,7 +932,7 @@ export class VaultService extends VaultTransferService {
    * main so a compromised renderer cannot ask for a broad vault search disguised as AutoFill.
    */
   discoverAutofillCandidates(targetUrl: string): Promise<AutofillDiscoveryResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let canonicalUrl: string
       try {
         const parsed = new URL(targetUrl)
@@ -935,7 +948,7 @@ export class VaultService extends VaultTransferService {
       }
       if (canonicalUrl.length > MAX_URI_LENGTH) throw new VaultError('INVALID_INPUT')
 
-      const data = this.requireData()
+      const data = this.core.requireData()
       const hostname = new URL(canonicalUrl).hostname
       const matchBudget = createUriMatchBudget()
       const usageCounts = new Map(data.logins.map((login) => [login.id, login.usageCount]))
@@ -970,7 +983,7 @@ export class VaultService extends VaultTransferService {
         const usageDifference = (usageCounts.get(right.id) ?? 0) - (usageCounts.get(left.id) ?? 0)
         return usageDifference || compareText(left.name, right.name)
       })
-      return { generation: this.generation, targetUrl: canonicalUrl, candidates }
+      return { generation: this.core.generation, targetUrl: canonicalUrl, candidates }
     })
   }
 
@@ -987,7 +1000,7 @@ export class VaultService extends VaultTransferService {
       if (
         !Number.isSafeInteger(request.expectedGeneration) ||
         request.expectedGeneration < 0 ||
-        request.expectedGeneration !== this.generation
+        request.expectedGeneration !== this.core.generation
       ) {
         throw new VaultError('LOCKED')
       }
@@ -1009,7 +1022,7 @@ export class VaultService extends VaultTransferService {
       }
       if (canonicalUrl.length > MAX_URI_LENGTH) throw new VaultError('INVALID_INPUT')
 
-      const current = this.requireData()
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       const login = findLogin(current, request.itemId)
       assertActiveLogin(login)
@@ -1029,17 +1042,17 @@ export class VaultService extends VaultTransferService {
       }
 
       authorize([login.id])
-      const generation = this.generation
+      const generation = this.core.generation
       await consume({ username: login.username, password: login.password })
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
 
       const next = cloneData(current)
       const usedLogin = findLogin(next, login.id)
-      const now = this.nowIso()
+      const now = this.core.nowIso()
       usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
       usedLogin.lastUsedAt = now
       next.updatedAt = now
-      await this.commit(next, generation)
+      await this.core.commit(next, generation)
     })
   }
 
@@ -1047,13 +1060,13 @@ export class VaultService extends VaultTransferService {
   discoverPasskeyCredentials(
     request: PasskeyVaultDiscoveryRequest
   ): Promise<PasskeyVaultDiscoveryResult> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
       const rpId = normalizePasskeyRpId(request.rpId)
       const allowCredentialIds = normalizePasskeyCredentialIds(request.allowCredentialIds)
       const matches = findPasskeyVaultMatches(data, rpId, allowCredentialIds)
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         credentials: matches.map(({ login, passkey, credentialId }) => ({
           itemId: login.id,
           itemName: login.name,
@@ -1077,8 +1090,8 @@ export class VaultService extends VaultTransferService {
   discoverPasskeyCreationTargets(
     request: PasskeyVaultCreationTargetDiscoveryRequest
   ): Promise<PasskeyVaultCreationTargetDiscoveryResult> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
       const rpId = normalizePasskeyRpId(request.rpId)
       let targetUri: string
       try {
@@ -1109,7 +1122,7 @@ export class VaultService extends VaultTransferService {
           existingPasskeyCount
         })
       }
-      return { generation: this.generation, targets }
+      return { generation: this.core.generation, targets }
     })
   }
 
@@ -1123,7 +1136,7 @@ export class VaultService extends VaultTransferService {
     validateAuthorization: PasskeyVaultAuthorizationValidator
   ): Promise<PasskeyVaultCreateResult> {
     return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
-      const current = this.requireData()
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
       assertUuid(request.itemId)
@@ -1150,8 +1163,8 @@ export class VaultService extends VaultTransferService {
       }
 
       authorize([login.id])
-      const generation = this.generation
-      const now = this.nowIso()
+      const generation = this.core.generation
+      const now = this.core.nowIso()
       const created = await createSoftwarePasskeyCredential(
         {
           rpId,
@@ -1164,11 +1177,11 @@ export class VaultService extends VaultTransferService {
           userPresent: true
         },
         {
-          uuid: () => this.validatedNewId(),
+          uuid: () => this.core.validatedNewId(),
           now: () => new Date(now)
         }
       )
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
       const credentialId = Buffer.from(created.credentialId)
       if (activeVaultContainsCredentialId(current, rpId, credentialId)) {
         throw new VaultError('INVALID_INPUT')
@@ -1178,7 +1191,7 @@ export class VaultService extends VaultTransferService {
       if (login.username.length === 0) login.username = created.credential.userName ?? ''
       login.updatedAt = now
       next.updatedAt = now
-      await this.commit(next, generation)
+      await this.core.commit(next, generation)
       return {
         item: toView(login),
         generation,
@@ -1197,7 +1210,7 @@ export class VaultService extends VaultTransferService {
     validateAuthorization: PasskeyVaultAuthorizationValidator
   ): Promise<PasskeyVaultAssertionResult> {
     return this.runAuthorizedOperation(validateAuthorization, async (authorize) => {
-      const current = this.requireData()
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.assertExpectedPasskeyGeneration(request.expectedGeneration)
       assertUuid(request.itemId)
@@ -1216,7 +1229,7 @@ export class VaultService extends VaultTransferService {
       assertPasskeyApproval(request.requireUserVerification, request.userVerified)
 
       authorize([match.login.id])
-      const generation = this.generation
+      const generation = this.core.generation
       const assertion = await createSoftwarePasskeyAssertion({
         credential: match.passkey,
         rpId,
@@ -1224,7 +1237,7 @@ export class VaultService extends VaultTransferService {
         userVerified: request.userVerified,
         userPresent: true
       })
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
       if (assertion.counter !== match.passkey.counter) {
         const next = cloneData(current)
         const nextLogin = findLogin(next, match.login.id)
@@ -1236,11 +1249,11 @@ export class VaultService extends VaultTransferService {
         ) {
           throw new VaultError('LOCKED')
         }
-        const now = this.nowIso()
+        const now = this.core.nowIso()
         nextPasskey.counter = assertion.counter
         nextLogin.updatedAt = now
         next.updatedAt = now
-        await this.commit(next, generation)
+        await this.core.commit(next, generation)
       }
       return {
         itemId: match.login.id,
@@ -1256,7 +1269,7 @@ export class VaultService extends VaultTransferService {
   }
 
   deleteLogin(request: LoginIdRequest): Promise<void> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -1266,7 +1279,7 @@ export class VaultService extends VaultTransferService {
   }
 
   deleteLogins(request: LoginBatchRequest): Promise<number> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const logins = resolveLoginBatch(data, request, (login) => assertActiveLogin(login))
       for (const login of logins) {
         login.deletedAt = now
@@ -1277,7 +1290,7 @@ export class VaultService extends VaultTransferService {
   }
 
   restoreLogin(request: LoginIdRequest): Promise<LoginView> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
@@ -1288,7 +1301,7 @@ export class VaultService extends VaultTransferService {
   }
 
   restoreLogins(request: LoginBatchRequest): Promise<LoginSummary[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       const logins = resolveLoginBatch(data, request, (login) => {
         if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
       })
@@ -1301,7 +1314,7 @@ export class VaultService extends VaultTransferService {
   }
 
   deleteLoginPermanently(request: LoginIdRequest): Promise<void> {
-    return this.mutate((data) => {
+    return this.core.mutate((data) => {
       assertNoPendingLoginImport(data.sync)
       assertUuid(request.id)
       const login = findLogin(data, request.id)
@@ -1312,7 +1325,7 @@ export class VaultService extends VaultTransferService {
   }
 
   deleteLoginsPermanently(request: LoginBatchRequest): Promise<number> {
-    return this.mutate((data) => {
+    return this.core.mutate((data) => {
       assertNoPendingLoginImport(data.sync)
       const logins = resolveLoginBatch(data, request, (login) => {
         if (login.deletedAt === null) throw new VaultError('INVALID_INPUT')
@@ -1325,7 +1338,7 @@ export class VaultService extends VaultTransferService {
   }
 
   emptyTrash(): Promise<number> {
-    return this.mutate((data) => {
+    return this.core.mutate((data) => {
       assertNoPendingLoginImport(data.sync)
       const deleted = data.logins.filter((login) => login.deletedAt !== null)
       for (const login of deleted) recordSyncDeletion(data.sync, 'login', login.id)
@@ -1336,7 +1349,7 @@ export class VaultService extends VaultTransferService {
   }
 
   setLoginFavorite(request: LoginFavoriteRequest): Promise<LoginSummary> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       if (typeof request.favorite !== 'boolean') throw new VaultError('INVALID_INPUT')
       const login = findLogin(data, request.id)
@@ -1348,7 +1361,7 @@ export class VaultService extends VaultTransferService {
   }
 
   moveLogin(request: LoginMoveRequest): Promise<LoginSummary> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       assertUuid(request.id)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -1359,7 +1372,7 @@ export class VaultService extends VaultTransferService {
   }
 
   moveLogins(request: LoginMoveManyRequest): Promise<LoginSummary[]> {
-    return this.mutate((data, now) => {
+    return this.core.mutate((data, now) => {
       if (
         !Array.isArray(request.ids) ||
         request.ids.length === 0 ||
@@ -1384,9 +1397,9 @@ export class VaultService extends VaultTransferService {
   }
 
   revealPassword(request: LoginIdRequest): Promise<string> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       assertSecretField(login.type, 'password')
       return login.password
@@ -1394,9 +1407,9 @@ export class VaultService extends VaultTransferService {
   }
 
   revealEditorSecrets(request: EditorSecretsRequest): Promise<EditorSecretsView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
 
@@ -1424,9 +1437,9 @@ export class VaultService extends VaultTransferService {
   }
 
   revealSecret(request: ItemFieldRequest): Promise<string> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       assertSecretField(login.type, request.field as VaultSecretField)
       return login[request.field] as string
@@ -1434,9 +1447,9 @@ export class VaultService extends VaultTransferService {
   }
 
   revealCustomField(request: CustomFieldRequest): Promise<string> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       if (request.expectedUpdatedAt !== login.updatedAt) throw new VaultError('INVALID_INPUT')
       const field = customFieldFromSource(login, request.source)
@@ -1453,19 +1466,19 @@ export class VaultService extends VaultTransferService {
   }
 
   getTotp(request: LoginIdRequest): Promise<TotpCodeView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
-      const login = findLogin(this.requireData(), request.id)
+      const login = findLogin(this.core.requireData(), request.id)
       assertActiveLogin(login)
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
-      return generateTotp(login.totp, this.now())
+      return generateTotp(login.totp, this.core.now())
     })
   }
 
   copyTotp(request: LoginIdRequest): Promise<void> {
     return this.useLogin(request, async (login) => {
       if (login.type !== 'login' || !login.totp) throw new VaultError('INVALID_INPUT')
-      await this.platform.copyText(generateTotp(login.totp, this.now()).code)
+      await this.platform.copyText(generateTotp(login.totp, this.core.now()).code)
     })
   }
 
@@ -1522,12 +1535,12 @@ export class VaultService extends VaultTransferService {
   ): Promise<string | null> {
     const iconUrl = (() => {
       assertUuid(request.id)
-      const data = this.requireFastReadData()
+      const data = this.core.requireFastReadData()
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
       if (
         login.reprompt === 1 &&
-        !validateAuthorization?.([login.id], { generation: this.generation })
+        !validateAuthorization?.([login.id], { generation: this.core.generation })
       ) {
         throw new VaultError('REPROMPT_REQUIRED')
       }
@@ -1554,18 +1567,18 @@ export class VaultService extends VaultTransferService {
 
   /** Memory LRU miss: try the encrypted disk cache, then a concurrency-limited fetch. */
   private async loadWebsiteIcon(cacheKey: string, iconUrl: URL): Promise<string | null> {
-    const generation = this.generation
+    const generation = this.core.generation
     const keys = this.imageCacheKeys()
     const abort = new AbortController()
     this.imageRequestAborts.add(abort)
     try {
       const stored = keys ? await this.imageCache?.read(keys, 'website-icon', cacheKey) : null
-      if (generation !== this.generation) return null
+      if (generation !== this.core.generation) return null
       const storedValue =
         stored?.mediaType && stored.data ? websiteIconDataUrl(stored.mediaType, stored.data) : null
       stored?.data?.fill(0)
       const storedTtl = stored?.mediaType ? WEBSITE_ICON_TTL_MS : WEBSITE_ICON_MISSING_TTL_MS
-      if (stored && stored.storedAt + storedTtl > this.now().getTime()) {
+      if (stored && stored.storedAt + storedTtl > this.core.now().getTime()) {
         this.rememberWebsiteIcon(cacheKey, storedValue, storedTtl)
         return storedValue
       }
@@ -1579,14 +1592,14 @@ export class VaultService extends VaultTransferService {
       } catch {
         return null
       }
-      if (generation !== this.generation) return null
+      if (generation !== this.core.generation) return null
 
       if (result.kind === 'failed') {
         // Keep showing a stale icon instead of a letter, and retry the network later.
         if (stored) this.rememberWebsiteIcon(cacheKey, storedValue, WEBSITE_ICON_RETRY_MS)
         return storedValue
       }
-      const storedAt = this.now().getTime()
+      const storedAt = this.core.now().getTime()
       const value =
         result.kind === 'icon' ? websiteIconDataUrl(result.mediaType, result.data) : null
       if (keys) {

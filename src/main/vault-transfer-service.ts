@@ -189,7 +189,7 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentDownloadResult> {
-    const preflight = await this.exclusive(async () => {
+    const preflight = await this.core.exclusive(async () => {
       assertUuid(request.id)
       assertUuid(request.operationId)
       if (
@@ -199,7 +199,7 @@ export class VaultTransferService extends VaultContentService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
-      const data = this.requireData()
+      const data = this.core.requireData()
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -210,7 +210,7 @@ export class VaultTransferService extends VaultContentService {
       const sync = this.requireSyncData()
       const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
       if (!mapping) throw new VaultError('INVALID_INPUT')
-      return { files, fileName: attachment.fileName, generation: this.generation }
+      return { files, fileName: attachment.fileName, generation: this.core.generation }
     })
 
     this.reportAttachmentProgress(reportProgress, request, 'download', 'choosing-file', 0, null)
@@ -221,10 +221,10 @@ export class VaultTransferService extends VaultContentService {
       return { canceled: true, fileName: preflight.fileName }
     }
 
-    return this.exclusive(async () => {
-      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
+    return this.core.exclusive(async () => {
+      if (preflight.generation !== this.core.generation) throw new VaultError('LOCKED')
       assertUuid(request.id)
-      const data = this.requireData()
+      const data = this.core.requireData()
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -252,13 +252,13 @@ export class VaultTransferService extends VaultContentService {
           attachment.size
         )
         if (abort.signal.aborted) throw new VaultError('LOCKED')
-        const generation = this.generation
+        const generation = this.core.generation
         const downloaded = client.downloadAttachmentStream
           ? await client.downloadAttachmentStream(mapping.remoteId, attachment.id, abort.signal)
           : await client.downloadAttachment(mapping.remoteId, attachment.id, abort.signal)
         if ('dispose' in downloaded) downloadedStream = downloaded
         else clearText = downloaded.data
-        if (generation !== this.generation || abort.signal.aborted) {
+        if (generation !== this.core.generation || abort.signal.aborted) {
           throw new VaultError('LOCKED')
         }
         if (downloaded.fileName !== attachment.fileName) {
@@ -301,7 +301,7 @@ export class VaultTransferService extends VaultContentService {
   ): Promise<CardCoverPreviewResult | null> {
     const target = (() => {
       assertUuid(request.id)
-      const data = this.requireFastReadData()
+      const data = this.core.requireFastReadData()
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -356,18 +356,18 @@ export class VaultTransferService extends VaultContentService {
     size: number
     cacheKey: string
   }): Promise<CardCoverPreviewResult | null> {
-    const generation = this.generation
+    const generation = this.core.generation
     const keys = this.imageCacheKeys()
     const abort = new AbortController()
     this.imageRequestAborts.add(abort)
     let clearText: Buffer | undefined
     try {
       const stored = keys ? await this.imageCache?.read(keys, 'card-cover', target.cacheKey) : null
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
       if (
         stored?.mediaType &&
         stored.data &&
-        stored.storedAt + CARD_COVER_CACHE_TTL_MS > this.now().getTime()
+        stored.storedAt + CARD_COVER_CACHE_TTL_MS > this.core.now().getTime()
       ) {
         clearText = stored.data
         const mediaType =
@@ -378,8 +378,8 @@ export class VaultTransferService extends VaultContentService {
 
       clearText = await this.cardCoverDownloads.run(async () => {
         // Only borrow the mutex long enough to obtain the shared sync client.
-        const client = await this.exclusive(async () => {
-          if (generation !== this.generation) throw new VaultError('LOCKED')
+        const client = await this.core.exclusive(async () => {
+          if (generation !== this.core.generation) throw new VaultError('LOCKED')
           return this.getOrCreateSyncClient(this.requireSyncData())
         })
         const downloaded = client.downloadAttachmentStream
@@ -407,7 +407,7 @@ export class VaultTransferService extends VaultContentService {
           if ('dispose' in downloaded) await downloaded.dispose().catch(() => undefined)
         }
       }, abort.signal)
-      if (generation !== this.generation) throw new VaultError('LOCKED')
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
       const mediaType =
         previewMediaType(target.fileName, clearText) ?? extensionPreviewMediaType(target.fileName)
       if (!mediaType) throw new VaultError('INVALID_INPUT')
@@ -415,7 +415,7 @@ export class VaultTransferService extends VaultContentService {
         void this.imageCache?.write(keys, 'card-cover', target.cacheKey, {
           mediaType,
           data: clearText,
-          storedAt: this.now().getTime()
+          storedAt: this.core.now().getTime()
         })
       }
       return this.rememberCardCover(target, mediaType, clearText)
@@ -451,7 +451,7 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentPreviewResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       assertUuid(request.id)
       assertUuid(request.operationId)
       if (
@@ -461,7 +461,7 @@ export class VaultTransferService extends VaultContentService {
       ) {
         throw new VaultError('INVALID_INPUT')
       }
-      const data = this.requireData()
+      const data = this.core.requireData()
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
       this.assertAttachmentAuthorized(login, validateAuthorization)
@@ -534,10 +534,10 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentUploadResult> {
-    const preflight = await this.exclusive(async () => {
+    const preflight = await this.core.exclusive(async () => {
       assertUuid(request.id)
       assertUuid(request.operationId)
-      const data = this.requireData()
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -548,16 +548,16 @@ export class VaultTransferService extends VaultContentService {
       if (!sync.loginMappings.some((entry) => entry.localId === login.id)) {
         throw new VaultError('INVALID_INPUT')
       }
-      return { files, generation: this.generation }
+      return { files, generation: this.core.generation }
     })
 
     this.reportAttachmentProgress(reportProgress, request, 'upload', 'choosing-file', 0, null)
     const selection = await preflight.files.chooseOpenFile()
     if (selection === null) return { canceled: true, attachment: null }
 
-    return this.exclusive(async () => {
-      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      if (preflight.generation !== this.core.generation) throw new VaultError('LOCKED')
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -634,7 +634,7 @@ export class VaultTransferService extends VaultContentService {
         )
         this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
         await this.persistAttachmentMutation(data, client)
-        const updated = findLogin(this.requireData(), request.id)
+        const updated = findLogin(this.core.requireData(), request.id)
         const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
         if (!attachment || attachment.fileName !== selection.fileName || attachment.legacy) {
           throw new VaultError('ATTACHMENT_FAILED')
@@ -654,14 +654,14 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentUploadResult> {
-    const preflight = await this.exclusive(async () => {
+    const preflight = await this.core.exclusive(async () => {
       assertUuid(request.id)
       assertUuid(request.operationId)
       if (typeof request.sourceUrl !== 'string' || request.sourceUrl.length > 4096) {
         throw new VaultError('INVALID_INPUT')
       }
       parseCardCoverCatalogUrl(request.sourceUrl)
-      const data = this.requireData()
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -672,7 +672,7 @@ export class VaultTransferService extends VaultContentService {
         throw new VaultError('INVALID_INPUT')
       }
       const operation = this.startAttachmentOperation(request.operationId)
-      return { generation: this.generation, operation }
+      return { generation: this.core.generation, operation }
     })
 
     let clearText: Buffer | undefined
@@ -710,10 +710,10 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentUploadResult> {
-    const preflight = await this.exclusive(async () => {
+    const preflight = await this.core.exclusive(async () => {
       assertUuid(request.id)
       assertUuid(request.operationId)
-      const data = this.requireData()
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -725,16 +725,16 @@ export class VaultTransferService extends VaultContentService {
       if (!sync.loginMappings.some((entry) => entry.localId === login.id)) {
         throw new VaultError('INVALID_INPUT')
       }
-      return { files, generation: this.generation }
+      return { files, generation: this.core.generation }
     })
 
     this.reportAttachmentProgress(reportProgress, request, 'upload', 'choosing-file', 0, null)
     const selection = await preflight.files.chooseCardCoverFile()
     if (selection === null) return { canceled: true, attachment: null }
     if (selection.size > MAX_CARD_COVER_BYTES) throw new VaultError('ATTACHMENT_TOO_LARGE')
-    const operationPreflight = await this.exclusive(async () => {
-      if (preflight.generation !== this.generation) throw new VaultError('LOCKED')
-      const data = this.requireData()
+    const operationPreflight = await this.core.exclusive(async () => {
+      if (preflight.generation !== this.core.generation) throw new VaultError('LOCKED')
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -795,9 +795,9 @@ export class VaultTransferService extends VaultContentService {
     reportProgress: ((progress: AttachmentProgressEvent) => void) | undefined,
     validateAuthorization: AttachmentAuthorizationValidator | undefined
   ): Promise<AttachmentUploadResult> {
-    return this.exclusive(async () => {
-      if (generation !== this.generation) throw new VaultError('LOCKED')
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      if (generation !== this.core.generation) throw new VaultError('LOCKED')
+      const data = this.core.requireData()
       assertNoPendingPersonalVaultPurge(data.sync)
       const login = findLogin(data, request.id)
       assertActiveLogin(login)
@@ -844,7 +844,7 @@ export class VaultTransferService extends VaultContentService {
       )
       this.reportAttachmentProgress(reportProgress, request, 'upload', 'syncing', 0, null)
       await this.persistAttachmentMutation(data, client)
-      const updated = findLogin(this.requireData(), request.id)
+      const updated = findLogin(this.core.requireData(), request.id)
       const attachment = updated.attachments.find((entry) => entry.id === uploaded.id)
       if (!attachment || attachment.fileName !== cover.fileName || attachment.legacy) {
         throw new VaultError('ATTACHMENT_FAILED')
@@ -858,7 +858,7 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentDeleteResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const { data, attachment, mapping, client } = this.attachmentMutationContext(
         request,
         validateAuthorization
@@ -875,7 +875,7 @@ export class VaultTransferService extends VaultContentService {
         }
         this.reportAttachmentProgress(reportProgress, request, 'delete', 'syncing', 0, null)
         await this.persistAttachmentMutation(data, client)
-        const updated = findLogin(this.requireData(), request.id)
+        const updated = findLogin(this.core.requireData(), request.id)
         if (updated.attachments.some((entry) => entry.id === attachment.id)) {
           throw new VaultError('ATTACHMENT_FAILED')
         }
@@ -893,7 +893,7 @@ export class VaultTransferService extends VaultContentService {
     reportProgress?: (progress: AttachmentProgressEvent) => void,
     validateAuthorization?: AttachmentAuthorizationValidator
   ): Promise<AttachmentFixLegacyResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const { data, attachment, mapping, client } = this.attachmentMutationContext(
         request,
         validateAuthorization
@@ -918,7 +918,7 @@ export class VaultTransferService extends VaultContentService {
         this.commitAttachmentOperation(operation)
         this.reportAttachmentProgress(reportProgress, request, 'fix-legacy', 'syncing', 0, null)
         await this.persistAttachmentMutation(data, client)
-        const updated = findLogin(this.requireData(), request.id)
+        const updated = findLogin(this.core.requireData(), request.id)
         if (updated.attachments.some((entry) => entry.id === attachment.id)) {
           throw new VaultError('ATTACHMENT_FAILED')
         }
@@ -952,13 +952,13 @@ export class VaultTransferService extends VaultContentService {
   }
 
   verifyPortabilityOwner(masterPassword: string): Promise<void> {
-    return this.exclusive(() => this.assertMasterPassword(masterPassword))
+    return this.core.exclusive(() => this.core.assertMasterPassword(masterPassword))
   }
 
   exportPortableSnapshot(masterPassword: string): Promise<VaultExportSnapshot> {
-    return this.exclusive(async () => {
-      await this.assertMasterPassword(masterPassword)
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      await this.core.assertMasterPassword(masterPassword)
+      const data = this.core.requireData()
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, data)
       const snapshot = this.localSyncSnapshot(data)
       const items = snapshot.logins.filter((item) => item.deletedAt === null)
@@ -988,9 +988,9 @@ export class VaultTransferService extends VaultContentService {
     // a resume) deliberately re-downloads and re-authenticates the complete ciphertext before bytes
     // at the committed offset are yielded. A native export consequently transfers attachments twice.
     type Candidate = NativeAttachmentBackupEntry & { remoteItemId: string }
-    const prepared = await this.exclusive(async () => {
-      await this.assertMasterPassword(masterPassword)
-      const data = this.requireData()
+    const prepared = await this.core.exclusive(async () => {
+      await this.core.assertMasterPassword(masterPassword)
+      const data = this.core.requireData()
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport, data)
       assertNoPendingPersonalVaultPurge(data.sync)
       const sync = this.requireSyncData()
@@ -1027,7 +1027,7 @@ export class VaultTransferService extends VaultContentService {
         abort,
         candidates,
         client,
-        generation: this.generation,
+        generation: this.core.generation,
         portable,
         skippedTrashItems: snapshot.logins.length - activeItems.length
       }
@@ -1038,9 +1038,9 @@ export class VaultTransferService extends VaultContentService {
       if (
         disposed ||
         prepared.abort.signal.aborted ||
-        prepared.generation !== this.generation ||
+        prepared.generation !== this.core.generation ||
         this.syncClient !== prepared.client ||
-        !this.data?.sync?.state.session
+        !this.core.currentData()?.sync?.state.session
       ) {
         throw new VaultError('LOCKED')
       }
@@ -1077,7 +1077,7 @@ export class VaultTransferService extends VaultContentService {
             })()
         return await consume(chunks)
       } catch (error) {
-        if (prepared.abort.signal.aborted || prepared.generation !== this.generation) {
+        if (prepared.abort.signal.aborted || prepared.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -1207,15 +1207,15 @@ export class VaultTransferService extends VaultContentService {
   }
 
   nativeAttachmentRestoreStatus(): Promise<VaultNativeAttachmentRestoreSummary | null> {
-    return this.exclusive(async () => {
-      const journal = this.requireData().nativeAttachmentRestore
+    return this.core.exclusive(async () => {
+      const journal = this.core.requireData().nativeAttachmentRestore
       return journal ? this.nativeAttachmentRestoreSummary(journal) : null
     })
   }
 
   clearCompletedNativeAttachmentRestore(archiveFingerprint: string): Promise<void> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const journal = this.requireBoundNativeAttachmentRestore(
@@ -1227,8 +1227,8 @@ export class VaultTransferService extends VaultContentService {
       if (journal.phase !== 'complete') throw new VaultError('INVALID_INPUT')
       const next = cloneData(current)
       next.nativeAttachmentRestore = null
-      next.updatedAt = this.nowIso()
-      await this.commit(next)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next)
     })
   }
 
@@ -1236,9 +1236,9 @@ export class VaultTransferService extends VaultContentService {
     preview: NativeAttachmentBackupPreview,
     masterPassword: string
   ): Promise<VaultNativeAttachmentRestoreSummary> {
-    return this.exclusive(async () => {
-      await this.assertMasterPassword(masterPassword)
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      await this.core.assertMasterPassword(masterPassword)
+      const current = this.core.requireData()
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, current)
       assertNoPendingPersonalVaultPurge(current.sync)
       assertNoPendingLoginImport(current.sync)
@@ -1262,7 +1262,7 @@ export class VaultTransferService extends VaultContentService {
         const parsed = parseBitwardenJson(preview.vaultJson)
         if (parsed.skippedTrashItems !== 0) throw new VaultError('INVALID_INPUT')
         for (const item of parsed.snapshot.items) assertPersonalItemTypeAllowed(item.type, current)
-        const next = cloneData(this.requireData())
+        const next = cloneData(this.core.requireData())
         const imported = this.appendPortableSnapshot(next, parsed.snapshot)
         const sourceItemIds = new Set(parsed.snapshot.items.map((item) => item.id))
         const attachments = preview.attachments.map((attachment, index) => {
@@ -1275,7 +1275,7 @@ export class VaultTransferService extends VaultContentService {
             digest: preview.attachmentDigests[index]!
           }
         })
-        const now = this.nowIso()
+        const now = this.core.nowIso()
         next.nativeAttachmentRestore = createNativeAttachmentRestoreJournal({
           archiveFingerprint: preview.archiveFingerprint,
           accountFingerprint,
@@ -1284,10 +1284,10 @@ export class VaultTransferService extends VaultContentService {
           attachments
         })
         next.updatedAt = now
-        await this.commit(next, operation.generation)
+        await this.core.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
-        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+        if (operation.abort.signal.aborted || operation.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -1301,8 +1301,8 @@ export class VaultTransferService extends VaultContentService {
   syncNativeAttachmentRestoreItems(
     archiveFingerprint: string
   ): Promise<VaultNativeAttachmentRestoreSummary> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const journal = this.requireBoundNativeAttachmentRestore(
@@ -1316,7 +1316,7 @@ export class VaultTransferService extends VaultContentService {
       try {
         await this.performSync(current, client, operation.abort.signal)
         this.assertNativeAttachmentRestoreLease(operation)
-        const next = cloneData(this.requireData())
+        const next = cloneData(this.core.requireData())
         let updated = next.nativeAttachmentRestore
         if (!updated || !next.sync) throw new VaultError('SYNC_FAILED')
         for (const item of updated.items.filter((candidate) => candidate.remoteItemId === null)) {
@@ -1328,12 +1328,12 @@ export class VaultTransferService extends VaultContentService {
             updated,
             item.sourceItemId,
             mapping.remoteId,
-            this.nowIso()
+            this.core.nowIso()
           )
         }
         next.nativeAttachmentRestore = updated
         next.updatedAt = updated.updatedAt
-        await this.commit(next, operation.generation)
+        await this.core.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(updated)
       } finally {
         this.finishNativeAttachmentRestoreOperation(operation)
@@ -1346,8 +1346,8 @@ export class VaultTransferService extends VaultContentService {
     key: NativeAttachmentRestoreAttachmentKey,
     source: BitwardenAttachmentByteSource
   ): Promise<VaultNativeAttachmentRestoreSummary> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const journal = this.requireBoundNativeAttachmentRestore(
@@ -1373,10 +1373,10 @@ export class VaultTransferService extends VaultContentService {
         attempting.nativeAttachmentRestore = beginNativeAttachmentRestoreAttempt(
           attempting.nativeAttachmentRestore,
           key,
-          this.nowIso()
+          this.core.nowIso()
         )
         attempting.updatedAt = attempting.nativeAttachmentRestore.updatedAt
-        await this.commit(attempting, operation.generation)
+        await this.core.commit(attempting, operation.generation)
         this.assertNativeAttachmentRestoreLease(operation)
         const uploaded = await client.uploadAttachmentStream(
           item.remoteItemId,
@@ -1402,7 +1402,7 @@ export class VaultTransferService extends VaultContentService {
           throw new VaultError('ATTACHMENT_FAILED')
         }
         const next = this.applyNativeAttachmentRestoreRemoteSnapshot(
-          this.requireData(),
+          this.core.requireData(),
           client,
           remoteFolders,
           remoteLogins
@@ -1412,10 +1412,10 @@ export class VaultTransferService extends VaultContentService {
           next.nativeAttachmentRestore,
           key,
           uploaded.id,
-          this.nowIso()
+          this.core.nowIso()
         )
         next.updatedAt = next.nativeAttachmentRestore.updatedAt
-        await this.commit(next, operation.generation)
+        await this.core.commit(next, operation.generation)
         return this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
       } catch (error) {
         let reconciliationPersistenceError: unknown = null
@@ -1424,7 +1424,7 @@ export class VaultTransferService extends VaultContentService {
         } catch (persistError) {
           reconciliationPersistenceError = persistError
         }
-        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+        if (operation.abort.signal.aborted || operation.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (reconciliationPersistenceError) throw reconciliationPersistenceError
@@ -1443,8 +1443,8 @@ export class VaultTransferService extends VaultContentService {
     outcome: 'uploaded' | 'missing' | 'conflict'
     summary: VaultNativeAttachmentRestoreSummary
   }> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const journal = this.requireBoundNativeAttachmentRestore(
@@ -1498,16 +1498,16 @@ export class VaultTransferService extends VaultContentService {
         this.assertNativeAttachmentRestoreLease(operation)
         const next = remoteItem
           ? this.applyNativeAttachmentRestoreRemoteSnapshot(
-              this.requireData(),
+              this.core.requireData(),
               client,
               remoteFolders,
               remoteLogins
             )
           : (() => {
-              const preserved = cloneData(this.requireData())
+              const preserved = cloneData(this.core.requireData())
               if (!preserved.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
               preserved.sync.state = client.exportState()
-              preserved.sync.lastSyncAt = this.nowIso()
+              preserved.sync.lastSyncAt = this.core.nowIso()
               return preserved
             })()
         if (!next.nativeAttachmentRestore) throw new VaultError('ATTACHMENT_FAILED')
@@ -1515,24 +1515,24 @@ export class VaultTransferService extends VaultContentService {
           next.nativeAttachmentRestore = reconcileNativeAttachmentRestoreMissing(
             next.nativeAttachmentRestore,
             key,
-            this.nowIso()
+            this.core.nowIso()
           )
         } else if (outcome === 'uploaded' && remoteAttachmentId) {
           next.nativeAttachmentRestore = reconcileNativeAttachmentRestoreUploaded(
             next.nativeAttachmentRestore,
             key,
             remoteAttachmentId,
-            this.nowIso()
+            this.core.nowIso()
           )
         }
         next.updatedAt = next.nativeAttachmentRestore.updatedAt
-        await this.commit(next, operation.generation)
+        await this.core.commit(next, operation.generation)
         return {
           outcome,
           summary: this.nativeAttachmentRestoreSummary(next.nativeAttachmentRestore)
         }
       } catch (error) {
-        if (operation.abort.signal.aborted || operation.generation !== this.generation) {
+        if (operation.abort.signal.aborted || operation.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -1548,9 +1548,9 @@ export class VaultTransferService extends VaultContentService {
     skippedTrashItems: number,
     masterPassword: string
   ): Promise<Omit<VaultImportResult, 'canceled'>> {
-    return this.exclusive(async () => {
-      await this.assertMasterPassword(masterPassword)
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      await this.core.assertMasterPassword(masterPassword)
+      const current = this.core.requireData()
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, current)
       assertNoPendingPersonalVaultPurge(current.sync)
       if (
@@ -1570,7 +1570,7 @@ export class VaultTransferService extends VaultContentService {
       for (const item of snapshot.items) assertPersonalItemTypeAllowed(item.type, current)
 
       const next = cloneData(current)
-      const generation = this.generation
+      const generation = this.core.generation
       try {
         this.appendPortableSnapshot(next, snapshot)
       } catch (error) {
@@ -1578,8 +1578,8 @@ export class VaultTransferService extends VaultContentService {
         throw new VaultError('INVALID_INPUT')
       }
 
-      next.updatedAt = this.nowIso()
-      await this.commit(next, generation)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next, generation)
       return {
         importedFolders: snapshot.folders.length,
         importedItems: snapshot.items.length,

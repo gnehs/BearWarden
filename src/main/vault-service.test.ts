@@ -32,7 +32,7 @@ import { VaultAttachmentFileService } from './vault-attachment-files'
 import { createPasskeyCredential } from './passkey-authenticator'
 import { hashPasswordForPwnedLookup } from './pwned-passwords'
 import { buildBitwardenJson } from './vault-portability-codec'
-import type { PersistedSyncData } from './vault/types'
+import type { PersistedSyncData, StoredSharedLogin } from './vault/types'
 import { parseTwoFactorDirectoryTotpData } from './inactive-two-factor'
 import type { AccountWebAuthnAssertion, AccountWebAuthnChallenge } from './account-webauthn-codec'
 import type {
@@ -2964,7 +2964,7 @@ describe('VaultService encrypted local data', () => {
   it('persists equivalent domains fetched after the final authoritative sync', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     let domainRead = 0
-    const { service } = await createHarness({
+    const { service, store } = await createHarness({
       createSyncClient: (sync) => {
         fake = createSyncFake(sync.state)
         fake.getEquivalentDomainSettings = async () => {
@@ -2986,13 +2986,13 @@ describe('VaultService encrypted local data', () => {
       masterPassword: 'remote master password'
     })
 
-    const persisted = (
-      service as unknown as {
-        data: { sync: { domainSettings: { equivalentDomains: string[][] } | null } | null } | null
-      }
-    ).data?.sync?.domainSettings
+    const persisted = await store.unlock(MASTER_PASSWORD)
+    persisted.key.fill(0)
+    persisted.salt.fill(0)
     expect(domainRead).toBe(2)
-    expect(persisted?.equivalentDomains).toEqual([['final.example.invalid']])
+    expect(persisted.data).toMatchObject({
+      sync: { domainSettings: { equivalentDomains: [['final.example.invalid']] } }
+    })
   })
 
   it.each([
@@ -3339,14 +3339,7 @@ describe('VaultService encrypted local data', () => {
         }
       ]
     })
-    const data = (
-      service as unknown as {
-        data: {
-          logins: Array<Record<string, unknown> & { id: string }>
-          sharedLogins: Array<Record<string, unknown>>
-        } | null
-      }
-    ).data!
+    const data = service.committedSnapshotForTesting()!
     const storedPersonal = data.logins.find((candidate) => candidate.id === personal.id)!
     const sharedId = '80000000-0000-4000-8000-000000000001'
     const shared: Record<string, unknown> & {
@@ -3368,7 +3361,7 @@ describe('VaultService encrypted local data', () => {
       delete: false,
       restore: false
     }
-    data.sharedLogins.push(shared)
+    data.sharedLogins.push(shared as unknown as StoredSharedLogin)
     const view = await service.getSharedLogin({ id: sharedId })
     const hiddenRequest = customFieldRequest(view, 0)
     const textRequest = customFieldRequest(view, 1)
@@ -8031,7 +8024,7 @@ describe('VaultService encrypted local data', () => {
     await service.archiveLogin({ id: archived.id })
     await service.deleteLogin({ id: trashed.id })
 
-    const internalData = (service as unknown as { data: { logins: { id: string }[] } | null }).data
+    const internalData = service.committedSnapshotForTesting()
     const rawProtected = internalData?.logins.find((login) => login.id === protectedLogin.id)
     expect(rawProtected).toBeDefined()
     Object.defineProperties(rawProtected!, {
@@ -8127,14 +8120,7 @@ describe('VaultService encrypted local data', () => {
       uris: [{ uri: 'https://example.com/login', match: null }]
     })
 
-    const internalData = (
-      service as unknown as {
-        data: {
-          logins: Array<Record<string, unknown> & { id: string }>
-          sharedLogins: unknown[]
-        } | null
-      }
-    ).data!
+    const internalData = service.committedSnapshotForTesting()!
     for (const id of [zulu.id, alpha.id]) {
       const raw = internalData.logins.find((login) => login.id === id)!
       Object.defineProperties(raw, {
@@ -8168,7 +8154,7 @@ describe('VaultService encrypted local data', () => {
       deletedAt: null,
       archivedAt: null,
       uris: [{ uri: 'https://example.com' }]
-    })
+    } as unknown as StoredSharedLogin)
 
     const dataset = parseTwoFactorDirectoryTotpData({
       'example.com': {
@@ -8237,9 +8223,7 @@ describe('VaultService encrypted local data', () => {
     await service.archiveLogin({ id: trashed.id })
     await service.deleteLogin({ id: trashed.id })
 
-    const internalLogins = (
-      service as unknown as { data: { logins: Array<Record<string, unknown> & { id: string }> } }
-    ).data.logins
+    const internalLogins = service.committedSnapshotForTesting()!.logins
     for (const id of [totp.id, archived.id, trashed.id]) {
       const raw = internalLogins.find((login) => login.id === id)!
       Object.defineProperty(raw, 'uris', {
@@ -8305,7 +8289,7 @@ describe('VaultService encrypted local data', () => {
     await service.archiveLogin({ id: archived.id })
     await service.deleteLogin({ id: trashed.id })
 
-    const internalData = (service as unknown as { data: { logins: { id: string }[] } | null }).data
+    const internalData = service.committedSnapshotForTesting()
     const rawProtected = internalData?.logins.find((login) => login.id === protectedLogin.id)
     Object.defineProperties(rawProtected!, {
       password: {

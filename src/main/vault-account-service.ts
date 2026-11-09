@@ -91,20 +91,20 @@ function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
 /** Account security, authentication, and public synchronization operations. */
 export class VaultAccountService extends VaultServiceBase {
   syncStatus(): Promise<SyncStatus> {
-    return this.exclusive(async () => this.currentSyncStatus())
+    return this.core.exclusive(async () => this.currentSyncStatus())
   }
 
   async getAccountSecurityProfile(): Promise<
     import('../shared/vault-contract').AccountSecurityProfile
   > {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.getAccountSecurityProfile) throw new VaultError('SYNC_FAILED')
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         client,
         email: sync.email,
         request: client.getAccountSecurityProfile.bind(client),
@@ -113,13 +113,13 @@ export class VaultAccountService extends VaultServiceBase {
     })
     try {
       const profile = await lease.request(lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         const state = lease.client.exportState()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !state.session ||
           state.profileId !== profile.id ||
@@ -137,9 +137,9 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -191,23 +191,23 @@ export class VaultAccountService extends VaultServiceBase {
       signal: AbortSignal
     ) => Promise<import('./bitwarden-http').BitwardenAccountSecurityProfile>
   ): Promise<import('../shared/vault-contract').AccountSecurityProfile> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
-      return { generation: this.generation, client, email: sync.email, abort }
+      return { generation: this.core.generation, client, email: sync.email, abort }
     })
     try {
       const profile = await request(lease.client, lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         const state = lease.client.exportState()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !state.session ||
           state.profileId !== profile.id ||
@@ -225,9 +225,9 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError) {
@@ -245,14 +245,14 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   async getAccountDevices(): Promise<import('../shared/vault-contract').AccountDevicesResult> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         client,
         request: client.getAccountDevices?.bind(client) ?? null,
         abort
@@ -260,12 +260,12 @@ export class VaultAccountService extends VaultServiceBase {
     })
     try {
       const devices = lease.request ? await lease.request(lease.abort.signal) : null
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -287,9 +287,9 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (this.syncClient !== lease.client || !lease.client.exportState().session) {
@@ -306,7 +306,7 @@ export class VaultAccountService extends VaultServiceBase {
 
   /** Main-process entry point used by a trusted type-15 SignalR notification. */
   async prepareLoginApproval(requestId: string): Promise<LoginApprovalPrompt | null> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -314,20 +314,20 @@ export class VaultAccountService extends VaultServiceBase {
       if (!request) return null
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
-      return { generation: this.generation, client, request, abort }
+      return { generation: this.core.generation, client, request, abort }
     })
     if (!lease) return null
     try {
       const pending = await lease.request(requestId, lease.abort.signal)
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
         this.assertLoginApprovalLease(lease)
         return this.issueLoginApproval(pending, lease.client, lease.generation)
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) return null
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) return null
         if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') return null
         if (error instanceof VaultError) throw error
         throw this.mapSyncError(error)
@@ -336,7 +336,7 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   async getPendingLoginApprovals(): Promise<LoginApprovalPrompt[]> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.exportState().session) throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -344,12 +344,12 @@ export class VaultAccountService extends VaultServiceBase {
       if (!request) return null
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
-      return { generation: this.generation, client, request, abort }
+      return { generation: this.core.generation, client, request, abort }
     })
     if (!lease) return []
     try {
       const pending = await lease.request(lease.abort.signal)
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
         this.assertLoginApprovalLease(lease)
         return pending
@@ -357,9 +357,9 @@ export class VaultAccountService extends VaultServiceBase {
           .filter((prompt): prompt is LoginApprovalPrompt => prompt !== null)
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') return []
@@ -370,14 +370,14 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   async respondLoginApproval(response: LoginApprovalResponse): Promise<void> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const session = this.loginApprovalSessions.get(response.token)
       this.loginApprovalSessions.delete(response.token)
       if (
         !session ||
-        session.generation !== this.generation ||
+        session.generation !== this.core.generation ||
         session.client !== this.syncClient ||
-        session.expiresAt <= this.now().getTime() ||
+        session.expiresAt <= this.core.now().getTime() ||
         session.fingerprint !== response.fingerprint ||
         !session.client.exportState().session
       ) {
@@ -391,7 +391,7 @@ export class VaultAccountService extends VaultServiceBase {
     })
     try {
       await lease.request(lease.requestId, lease.fingerprint, response.approved, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
         this.assertLoginApprovalLease(lease)
         for (const [token, session] of this.loginApprovalSessions) {
@@ -400,9 +400,9 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -421,7 +421,7 @@ export class VaultAccountService extends VaultServiceBase {
       originalState: BitwardenDirectState
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const descriptors =
           typeof request === 'object' && request !== null
             ? Object.getOwnPropertyDescriptors(request)
@@ -449,7 +449,7 @@ export class VaultAccountService extends VaultServiceBase {
           throw new VaultError('INVALID_INPUT')
         }
 
-        const current = this.requireData()
+        const current = this.core.requireData()
         if (
           this.syncInProgress ||
           current.sync?.pendingLoginMutation ||
@@ -480,18 +480,18 @@ export class VaultAccountService extends VaultServiceBase {
           session: null,
           securityStamp: null
         }
-        failClosed.updatedAt = this.nowIso()
+        failClosed.updatedAt = this.core.nowIso()
         this.sessionDeauthorizationInProgress = true
         this.abortNotificationTokenLeases()
         try {
-          await this.commit(failClosed)
+          await this.core.commit(failClosed)
         } catch {
           this.sessionDeauthorizationInProgress = false
           throw new VaultError('SYNC_FAILED')
         }
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.deauthorizeAllSessions.bind(client),
           abort,
@@ -513,11 +513,11 @@ export class VaultAccountService extends VaultServiceBase {
     }
 
     try {
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
         try {
-          const current = this.requireData()
-          if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+          const current = this.core.requireData()
+          if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
             throw new VaultError('LOCKED')
           }
           if (this.syncClient !== lease.client) throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -539,9 +539,9 @@ export class VaultAccountService extends VaultServiceBase {
             const restored = cloneData(current)
             if (!restored.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
             restored.sync.state = lease.originalState
-            restored.updatedAt = this.nowIso()
+            restored.updatedAt = this.core.nowIso()
             try {
-              await this.commit(restored)
+              await this.core.commit(restored)
             } catch {
               this.syncClient = null
               await lease.client.logout().catch(() => undefined)
@@ -573,14 +573,14 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   async resendAccountVerificationEmail(): Promise<void> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.resendVerificationEmail) throw new VaultError('SYNC_FAILED')
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         client,
         request: client.resendVerificationEmail.bind(client),
         abort
@@ -588,12 +588,12 @@ export class VaultAccountService extends VaultServiceBase {
     })
     try {
       await lease.request(lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client
         ) {
           throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -601,9 +601,9 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState()
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -613,7 +613,7 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   copyAccountApiClientId(): Promise<void> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const state = client.exportState()
@@ -650,7 +650,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.getPersonalApiKey) throw new VaultError('SYNC_FAILED')
@@ -659,7 +659,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.getPersonalApiKey.bind(client),
           abort
@@ -673,12 +673,12 @@ export class VaultAccountService extends VaultServiceBase {
       null
     try {
       result = await lease.request(request.masterPassword, request.rotate, lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -689,9 +689,9 @@ export class VaultAccountService extends VaultServiceBase {
         return { rotated: request.rotate, revisionDate: result!.revisionDate }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError) {
@@ -712,14 +712,14 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   async getTwoFactorStatus(): Promise<{ type: number; enabled: boolean }[]> {
-    const lease = await this.exclusive(async () => {
+    const lease = await this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       if (!client.getTwoFactorProviders) throw new VaultError('SYNC_FAILED')
       const abort = new AbortController()
       this.accountSecurityAborts.add(abort)
       return {
-        generation: this.generation,
+        generation: this.core.generation,
         client,
         request: client.getTwoFactorProviders.bind(client),
         abort
@@ -727,12 +727,12 @@ export class VaultAccountService extends VaultServiceBase {
     })
     try {
       const providers = await lease.request(lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -742,9 +742,9 @@ export class VaultAccountService extends VaultServiceBase {
         return providers.map((provider) => ({ ...provider }))
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof VaultError) throw error
@@ -775,7 +775,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.disableTwoFactorProvider || !client.exportState().session) {
@@ -784,7 +784,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.disableTwoFactorProvider.bind(client),
           abort
@@ -798,12 +798,12 @@ export class VaultAccountService extends VaultServiceBase {
     request.masterPassword = ''
     try {
       await lease.request(mutation.type, mutation.masterPassword, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -812,7 +812,7 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      await this.core.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
       this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.masterPassword = ''
@@ -842,7 +842,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.getTwoFactorRecoveryCode) throw new VaultError('SYNC_FAILED')
@@ -850,7 +850,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.getTwoFactorRecoveryCode.bind(client),
           abort
@@ -863,12 +863,12 @@ export class VaultAccountService extends VaultServiceBase {
     let code = ''
     try {
       code = await lease.request(request.masterPassword, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -878,9 +878,9 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
@@ -916,7 +916,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.beginAuthenticatorSetup || !client.exportState().session) {
@@ -925,7 +925,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.beginAuthenticatorSetup.bind(client),
           abort
@@ -937,12 +937,12 @@ export class VaultAccountService extends VaultServiceBase {
     }
     try {
       const setup = await lease.request(request.masterPassword, lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -958,7 +958,7 @@ export class VaultAccountService extends VaultServiceBase {
           this.deleteAuthenticatorSetupSession(oldest)
         }
         const sessionId = randomUUID()
-        const expiresAt = this.now().getTime() + AUTHENTICATOR_SETUP_TTL_MS
+        const expiresAt = this.core.now().getTime() + AUTHENTICATOR_SETUP_TTL_MS
         this.authenticatorSetupSessions.set(sessionId, {
           generation: lease.generation,
           client: lease.client,
@@ -976,9 +976,9 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
@@ -995,7 +995,7 @@ export class VaultAccountService extends VaultServiceBase {
   async copyAccountAuthenticatorKey(request: { sessionId: string }): Promise<void> {
     const copySensitiveText = this.platform.copySensitiveText
     if (!copySensitiveText) throw new VaultError('INTERNAL_ERROR')
-    await this.exclusive(async () => {
+    await this.core.exclusive(async () => {
       const session = this.requireAuthenticatorSetupSession(request.sessionId)
       await copySensitiveText(session.key, 30)
     })
@@ -1020,7 +1020,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const session = this.requireAuthenticatorSetupSession(request.sessionId)
         if (!session.client.completeAuthenticatorSetup) throw new VaultError('SYNC_FAILED')
         if (session.verificationMode === 'server-token' && request.masterPassword !== undefined) {
@@ -1068,12 +1068,12 @@ export class VaultAccountService extends VaultServiceBase {
     }
     try {
       await lease.request(completion, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -1082,7 +1082,7 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
       })
       this.throwTwoFactorMutationError(error, lease)
@@ -1118,7 +1118,7 @@ export class VaultAccountService extends VaultServiceBase {
       abort: AbortController
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.beginEmailTwoFactorSetup || !client.exportState().session) {
@@ -1127,7 +1127,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           request: client.beginEmailTwoFactorSetup.bind(client),
           abort
@@ -1139,12 +1139,12 @@ export class VaultAccountService extends VaultServiceBase {
     }
     try {
       const setup = await lease.request(request.masterPassword, lease.abort.signal)
-      return await this.exclusive(async () => {
+      return await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -1158,7 +1158,7 @@ export class VaultAccountService extends VaultServiceBase {
           this.deleteEmailTwoFactorSetupSession(oldest)
         }
         const sessionId = randomUUID()
-        const expiresAt = this.now().getTime() + EMAIL_TWO_FACTOR_SETUP_TTL_MS
+        const expiresAt = this.core.now().getTime() + EMAIL_TWO_FACTOR_SETUP_TTL_MS
         this.emailTwoFactorSetupSessions.set(sessionId, {
           generation: lease.generation,
           client: lease.client,
@@ -1176,9 +1176,9 @@ export class VaultAccountService extends VaultServiceBase {
         }
       })
     } catch (error) {
-      return this.exclusive(async () => {
+      return this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        if (lease.abort.signal.aborted || lease.generation !== this.generation) {
+        if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
           throw new VaultError('LOCKED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'USER_VERIFICATION_FAILED') {
@@ -1215,7 +1215,7 @@ export class VaultAccountService extends VaultServiceBase {
       emailForSetup: string
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const session = this.requireEmailTwoFactorSetupSession(request.sessionId, 'ready-to-send')
         if (!session.client.sendEmailTwoFactorSetup) throw new VaultError('SYNC_FAILED')
         this.validateEmailTwoFactorSetupPassword(session, request.masterPassword)
@@ -1247,15 +1247,15 @@ export class VaultAccountService extends VaultServiceBase {
     }
     try {
       await lease.request(mutation, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session ||
-          lease.expiresAt <= this.now().getTime()
+          lease.expiresAt <= this.core.now().getTime()
         ) {
           throw new VaultError('SYNC_AUTH_REQUIRED')
         }
@@ -1277,7 +1277,7 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      await this.core.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
       this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.email = ''
@@ -1306,7 +1306,7 @@ export class VaultAccountService extends VaultServiceBase {
       emailForSetup: string
     }
     try {
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const session = this.requireEmailTwoFactorSetupSession(request.sessionId, 'awaiting-code')
         if (!session.client.completeEmailTwoFactorSetup || !session.email) {
           throw new VaultError('SYNC_FAILED')
@@ -1341,12 +1341,12 @@ export class VaultAccountService extends VaultServiceBase {
     }
     try {
       await lease.request(mutation, lease.abort.signal)
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.accountSecurityAborts.delete(lease.abort)
-        this.requireData()
+        this.core.requireData()
         if (
           lease.abort.signal.aborted ||
-          lease.generation !== this.generation ||
+          lease.generation !== this.core.generation ||
           this.syncClient !== lease.client ||
           !lease.client.exportState().session
         ) {
@@ -1355,7 +1355,7 @@ export class VaultAccountService extends VaultServiceBase {
         await this.persistCurrentClientState().catch(() => undefined)
       })
     } catch (error) {
-      await this.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
+      await this.core.exclusive(async () => this.accountSecurityAborts.delete(lease.abort))
       this.throwTwoFactorMutationError(error, lease)
     } finally {
       request.token = ''
@@ -1382,7 +1382,7 @@ export class VaultAccountService extends VaultServiceBase {
     try {
       masterPassword = normalizeSyncPassword(request.masterPassword)
       request.masterPassword = ''
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.beginWebAuthnSetup || !client.exportState().session) {
@@ -1391,7 +1391,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           abort,
           begin: client.beginWebAuthnSetup.bind(client)
@@ -1436,7 +1436,7 @@ export class VaultAccountService extends VaultServiceBase {
       name = normalizeRequiredString(request.name, MAX_NAME_LENGTH)
       request.masterPassword = ''
       request.name = ''
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         const register = this.requestAccountWebAuthnRegistration
@@ -1451,7 +1451,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           abort,
           webVaultUrl: resolveBitwardenUrls(sync.serverUrl).webVaultUrl,
@@ -1525,7 +1525,7 @@ export class VaultAccountService extends VaultServiceBase {
       id = request.id
       masterPassword = normalizeSyncPassword(request.masterPassword)
       request.masterPassword = ''
-      lease = await this.exclusive(async () => {
+      lease = await this.core.exclusive(async () => {
         const sync = this.requireSyncData()
         const client = this.getOrCreateSyncClient(sync)
         if (!client.deleteWebAuthnKey || !client.exportState().session) {
@@ -1534,7 +1534,7 @@ export class VaultAccountService extends VaultServiceBase {
         const abort = new AbortController()
         this.accountSecurityAborts.add(abort)
         return {
-          generation: this.generation,
+          generation: this.core.generation,
           client,
           abort,
           remove: client.deleteWebAuthnKey.bind(client)
@@ -1559,8 +1559,8 @@ export class VaultAccountService extends VaultServiceBase {
 
   /** Main-process-only notification credentials. Never expose this through IPC or renderer state. */
   async notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
-    const lease = await this.exclusive(async () => {
-      const sync = this.requireData().sync
+    const lease = await this.core.exclusive(async () => {
+      const sync = this.core.requireData().sync
       if (!sync) return null
       const client = this.getOrCreateSyncClient(sync)
       const status = await client.status()
@@ -1573,7 +1573,7 @@ export class VaultAccountService extends VaultServiceBase {
       return {
         client,
         notificationAccessToken,
-        generation: this.generation,
+        generation: this.core.generation,
         abort,
         notificationsUrl: resolveBitwardenUrls(sync.serverUrl).notificationsUrl,
         userId: state.profileId,
@@ -1586,19 +1586,19 @@ export class VaultAccountService extends VaultServiceBase {
     try {
       accessToken = await lease.notificationAccessToken(lease.abort.signal)
     } catch {
-      await this.exclusive(async () => {
+      await this.core.exclusive(async () => {
         this.notificationTokenAborts.delete(lease.abort)
       })
       if (lease.abort.signal.aborted) return null
       throw new Error('NOTIFICATION_TOKEN_UNAVAILABLE')
     }
 
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       this.notificationTokenAborts.delete(lease.abort)
-      const current = this.requireData()
+      const current = this.core.requireData()
       if (
         lease.abort.signal.aborted ||
-        lease.generation !== this.generation ||
+        lease.generation !== this.core.generation ||
         lease.client !== this.syncClient ||
         this.sessionDeauthorizationInProgress ||
         !current.sync
@@ -1617,8 +1617,8 @@ export class VaultAccountService extends VaultServiceBase {
         const next = cloneData(current)
         if (!next.sync) return null
         next.sync.state = state
-        next.updatedAt = this.nowIso()
-        await this.commit(next)
+        next.updatedAt = this.core.nowIso()
+        await this.core.commit(next)
       }
       return {
         notificationsUrl: lease.notificationsUrl,
@@ -1631,8 +1631,8 @@ export class VaultAccountService extends VaultServiceBase {
 
   /** Applies a trusted authenticated LogOut notification without deleting sync mappings. */
   remoteLogoutSync(): Promise<SyncStatus> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.invalidatePinUnlockCapability()
       this.syncAbort?.abort()
@@ -1656,16 +1656,16 @@ export class VaultAccountService extends VaultServiceBase {
         ...(client?.exportState() ?? next.sync.state),
         session: null
       }
-      next.updatedAt = this.nowIso()
-      await this.commit(next)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next)
       return this.baseSyncStatus(next.sync, 'locked')
     })
   }
 
   connectSync(request: SyncConnectRequest): Promise<SyncResult> {
     this.invalidatePinUnlockCapability()
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
       const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
@@ -1706,8 +1706,8 @@ export class VaultAccountService extends VaultServiceBase {
           unlockMaterial?.wrappedKeyFingerprint.fill(0)
         }
         next.sync = sync
-        next.updatedAt = this.nowIso()
-        await this.commit(next)
+        next.updatedAt = this.core.nowIso()
+        await this.core.commit(next)
         this.syncClient = client
         return await this.performSync(next, client, abort.signal)
       } catch (error) {
@@ -1720,8 +1720,8 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
-    return this.exclusive(async () => {
-      this.requireData()
+    return this.core.exclusive(async () => {
+      this.core.requireData()
       const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
       const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
       const password = normalizeSyncPassword(request.masterPassword)
@@ -1764,7 +1764,7 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   unlockSync(request: SyncUnlockRequest): Promise<SyncStatus> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
@@ -1784,14 +1784,14 @@ export class VaultAccountService extends VaultServiceBase {
 
   /** Authenticates and completes the first sync before publishing a ready state. */
   unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
       try {
         await this.authenticateConfiguredSync(request, sync, client, abort.signal)
         await this.persistCurrentClientState()
-        return await this.performSync(this.requireData(), client, abort.signal)
+        return await this.performSync(this.core.requireData(), client, abort.signal)
       } catch (error) {
         await this.persistCurrentClientState().catch(() => undefined)
         throw this.mapSyncError(error)
@@ -1811,9 +1811,9 @@ export class VaultAccountService extends VaultServiceBase {
         error instanceof VaultError &&
         (error.code === 'SYNC_AUTH_REQUIRED' || error.code === 'SYNC_NEW_DEVICE_REQUIRED')
       ) {
-        return this.exclusive(async () => {
+        return this.core.exclusive(async () => {
           this.syncLastError = null
-          const sync = this.requireData().sync
+          const sync = this.core.requireData().sync
           return sync
             ? this.baseSyncStatus(sync, 'locked')
             : { configured: false, state: 'unconfigured' }
@@ -1824,8 +1824,8 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   syncNow(): Promise<SyncResult> {
-    return this.exclusive(async () => {
-      const data = this.requireData()
+    return this.core.exclusive(async () => {
+      const data = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
@@ -1841,8 +1841,8 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   disconnectSync(): Promise<SyncStatus> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       assertNoPendingPersonalVaultPurge(current.sync)
       this.invalidatePinUnlockCapability()
       this.syncAbort?.abort()
@@ -1861,8 +1861,8 @@ export class VaultAccountService extends VaultServiceBase {
         // Clearing local sync configuration must work even when the server is offline.
       }
       next.sync = null
-      next.updatedAt = this.nowIso()
-      await this.commit(next)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next)
       return { configured: false, state: 'unconfigured' }
     })
   }
@@ -1871,10 +1871,10 @@ export class VaultAccountService extends VaultServiceBase {
     masterPassword: string
     confirmRetry: true
   }): Promise<SyncStatus> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       if (request.confirmRetry !== true) throw new VaultError('INVALID_INPUT')
-      await this.assertMasterPassword(request.masterPassword)
-      const current = this.requireData()
+      await this.core.assertMasterPassword(request.masterPassword)
+      const current = this.core.requireData()
       if (!current.sync?.pendingLoginImport) throw new VaultError('INVALID_INPUT')
       if (current.sync.pendingLoginImport.phase === 'prepared') {
         throw new VaultError('SYNC_FAILED')
@@ -1882,8 +1882,8 @@ export class VaultAccountService extends VaultServiceBase {
       const next = cloneData(current)
       if (!next.sync?.pendingLoginImport) throw new VaultError('SYNC_FAILED')
       next.sync.pendingLoginImport.phase = 'retry-approved'
-      next.updatedAt = this.nowIso()
-      await this.commit(next)
+      next.updatedAt = this.core.nowIso()
+      await this.core.commit(next)
       this.syncLastError = null
       return await this.currentSyncStatus()
     })
@@ -1892,7 +1892,7 @@ export class VaultAccountService extends VaultServiceBase {
   purgePersonalVault(
     request: SyncPurgePersonalVaultRequest
   ): Promise<SyncPurgePersonalVaultResult> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       let abort: AbortController | undefined
       let didDispatch = false
       let original: VaultData | undefined
@@ -1915,8 +1915,8 @@ export class VaultAccountService extends VaultServiceBase {
           throw new VaultError('INVALID_INPUT')
         }
 
-        const current = this.requireData()
-        operationGeneration = this.generation
+        const current = this.core.requireData()
+        operationGeneration = this.core.generation
         original = cloneData(current)
         if (
           current.sync?.pendingLoginMutation ||
@@ -1942,19 +1942,19 @@ export class VaultAccountService extends VaultServiceBase {
           const cleared = cloneData(current)
           if (!cleared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
           cleared.sync.pendingPersonalVaultPurge = null
-          cleared.updatedAt = this.nowIso()
-          await this.commit(cleared)
+          cleared.updatedAt = this.core.nowIso()
+          await this.core.commit(cleared)
           original = cloneData(cleared)
         }
 
-        const active = this.requireData()
+        const active = this.core.requireData()
         const retryingDispatched = active.sync?.pendingPersonalVaultPurge?.phase === 'dispatched'
         if (retryingDispatched) {
           // Never downgrade an earlier unknown outcome to prepared: a crash at that point would
           // make unlock recovery erase the only durable evidence that a purge may have run.
           didDispatch = true
         } else {
-          const startedAt = this.nowIso()
+          const startedAt = this.core.nowIso()
           const prepared = cloneData(active)
           if (!prepared.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
           prepared.sync.pendingPersonalVaultPurge = {
@@ -1963,15 +1963,15 @@ export class VaultAccountService extends VaultServiceBase {
             remainingItems: active.logins.length,
             remainingFolders: active.folders.length
           }
-          prepared.updatedAt = this.nowIso()
-          await this.commit(prepared)
+          prepared.updatedAt = this.core.nowIso()
+          await this.core.commit(prepared)
 
           const dispatched = cloneData(prepared)
           if (!dispatched.sync?.pendingPersonalVaultPurge) throw new VaultError('SYNC_FAILED')
           dispatched.sync.pendingPersonalVaultPurge.phase = 'dispatched'
-          dispatched.updatedAt = this.nowIso()
+          dispatched.updatedAt = this.core.nowIso()
           try {
-            await this.commit(dispatched)
+            await this.core.commit(dispatched)
           } catch (error) {
             await this.restorePreDispatchPurge(original).catch(() => undefined)
             throw error
@@ -1986,7 +1986,7 @@ export class VaultAccountService extends VaultServiceBase {
         } catch (error) {
           remoteError = error
         }
-        if (abort.signal.aborted || operationGeneration !== this.generation) {
+        if (abort.signal.aborted || operationGeneration !== this.core.generation) {
           // Locking wins over a potentially slow reconciliation. The dispatched journal remains
           // durable, so the next explicitly unlocked generic sync can reconcile without replaying.
           throw new VaultError('LOCKED')
@@ -2023,8 +2023,8 @@ export class VaultAccountService extends VaultServiceBase {
   }
 
   getEquivalentDomainSettings(): Promise<EquivalentDomainSettingsView> {
-    return this.exclusive(async () => {
-      const current = this.requireData()
+    return this.core.exclusive(async () => {
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
@@ -2037,8 +2037,8 @@ export class VaultAccountService extends VaultServiceBase {
         if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
         next.sync.domainSettings = cloneEquivalentDomainSettings(settings)
         next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.commit(next)
+        next.updatedAt = this.core.nowIso()
+        await this.core.commit(next)
         this.syncLastError = null
         return equivalentDomainSettingsView(settings)
       } catch (error) {
@@ -2052,12 +2052,12 @@ export class VaultAccountService extends VaultServiceBase {
   updateEquivalentDomainSettings(
     request: EquivalentDomainSettingsUpdate
   ): Promise<EquivalentDomainSettingsView> {
-    return this.exclusive(async () => {
+    return this.core.exclusive(async () => {
       if (!/^[0-9a-f]{64}$/u.test(request.expectedRevision)) {
         throw new VaultError('INVALID_INPUT')
       }
       const update = normalizeEquivalentDomainUpdate(request)
-      const current = this.requireData()
+      const current = this.core.requireData()
       const sync = this.requireSyncData()
       const client = this.getOrCreateSyncClient(sync)
       const abort = this.startSyncOperation()
@@ -2081,8 +2081,8 @@ export class VaultAccountService extends VaultServiceBase {
         if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
         next.sync.domainSettings = cloneEquivalentDomainSettings(confirmed)
         next.sync.state = client.exportState()
-        next.updatedAt = this.nowIso()
-        await this.commit(next)
+        next.updatedAt = this.core.nowIso()
+        await this.core.commit(next)
         this.syncLastError = null
         return equivalentDomainSettingsView(confirmed)
       } catch (error) {
