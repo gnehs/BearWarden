@@ -430,11 +430,11 @@ export class VaultContentService extends VaultAccountService {
   ): Promise<VaultHealthAccountBreachReport> {
     const snapshot = await this.core.exclusive(async () => {
       const email = this.normalizeAccountBreachEmail(request.email)
-      const sync = this.requireSyncData()
+      const sync = this.syncSession.requireSyncData()
       return {
         generation: this.core.generation,
         email,
-        client: this.getOrCreateSyncClient(sync)
+        client: this.syncSession.getOrCreateSyncClient(sync)
       }
     })
     const active = this.activeAccountBreachOperation
@@ -503,7 +503,7 @@ export class VaultContentService extends VaultAccountService {
       return this.core.exclusive(async () => {
         this.core.requireData()
         if (generation !== this.core.generation) throw new VaultError('LOCKED')
-        if (this.syncClient !== client || !this.core.requireData().sync) {
+        if (this.syncSession.syncClient !== client || !this.core.requireData().sync) {
           throw new VaultError('SYNC_AUTH_REQUIRED')
         }
         if (error instanceof BitwardenDirectError && error.code === 'AUTH_REQUIRED') {
@@ -516,7 +516,7 @@ export class VaultContentService extends VaultAccountService {
     return this.core.exclusive(async () => {
       this.core.requireData()
       if (generation !== this.core.generation) throw new VaultError('LOCKED')
-      if (this.syncClient !== client || !this.core.requireData().sync) {
+      if (this.syncSession.syncClient !== client || !this.core.requireData().sync) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
       if (report.status === 'unavailable') {
@@ -774,14 +774,14 @@ export class VaultContentService extends VaultAccountService {
 
   listEmergencyAccess(): Promise<EmergencyAccessView[]> {
     return this.core.exclusive(async () => {
-      const sync = this.requireSyncData()
-      const client = this.getOrCreateSyncClient(sync)
+      const sync = this.syncSession.requireSyncData()
+      const client = this.syncSession.getOrCreateSyncClient(sync)
       if (!client.listEmergencyAccess) return []
       try {
         const entries = await client.listEmergencyAccess()
         return entries.map(emergencyAccessViewFromRemote)
       } catch (error) {
-        throw this.mapSyncError(error)
+        throw this.syncSession.mapSyncError(error)
       }
     })
   }

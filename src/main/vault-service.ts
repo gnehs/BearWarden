@@ -192,7 +192,7 @@ export class VaultService extends VaultTransferService {
         }
         return collection
       })
-      const client = this.getOrCreateSyncClient(current.sync)
+      const client = this.syncSession.getOrCreateSyncClient(current.sync)
       if (!client.createOrganizationCipher) throw new VaultError('SYNC_FAILED')
 
       const type = normalizeItemType(request.type ?? 'login')
@@ -234,7 +234,7 @@ export class VaultService extends VaultTransferService {
       }
 
       const generation = this.core.generation
-      const abort = this.startSyncOperation()
+      const abort = this.syncSession.startSyncOperation()
       let remote
       try {
         remote = await client.createOrganizationCipher(
@@ -247,15 +247,15 @@ export class VaultService extends VaultTransferService {
         if (
           abort.signal.aborted ||
           generation !== this.core.generation ||
-          this.syncClient !== client
+          this.syncSession.syncClient !== client
         ) {
           throw new VaultError('LOCKED')
         }
-        throw this.mapSyncError(error)
+        throw this.syncSession.mapSyncError(error)
       } finally {
-        this.finishSyncOperation(abort)
+        this.syncSession.finishSyncOperation(abort)
       }
-      if (generation !== this.core.generation || this.syncClient !== client) {
+      if (generation !== this.core.generation || this.syncSession.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
       const created = this.sharedLoginFromRemote(remote)
@@ -354,7 +354,7 @@ export class VaultService extends VaultTransferService {
         throw new VaultError('INVALID_INPUT')
       }
       if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-      const client = this.getOrCreateSyncClient(current.sync)
+      const client = this.syncSession.getOrCreateSyncClient(current.sync)
       if (!client.editOrganizationCipher) throw new VaultError('SYNC_FAILED')
 
       const desired = structuredClone(login)
@@ -406,7 +406,7 @@ export class VaultService extends VaultTransferService {
       }
 
       const generation = this.core.generation
-      const abort = this.startSyncOperation()
+      const abort = this.syncSession.startSyncOperation()
       let remote
       try {
         remote = await client.editOrganizationCipher(
@@ -418,15 +418,15 @@ export class VaultService extends VaultTransferService {
         if (
           abort.signal.aborted ||
           generation !== this.core.generation ||
-          this.syncClient !== client
+          this.syncSession.syncClient !== client
         ) {
           throw new VaultError('LOCKED')
         }
-        throw this.mapSyncError(error)
+        throw this.syncSession.mapSyncError(error)
       } finally {
-        this.finishSyncOperation(abort)
+        this.syncSession.finishSyncOperation(abort)
       }
-      if (generation !== this.core.generation || this.syncClient !== client) {
+      if (generation !== this.core.generation || this.syncSession.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
       const updated = this.sharedLoginFromRemote(remote)

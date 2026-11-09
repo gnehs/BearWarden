@@ -13,11 +13,8 @@ import type {
   VaultAttachmentView,
   VaultHealthExposedReport,
   VaultHealthAccountBreachReport,
-  SyncConnectRequest,
   SyncPurgePersonalVaultResult,
   SyncResult,
-  SyncStatus,
-  SyncTwoFactorProvider,
   VaultTimeoutPolicy,
   VaultStatus
 } from '../shared/vault-contract'
@@ -29,9 +26,7 @@ import {
   type BitwardenLoginApprovalRequest,
   type BitwardenOrganizationCipher,
   type BitwardenSendItem,
-  type BitwardenLoginTwoFactor,
   type BitwardenSyncClient,
-  type BitwardenTwoFactor,
   type BitwardenWebAuthnRegistrationSetup
 } from './bitwarden-direct'
 import { resolveBitwardenUrls, type BitwardenEquivalentDomainSettings } from './bitwarden-http'
@@ -68,9 +63,8 @@ import {
   type SyncMetadata,
   type SyncSnapshot
 } from './sync-merge'
-import { SyncTwoFactorRequiredError, VaultError } from './vault-errors'
+import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
-import type { AccountWebAuthnAssertion } from './account-webauthn-codec'
 import type { AccountWebAuthnAttestation } from './account-webauthn-registration-codec'
 import {
   DATA_VERSION,
@@ -78,10 +72,8 @@ import {
   MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
-  MAX_URI_LENGTH,
   MAX_NOTES_LENGTH,
   MAX_ATTACHMENT_ID_LENGTH,
-  MAX_TWO_FACTOR_CODE_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
 } from './vault/limits'
@@ -149,6 +141,11 @@ import {
   assertSendMutationAllowed,
   maximumVaultTimeoutMinutes
 } from './vault/policy'
+import {
+  VaultSyncSession,
+  type AuthenticatorSetupSession,
+  type EmailTwoFactorSetupSession
+} from './vault/sync-session'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
@@ -204,39 +201,10 @@ interface ActiveAccountBreachOperation {
   readonly promise: Promise<VaultHealthAccountBreachReport>
 }
 
-interface AuthenticatorSetupSession {
-  readonly generation: number
-  readonly client: BitwardenSyncClient
-  key: string
-  readonly verificationMode: 'server-token' | 'master-password'
-  userVerificationToken: string | null
-  readonly expiresAt: number
-}
-
-interface EmailTwoFactorSetupSession {
-  readonly generation: number
-  readonly client: BitwardenSyncClient
-  readonly verificationMode: 'server-token' | 'master-password'
-  userVerificationToken: string | null
-  phase: 'ready-to-send' | 'awaiting-code'
-  email: string | null
-  readonly expiresAt: number
-}
-
 interface AccountWebAuthnOperationLease {
   readonly generation: number
   readonly client: BitwardenSyncClient
   readonly abort: AbortController
-}
-
-interface LoginApprovalSession {
-  readonly generation: number
-  readonly client: BitwardenSyncClient
-  readonly requestId: string
-  readonly fingerprint: string
-  readonly requestDeviceType: string
-  readonly createdAt: string
-  readonly expiresAt: number
 }
 
 const LOGIN_APPROVAL_TTL_MS = 15 * 60 * 1_000
@@ -282,7 +250,6 @@ export type {
   AttachmentAuthorizationValidator,
   ItemReadAuthorizationValidator,
   ExposedPasswordSnapshot,
-  EmailTwoFactorSetupSession,
   AccountWebAuthnOperationLease
 }
 
@@ -303,31 +270,8 @@ function changesRemote(action: SyncAction): boolean {
 export class VaultServiceBase {
   protected pinUnlockCapability: PinUnlockCapability | null = null
   protected pinLifecycleEpoch = 0
-  protected syncClient: BitwardenSyncClient | null = null
-  protected syncAbort: AbortController | null = null
-  protected readonly notificationTokenAborts = new Set<AbortController>()
-  protected readonly accountSecurityAborts = new Set<AbortController>()
-  protected readonly nativeAttachmentBackupAborts = new Set<AbortController>()
-  protected readonly nativeAttachmentRestoreAborts = new Set<AbortController>()
-  protected readonly authenticatorSetupSessions = new Map<string, AuthenticatorSetupSession>()
-  protected readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
-  protected readonly loginApprovalSessions = new Map<string, LoginApprovalSession>()
   protected readonly generatorService: VaultGeneratorService
   protected readonly sendService: VaultSendService
-  protected syncInProgress = false
-  protected sessionDeauthorizationInProgress = false
-  protected syncLastError: import('../shared/vault-contract').SyncErrorCode | null = null
-  protected syncLastErrorAt: string | null = null
-  protected syncLastErrorDetail:
-    import('../shared/vault-contract').SyncInvalidResponseStage | null = null
-  protected syncLastErrorReason:
-    import('../shared/vault-contract').SyncInvalidResponseReason | null = null
-  protected activeAttachmentOperation: {
-    operationId: string
-    abort: AbortController
-    canceledByUser: boolean
-    committed: boolean
-  } | null = null
   protected readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient
   protected readonly fetch: typeof fetch
   protected readonly attachmentFiles: VaultAttachmentFileService | null
@@ -351,6 +295,7 @@ export class VaultServiceBase {
   protected activeExposedPasswordOperation: ActiveExposedPasswordOperation | null = null
   protected activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
   protected readonly core: VaultCore
+  protected readonly syncSession: VaultSyncSession
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -364,29 +309,17 @@ export class VaultServiceBase {
     this.core.registerResource({
       abort: () => {
         this.abortImageRequests()
-        this.syncAbort?.abort()
-        this.abortNotificationTokenLeases()
-        this.abortAccountSecurityRequests()
-        this.abortNativeAttachmentBackups()
-        this.abortNativeAttachmentRestores()
         this.activeExposedPasswordOperation?.abort.abort()
         this.activeAccountBreachOperation?.abort.abort()
       },
       clear: () => {
         this.activeExposedPasswordOperation = null
         this.activeAccountBreachOperation = null
-        this.syncAbort = null
-        this.activeAttachmentOperation = null
-        this.syncInProgress = false
-        this.sessionDeauthorizationInProgress = false
         this.generatorService.clearRuntimeState()
         this.websiteIconCache.clear()
         this.websiteIconRequests.clear()
         this.cardCoverCache.clear()
         this.cardCoverRequests.clear()
-      },
-      discard: () => {
-        this.syncClient = null
       }
     })
     this.fetch = options.fetch ?? fetch
@@ -422,18 +355,23 @@ export class VaultServiceBase {
       attachmentFiles: this.attachmentFiles,
       exclusive: (operation) => this.core.exclusive(operation),
       readData: () => this.core.requireData(),
-      requireSyncData: () => this.requireSyncData(),
-      getSyncClient: (sync) => this.getOrCreateSyncClient(sync),
+      requireSyncData: () => this.syncSession.requireSyncData(),
+      getSyncClient: (sync) => this.syncSession.getOrCreateSyncClient(sync),
       currentGeneration: () => this.core.generation,
-      startSyncOperation: () => this.startSyncOperation(),
-      finishSyncOperation: (abort) => this.finishSyncOperation(abort),
+      startSyncOperation: () => this.syncSession.startSyncOperation(),
+      finishSyncOperation: (abort) => this.syncSession.finishSyncOperation(abort),
       commitData: (data, generation) => this.core.commit(data, generation),
       nowIso: () => this.core.nowIso(),
-      clearSyncError: () => this.clearSyncErrorState(),
-      mapSyncError: (error) => this.mapSyncError(error),
+      clearSyncError: () => this.syncSession.clearSyncErrorState(),
+      mapSyncError: (error) => this.syncSession.mapSyncError(error),
       copyText: (text) => this.platform.copyText(text),
       assertMutationAllowed: () => assertSendMutationAllowed(this.core.requireData())
     })
+    this.syncSession = new VaultSyncSession(
+      this.core,
+      this.createSyncClient,
+      this.requestAccountWebAuthnAssertion
+    )
   }
 
   status(): Promise<VaultStatus> {
@@ -517,10 +455,9 @@ export class VaultServiceBase {
         if (options.startSync && sync) {
           const { material } = options.startSync
           if (material) {
-            this.syncClient ??= this.createSyncClient(sync)
-            this.syncClient.restorePinUnlockMaterial?.(material)
+            this.syncSession.restoreSyncClient(sync, material)
           } else {
-            this.getOrCreateSyncClient(sync)
+            this.syncSession.getOrCreateSyncClient(sync)
           }
         }
       }
@@ -568,7 +505,7 @@ export class VaultServiceBase {
         }
         await this.core.assertMasterPassword(request.masterPassword)
         const { key, salt } = this.core.keyMaterial()
-        const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
+        const client = data.sync ? this.syncSession.getOrCreateSyncClient(data.sync) : null
         syncMaterial = client?.pinUnlockMaterial?.() ?? null
         capability = await PinUnlockCapability.create(request.pin, key, salt, syncMaterial)
         if (
@@ -617,7 +554,7 @@ export class VaultServiceBase {
         if (generation !== this.core.generation || !this.core.isUnlocked()) {
           throw new VaultError('LOCKED')
         }
-        const client = data.sync ? this.getOrCreateSyncClient(data.sync) : null
+        const client = data.sync ? this.syncSession.getOrCreateSyncClient(data.sync) : null
         sync = client?.pinUnlockMaterial?.() ?? null
         const { key, salt } = this.core.keyMaterial()
         const material = { key: Buffer.from(key), salt: Buffer.from(salt), sync }
@@ -720,8 +657,8 @@ export class VaultServiceBase {
         }
 
         if (!existing) {
-          const sync = this.requireSyncData()
-          const client = this.getOrCreateSyncClient(sync)
+          const sync = this.syncSession.requireSyncData()
+          const client = this.syncSession.getOrCreateSyncClient(sync)
           if (!client.changeMasterPassword) throw new VaultError('SYNC_FAILED')
           const now = this.core.nowIso()
           const prepared = cloneData(current)
@@ -734,7 +671,7 @@ export class VaultServiceBase {
           prepared.updatedAt = now
           await this.core.commit(prepared)
 
-          abort = this.startSyncOperation()
+          abort = this.syncSession.startSyncOperation()
           remoteRequest = { currentPassword, newPassword, hint, signal: abort.signal }
           try {
             await client.changeMasterPassword(remoteRequest)
@@ -745,7 +682,7 @@ export class VaultServiceBase {
             ) {
               this.core.advanceGeneration()
               this.invalidatePinUnlockCapability()
-              this.syncClient = null
+              this.syncSession.dropSyncClient()
               this.core.teardown()
               throw new VaultError('SYNC_FAILED')
             }
@@ -753,7 +690,7 @@ export class VaultServiceBase {
             cleared.masterPasswordChange = null
             cleared.updatedAt = this.core.nowIso()
             await this.core.commit(cleared)
-            throw this.mapSyncError(error)
+            throw this.syncSession.mapSyncError(error)
           }
 
           const confirmed = cloneData(this.core.requireData())
@@ -776,7 +713,7 @@ export class VaultServiceBase {
 
         await this.finishMasterPasswordChange(currentPassword, newPassword)
       } finally {
-        if (abort) this.finishSyncOperation(abort)
+        if (abort) this.syncSession.finishSyncOperation(abort)
         request.currentPassword = ''
         request.newPassword = ''
         request.hint = null
@@ -807,8 +744,8 @@ export class VaultServiceBase {
         if (current.masterPasswordChange?.phase !== 'prepared') {
           throw new VaultError('INVALID_INPUT')
         }
-        const sync = this.requireSyncData()
-        abort = this.startSyncOperation()
+        const sync = this.syncSession.requireSyncData()
+        abort = this.syncSession.startSyncOperation()
         const newPasswordProof = await this.proveRemotePassword(sync, newPassword, abort.signal)
         if (newPasswordProof === 'needs-reconnect') return { status: 'needs-reconnect' }
         if (newPasswordProof === 'rejected') {
@@ -829,7 +766,7 @@ export class VaultServiceBase {
           if (cleared.sync) cleared.sync.state.session = null
           cleared.updatedAt = this.core.nowIso()
           await this.core.commit(cleared)
-          this.syncClient = null
+          this.syncSession.dropSyncClient()
           return { status: 'remote-not-changed' }
         }
 
@@ -843,11 +780,11 @@ export class VaultServiceBase {
         if (confirmed.sync) confirmed.sync.state.session = null
         confirmed.updatedAt = confirmed.masterPasswordChange.updatedAt
         await this.core.commit(confirmed)
-        this.syncClient = null
+        this.syncSession.dropSyncClient()
         await this.finishMasterPasswordChange(currentPassword, newPassword)
         return { status: 'resolved' }
       } finally {
-        if (abort) this.finishSyncOperation(abort)
+        if (abort) this.syncSession.finishSyncOperation(abort)
         request.currentPassword = ''
         request.newPassword = ''
         currentPassword = ''
@@ -925,7 +862,7 @@ export class VaultServiceBase {
     this.core.beginLock()
     return this.core.exclusive(async () => {
       try {
-        await this.syncClient?.lock()
+        await this.syncSession.syncClient?.lock()
       } catch {
         // Local vault locking must never depend on the remote connector.
       }
@@ -954,66 +891,6 @@ export class VaultServiceBase {
     return this.core.imageCacheKeys()
   }
 
-  protected async currentSyncStatus(): Promise<SyncStatus> {
-    const data = this.core.requireData()
-    if (!data.sync) {
-      return this.syncLastError
-        ? { configured: false, state: 'error', ...this.syncErrorStatusFields() }
-        : { configured: false, state: 'unconfigured' }
-    }
-    if (this.syncInProgress) return this.baseSyncStatus(data.sync, 'syncing')
-    if (this.syncLastError) return this.baseSyncStatus(data.sync, 'error')
-    try {
-      const client = this.getOrCreateSyncClient(data.sync)
-      const status = await client.status()
-      return this.baseSyncStatus(data.sync, status.status === 'unlocked' ? 'ready' : 'locked')
-    } catch {
-      this.recordSyncError('SYNC_FAILED')
-      return this.baseSyncStatus(data.sync, 'error')
-    }
-  }
-
-  protected baseSyncStatus(sync: PersistedSyncData, state: SyncStatus['state']): SyncStatus {
-    return {
-      configured: true,
-      state,
-      serverUrl: sync.serverUrl,
-      email: sync.email,
-      ...(sync.lastSyncAt ? { lastSyncAt: sync.lastSyncAt } : {}),
-      ...this.syncErrorStatusFields(),
-      ...(sync.pendingLoginImport?.phase === 'dispatched'
-        ? {
-            pendingImport: {
-              count: sync.pendingLoginImport.entries.length,
-              startedAt: sync.pendingLoginImport.startedAt
-            }
-          }
-        : {}),
-      ...(sync.pendingPersonalVaultPurge?.phase === 'dispatched'
-        ? {
-            pendingPurge: {
-              remainingItems: sync.pendingPersonalVaultPurge.remainingItems,
-              remainingFolders: sync.pendingPersonalVaultPurge.remainingFolders,
-              startedAt: sync.pendingPersonalVaultPurge.startedAt
-            }
-          }
-        : {})
-    }
-  }
-
-  protected syncErrorStatusFields(): Partial<SyncStatus> {
-    return {
-      ...(this.syncLastError ? { lastError: this.syncLastError } : {}),
-      ...(this.syncLastError && this.syncLastErrorAt ? { lastErrorAt: this.syncLastErrorAt } : {}),
-      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorDetail
-        ? { lastErrorDetail: this.syncLastErrorDetail }
-        : {}),
-      ...(this.syncLastError === 'SYNC_INVALID_RESPONSE' && this.syncLastErrorReason
-        ? { lastErrorReason: this.syncLastErrorReason }
-        : {})
-    }
-  }
-
   async constrainVaultTimeoutPolicy(requested: VaultTimeoutPolicy): Promise<VaultTimeoutPolicy> {
     return this.core.exclusive(async () => {
       const data = this.core.currentData()
@@ -1028,87 +905,6 @@ export class VaultServiceBase {
     })
   }
 
-  protected normalizeSyncServerUrl(value: unknown): string {
-    if (typeof value !== 'string' || value.length === 0 || value.length > MAX_URI_LENGTH) {
-      throw new VaultError('INVALID_URL')
-    }
-    try {
-      const normalized = value.trim()
-      resolveBitwardenUrls(normalized)
-      return normalized.replace(/\/$/, '')
-    } catch {
-      throw new VaultError('INVALID_URL')
-    }
-  }
-
-  protected normalizeTwoFactor(
-    method: SyncConnectRequest['twoFactorMethod'],
-    code: string | undefined
-  ): BitwardenTwoFactor | undefined {
-    if (method === undefined && code === undefined) return undefined
-    if (
-      method === undefined ||
-      code === undefined ||
-      code.length === 0 ||
-      code.length > MAX_TWO_FACTOR_CODE_LENGTH
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    return { method: Number(method) as BitwardenTwoFactor['method'], code }
-  }
-
-  protected async authenticateSyncWithWebAuthnRetry(
-    authenticate: (twoFactor: BitwardenLoginTwoFactor | undefined) => Promise<void>,
-    initialTwoFactor: BitwardenTwoFactor | undefined,
-    webAuthnRemember: unknown,
-    serverUrl: string,
-    signal: AbortSignal
-  ): Promise<void> {
-    try {
-      await authenticate(initialTwoFactor)
-    } catch (error) {
-      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
-      if (
-        !(error instanceof BitwardenDirectError) ||
-        error.code !== 'TWO_FACTOR_REQUIRED' ||
-        error.webAuthnChallenge === undefined ||
-        initialTwoFactor !== undefined ||
-        typeof webAuthnRemember !== 'boolean' ||
-        this.requestAccountWebAuthnAssertion === null
-      ) {
-        throw error
-      }
-
-      let assertion: AccountWebAuthnAssertion
-      try {
-        assertion = await this.requestAccountWebAuthnAssertion(
-          Object.freeze({
-            webVaultUrl: resolveBitwardenUrls(serverUrl).webVaultUrl,
-            challenge: error.webAuthnChallenge,
-            remember: webAuthnRemember,
-            signal
-          })
-        )
-      } catch {
-        // Connector cancellation, timeout, and remote details collapse to stable public errors.
-        throw new BitwardenDirectError(signal.aborted ? 'ABORTED' : 'INVALID_RESPONSE')
-      }
-      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
-
-      // This is the only retry. A second provider-7 challenge propagates to the normal mapper.
-      await authenticate({ method: 7, assertion, remember: webAuthnRemember })
-    }
-  }
-
-  protected normalizeNewDeviceOtp(value: string | undefined): string | undefined {
-    if (value === undefined) return undefined
-    const normalized = value.trim()
-    if (normalized.length === 0 || normalized.length > MAX_TWO_FACTOR_CODE_LENGTH) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    return normalized
-  }
-
   resendSyncNewDeviceOtp(request: {
     serverUrl: string
     email: string
@@ -1118,7 +914,7 @@ export class VaultServiceBase {
       let abort: AbortController | null = null
       try {
         this.core.requireData()
-        const serverUrl = this.normalizeSyncServerUrl(request.serverUrl)
+        const serverUrl = this.syncSession.normalizeSyncServerUrl(request.serverUrl)
         const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
         const password = normalizeSyncPassword(request.masterPassword)
         const sync: PersistedSyncData = {
@@ -1143,47 +939,21 @@ export class VaultServiceBase {
           pendingPersonalVaultPurge: null,
           domainSettings: null
         }
-        const client = this.createSyncClient(sync)
+        const client = this.syncSession.createDetachedClient(sync)
         if (!client.resendNewDeviceOtp) throw new VaultError('SYNC_FAILED')
-        abort = this.startSyncOperation()
+        abort = this.syncSession.startSyncOperation()
         await client.resendNewDeviceOtp(password, abort.signal)
       } catch (error) {
-        throw this.mapSyncError(error)
+        throw this.syncSession.mapSyncError(error)
       } finally {
         try {
           request.masterPassword = ''
         } catch {
           // Frozen or exotic input must not replace the intended service result.
         }
-        if (abort) this.finishSyncOperation(abort)
+        if (abort) this.syncSession.finishSyncOperation(abort)
       }
     })
-  }
-
-  protected getOrCreateSyncClient(sync: PersistedSyncData): BitwardenSyncClient {
-    if (this.sessionDeauthorizationInProgress) throw new VaultError('SYNC_FAILED')
-    if (!this.syncClient) {
-      const client = this.createSyncClient(sync)
-      const stored = sync.unlockMaterial
-      if (stored && client.restorePinUnlockMaterial) {
-        const accountKey = Buffer.from(stored.accountKey, 'base64')
-        const wrappedKeyFingerprint = Buffer.from(stored.wrappedKeyFingerprint, 'base64')
-        try {
-          client.restorePinUnlockMaterial({ accountKey, wrappedKeyFingerprint })
-        } finally {
-          accountKey.fill(0)
-          wrappedKeyFingerprint.fill(0)
-        }
-      }
-      this.syncClient = client
-    }
-    return this.syncClient
-  }
-
-  protected requireSyncData(): PersistedSyncData {
-    const sync = this.core.requireData().sync
-    if (!sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-    return sync
   }
 
   protected masterPasswordChangeAccountFingerprint(sync: PersistedSyncData): string {
@@ -1217,7 +987,7 @@ export class VaultServiceBase {
   ): Promise<'accepted' | 'rejected' | 'needs-reconnect'> {
     const verificationSync = structuredClone(sync)
     verificationSync.state.session = null
-    const verifier = this.createSyncClient(verificationSync)
+    const verifier = this.syncSession.createDetachedClient(verificationSync)
     try {
       await verifier.login({ email: sync.email, password, signal })
       return 'accepted'
@@ -1231,7 +1001,7 @@ export class VaultServiceBase {
       ) {
         return 'needs-reconnect'
       }
-      throw this.mapSyncError(error)
+      throw this.syncSession.mapSyncError(error)
     } finally {
       try {
         await verifier.logout()
@@ -1249,7 +1019,7 @@ export class VaultServiceBase {
       if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
-      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
     })
@@ -1261,23 +1031,23 @@ export class VaultServiceBase {
       if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
-      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
-      await this.persistCurrentClientState()
+      await this.syncSession.persistCurrentClientState()
       if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
         throw new VaultError('LOCKED')
       }
-      if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+      if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
         throw new VaultError('SYNC_AUTH_REQUIRED')
       }
-      this.accountSecurityAborts.delete(lease.abort)
+      this.syncSession.accountSecurityAborts.delete(lease.abort)
     })
   }
 
   protected releaseAccountWebAuthnOperation(lease: AccountWebAuthnOperationLease): Promise<void> {
     return this.core.exclusive(async () => {
-      this.accountSecurityAborts.delete(lease.abort)
+      this.syncSession.accountSecurityAborts.delete(lease.abort)
     })
   }
 
@@ -1288,7 +1058,7 @@ export class VaultServiceBase {
     if (lease.abort.signal.aborted || lease.generation !== this.core.generation) {
       throw new VaultError('LOCKED')
     }
-    if (this.syncClient !== lease.client || !lease.client.exportState().session) {
+    if (this.syncSession.syncClient !== lease.client || !lease.client.exportState().session) {
       throw new VaultError('SYNC_AUTH_REQUIRED')
     }
     if (error instanceof BitwardenDirectError) {
@@ -1301,66 +1071,7 @@ export class VaultServiceBase {
       if (error.code === 'NOT_FOUND') throw new VaultError('NOT_FOUND')
     }
     if (error instanceof VaultError) throw error
-    throw this.mapSyncError(error)
-  }
-
-  protected startSyncOperation(): AbortController {
-    if (this.syncInProgress || this.sessionDeauthorizationInProgress) {
-      throw new VaultError('SYNC_FAILED')
-    }
-    this.abortAccountSecurityRequests()
-    const abort = new AbortController()
-    this.syncAbort = abort
-    this.syncInProgress = true
-    this.clearSyncErrorState()
-    return abort
-  }
-
-  protected startAttachmentOperation(operationId: string): {
-    operationId: string
-    abort: AbortController
-    canceledByUser: boolean
-    committed: boolean
-  } {
-    assertUuid(operationId)
-    if (this.activeAttachmentOperation) throw new VaultError('SYNC_FAILED')
-    const operation = {
-      operationId,
-      abort: this.startSyncOperation(),
-      canceledByUser: false,
-      committed: false
-    }
-    this.activeAttachmentOperation = operation
-    return operation
-  }
-
-  protected finishAttachmentOperation(operation: {
-    operationId: string
-    abort: AbortController
-  }): void {
-    if (this.activeAttachmentOperation?.operationId === operation.operationId) {
-      this.activeAttachmentOperation = null
-    }
-    this.finishSyncOperation(operation.abort)
-  }
-
-  protected commitAttachmentOperation(operation: {
-    operationId: string
-    committed: boolean
-  }): void {
-    if (this.activeAttachmentOperation?.operationId === operation.operationId) {
-      operation.committed = true
-    }
-  }
-
-  protected finishSyncOperation(abort: AbortController): void {
-    if (this.syncAbort === abort) this.syncAbort = null
-    this.syncInProgress = false
-  }
-
-  protected abortNotificationTokenLeases(): void {
-    for (const abort of this.notificationTokenAborts) abort.abort()
-    this.notificationTokenAborts.clear()
+    throw this.syncSession.mapSyncError(error)
   }
 
   protected assertLoginApprovalLease(lease: {
@@ -1371,7 +1082,7 @@ export class VaultServiceBase {
     if (
       lease.abort.signal.aborted ||
       lease.generation !== this.core.generation ||
-      lease.client !== this.syncClient ||
+      lease.client !== this.syncSession.syncClient ||
       !lease.client.exportState().session
     ) {
       throw new VaultError('SYNC_AUTH_REQUIRED')
@@ -1385,13 +1096,13 @@ export class VaultServiceBase {
   ): LoginApprovalPrompt | null {
     const now = this.core.now().getTime()
     const expiresAt = Date.parse(request.createdAt) + LOGIN_APPROVAL_TTL_MS
-    for (const [token, session] of this.loginApprovalSessions) {
+    for (const [token, session] of this.syncSession.loginApprovalSessions) {
       if (
         session.expiresAt <= now ||
         session.generation !== this.core.generation ||
-        session.client !== this.syncClient
+        session.client !== this.syncSession.syncClient
       ) {
-        this.loginApprovalSessions.delete(token)
+        this.syncSession.loginApprovalSessions.delete(token)
         continue
       }
       if (
@@ -1410,13 +1121,13 @@ export class VaultServiceBase {
       }
     }
     if (!Number.isFinite(expiresAt) || expiresAt <= now) return null
-    while (this.loginApprovalSessions.size >= MAX_LOGIN_APPROVAL_SESSIONS) {
-      const oldest = this.loginApprovalSessions.keys().next().value
+    while (this.syncSession.loginApprovalSessions.size >= MAX_LOGIN_APPROVAL_SESSIONS) {
+      const oldest = this.syncSession.loginApprovalSessions.keys().next().value
       if (oldest === undefined) break
-      this.loginApprovalSessions.delete(oldest)
+      this.syncSession.loginApprovalSessions.delete(oldest)
     }
     const token = randomUUID()
-    this.loginApprovalSessions.set(token, {
+    this.syncSession.loginApprovalSessions.set(token, {
       generation,
       client,
       requestId: request.id,
@@ -1432,28 +1143,6 @@ export class VaultServiceBase {
       createdAt: request.createdAt,
       expiresAt: new Date(expiresAt).toISOString()
     }
-  }
-
-  protected abortAccountSecurityRequests(): void {
-    for (const abort of this.accountSecurityAborts) abort.abort()
-    this.accountSecurityAborts.clear()
-    this.loginApprovalSessions.clear()
-    for (const sessionId of this.authenticatorSetupSessions.keys()) {
-      this.deleteAuthenticatorSetupSession(sessionId)
-    }
-    for (const sessionId of this.emailTwoFactorSetupSessions.keys()) {
-      this.deleteEmailTwoFactorSetupSession(sessionId)
-    }
-  }
-
-  protected abortNativeAttachmentBackups(): void {
-    for (const abort of this.nativeAttachmentBackupAborts) abort.abort()
-    this.nativeAttachmentBackupAborts.clear()
-  }
-
-  protected abortNativeAttachmentRestores(): void {
-    for (const abort of this.nativeAttachmentRestoreAborts) abort.abort()
-    this.nativeAttachmentRestoreAborts.clear()
   }
 
   protected async recoverNativeAttachmentRestoreAfterUnlock(
@@ -1503,10 +1192,10 @@ export class VaultServiceBase {
 
     const generation = this.core.advanceGeneration()
     this.invalidatePinUnlockCapability()
-    this.syncAbort?.abort()
-    this.abortNotificationTokenLeases()
-    this.abortAccountSecurityRequests()
-    this.syncClient = null
+    this.syncSession.abortSyncOperation()
+    this.syncSession.abortNotificationTokenLeases()
+    this.syncSession.abortAccountSecurityRequests()
+    this.syncSession.dropSyncClient()
     const localRekeyed = cloneData(this.core.requireData())
     if (!localRekeyed.masterPasswordChange) throw new VaultError('SYNC_FAILED')
     localRekeyed.masterPasswordChange.phase = 'local-rekeyed'
@@ -1523,38 +1212,30 @@ export class VaultServiceBase {
 
   protected evictExpiredAuthenticatorSetupSessions(): void {
     const now = this.core.now().getTime()
-    for (const [sessionId, session] of this.authenticatorSetupSessions) {
-      if (session.expiresAt <= now) this.deleteAuthenticatorSetupSession(sessionId)
+    for (const [sessionId, session] of this.syncSession.authenticatorSetupSessions) {
+      if (session.expiresAt <= now) this.syncSession.deleteAuthenticatorSetupSession(sessionId)
     }
   }
 
   protected requireAuthenticatorSetupSession(sessionId: string): AuthenticatorSetupSession {
     this.evictExpiredAuthenticatorSetupSessions()
-    const session = this.authenticatorSetupSessions.get(sessionId)
+    const session = this.syncSession.authenticatorSetupSessions.get(sessionId)
     if (
       !session ||
       session.generation !== this.core.generation ||
-      session.client !== this.syncClient ||
+      session.client !== this.syncSession.syncClient ||
       !session.client.exportState().session
     ) {
-      if (session) this.deleteAuthenticatorSetupSession(sessionId)
+      if (session) this.syncSession.deleteAuthenticatorSetupSession(sessionId)
       throw new VaultError('INVALID_INPUT')
     }
     return session
   }
 
-  protected deleteAuthenticatorSetupSession(sessionId: string): void {
-    const session = this.authenticatorSetupSessions.get(sessionId)
-    if (!session) return
-    session.key = ''
-    session.userVerificationToken = null
-    this.authenticatorSetupSessions.delete(sessionId)
-  }
-
   protected evictExpiredEmailTwoFactorSetupSessions(): void {
     const now = this.core.now().getTime()
-    for (const [sessionId, session] of this.emailTwoFactorSetupSessions) {
-      if (session.expiresAt <= now) this.deleteEmailTwoFactorSetupSession(sessionId)
+    for (const [sessionId, session] of this.syncSession.emailTwoFactorSetupSessions) {
+      if (session.expiresAt <= now) this.syncSession.deleteEmailTwoFactorSetupSession(sessionId)
     }
   }
 
@@ -1563,26 +1244,18 @@ export class VaultServiceBase {
     phase: EmailTwoFactorSetupSession['phase']
   ): EmailTwoFactorSetupSession {
     this.evictExpiredEmailTwoFactorSetupSessions()
-    const session = this.emailTwoFactorSetupSessions.get(sessionId)
+    const session = this.syncSession.emailTwoFactorSetupSessions.get(sessionId)
     if (!session) throw new VaultError('INVALID_INPUT')
     if (
       session.generation !== this.core.generation ||
-      session.client !== this.syncClient ||
+      session.client !== this.syncSession.syncClient ||
       !session.client.exportState().session
     ) {
-      this.deleteEmailTwoFactorSetupSession(sessionId)
+      this.syncSession.deleteEmailTwoFactorSetupSession(sessionId)
       throw new VaultError('INVALID_INPUT')
     }
     if (session.phase !== phase) throw new VaultError('INVALID_INPUT')
     return session
-  }
-
-  protected deleteEmailTwoFactorSetupSession(sessionId: string): void {
-    const session = this.emailTwoFactorSetupSessions.get(sessionId)
-    if (!session) return
-    session.userVerificationToken = null
-    session.email = null
-    this.emailTwoFactorSetupSessions.delete(sessionId)
   }
 
   protected validateEmailTwoFactorSetupPassword(
@@ -1618,114 +1291,7 @@ export class VaultServiceBase {
       }
     }
     if (error instanceof VaultError) throw error
-    throw this.mapSyncError(error)
-  }
-
-  protected mapSyncError(error: unknown): VaultError {
-    if (error instanceof VaultError) {
-      if (
-        error.code === 'SYNC_AUTH_REQUIRED' ||
-        error.code === 'SYNC_NEW_DEVICE_REQUIRED' ||
-        error.code === 'SYNC_SSO_REQUIRED' ||
-        error.code === 'SYNC_DUO_UNSUPPORTED' ||
-        error.code === 'SYNC_KEY_CONNECTOR_UNSUPPORTED' ||
-        error.code === 'SYNC_TRUSTED_DEVICE_UNSUPPORTED' ||
-        error.code === 'SYNC_UNSUPPORTED_ACCOUNT' ||
-        error.code === 'SYNC_NETWORK' ||
-        error.code === 'SYNC_INVALID_RESPONSE' ||
-        error.code === 'SYNC_INVALID_SSH_KEY' ||
-        error.code === 'SYNC_CONFLICT' ||
-        error.code === 'SYNC_FAILED'
-      ) {
-        this.recordSyncError(error.code)
-      }
-      return error
-    }
-    if (error instanceof BitwardenDirectError) {
-      const directCode: string = error.code
-      if (directCode === 'SSO_REQUIRED') {
-        this.recordSyncError('SYNC_SSO_REQUIRED')
-        return new VaultError('SYNC_SSO_REQUIRED')
-      }
-      if (directCode === 'KEY_CONNECTOR_UNSUPPORTED') {
-        this.recordSyncError('SYNC_KEY_CONNECTOR_UNSUPPORTED')
-        return new VaultError('SYNC_KEY_CONNECTOR_UNSUPPORTED')
-      }
-      if (directCode === 'TRUSTED_DEVICE_UNSUPPORTED') {
-        this.recordSyncError('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
-        return new VaultError('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
-      }
-      if (error.code === 'AUTH_REQUIRED') {
-        this.recordSyncError('SYNC_AUTH_REQUIRED')
-        return new VaultError('SYNC_AUTH_REQUIRED')
-      }
-      if (error.code === 'TWO_FACTOR_REQUIRED') {
-        const rawProviders = error.twoFactorProviders ?? []
-        if (
-          rawProviders.length > 0 &&
-          rawProviders.every((provider) => provider === 2 || provider === 6)
-        ) {
-          this.recordSyncError('SYNC_DUO_UNSUPPORTED')
-          return new VaultError('SYNC_DUO_UNSUPPORTED')
-        }
-        this.recordSyncError('SYNC_AUTH_REQUIRED')
-        const providers = rawProviders.flatMap((provider) =>
-          Number.isInteger(provider) && provider >= 0 && provider <= 8
-            ? [String(provider) as SyncTwoFactorProvider]
-            : []
-        )
-        return new SyncTwoFactorRequiredError(providers)
-      }
-      if (error.code === 'NEW_DEVICE_REQUIRED') {
-        this.recordSyncError('SYNC_NEW_DEVICE_REQUIRED')
-        return new VaultError('SYNC_NEW_DEVICE_REQUIRED')
-      }
-      if (error.code === 'NETWORK') {
-        this.recordSyncError('SYNC_NETWORK')
-        return new VaultError('SYNC_NETWORK')
-      }
-      if (error.code === 'INVALID_RESPONSE') {
-        this.recordSyncError(
-          'SYNC_INVALID_RESPONSE',
-          error.syncInvalidResponseStage,
-          error.syncInvalidResponseReason
-        )
-        return new VaultError('SYNC_INVALID_RESPONSE')
-      }
-      if (error.code === 'INVALID_SSH_KEY') {
-        this.recordSyncError('SYNC_INVALID_SSH_KEY')
-        return new VaultError('SYNC_INVALID_SSH_KEY')
-      }
-      if (error.code === 'CONFLICT') {
-        this.recordSyncError('SYNC_CONFLICT')
-        return new VaultError('SYNC_CONFLICT')
-      }
-      if (error.code === 'ABORTED') return new VaultError('LOCKED')
-      if (error.code === 'UNSUPPORTED_ACCOUNT_ENCRYPTION') {
-        this.recordSyncError('SYNC_UNSUPPORTED_ACCOUNT')
-        return new VaultError('SYNC_UNSUPPORTED_ACCOUNT')
-      }
-    }
-    this.recordSyncError('SYNC_FAILED')
-    return new VaultError('SYNC_FAILED')
-  }
-
-  protected recordSyncError(
-    code: import('../shared/vault-contract').SyncErrorCode,
-    detail?: import('../shared/vault-contract').SyncInvalidResponseStage,
-    reason?: import('../shared/vault-contract').SyncInvalidResponseReason
-  ): void {
-    this.syncLastError = code
-    this.syncLastErrorAt = this.core.nowIso()
-    this.syncLastErrorDetail = code === 'SYNC_INVALID_RESPONSE' ? (detail ?? null) : null
-    this.syncLastErrorReason = code === 'SYNC_INVALID_RESPONSE' ? (reason ?? null) : null
-  }
-
-  protected clearSyncErrorState(): void {
-    this.syncLastError = null
-    this.syncLastErrorAt = null
-    this.syncLastErrorDetail = null
-    this.syncLastErrorReason = null
+    throw this.syncSession.mapSyncError(error)
   }
 
   protected applyBitwardenPolicyRuntimeState(data: VaultData): void {
@@ -1760,7 +1326,7 @@ export class VaultServiceBase {
         error.code === 'TWO_FACTOR_REQUIRED' ||
         error.code === 'NEW_DEVICE_REQUIRED'
       ) {
-        return this.mapSyncError(error)
+        return this.syncSession.mapSyncError(error)
       }
     }
     return new VaultError('ATTACHMENT_FAILED')
@@ -1791,10 +1357,10 @@ export class VaultServiceBase {
     this.assertAttachmentAuthorized(login, validateAuthorization)
     const attachment = login.attachments.find((entry) => entry.id === request.attachmentId)
     if (!attachment) throw new VaultError('NOT_FOUND')
-    const sync = this.requireSyncData()
+    const sync = this.syncSession.requireSyncData()
     const mapping = sync.loginMappings.find((entry) => entry.localId === login.id)
     if (!mapping) throw new VaultError('INVALID_INPUT')
-    return { data, attachment, mapping, client: this.getOrCreateSyncClient(sync) }
+    return { data, attachment, mapping, client: this.syncSession.getOrCreateSyncClient(sync) }
   }
 
   protected assertAttachmentAuthorized(
@@ -1830,34 +1396,6 @@ export class VaultServiceBase {
     } catch {
       // Renderer progress is advisory and must never decide mutation success.
     }
-  }
-
-  protected async persistCurrentClientState(): Promise<void> {
-    const client = this.syncClient
-    const current = this.core.requireData()
-    if (!client || !current.sync) return
-    const state = client.exportState()
-    const material = client.pinUnlockMaterial?.() ?? null
-    const unlockMaterial = material
-      ? {
-          accountKey: material.accountKey.toString('base64'),
-          wrappedKeyFingerprint: material.wrappedKeyFingerprint.toString('base64')
-        }
-      : null
-    material?.accountKey.fill(0)
-    material?.wrappedKeyFingerprint.fill(0)
-    if (
-      JSON.stringify(state) === JSON.stringify(current.sync.state) &&
-      JSON.stringify(unlockMaterial) === JSON.stringify(current.sync.unlockMaterial)
-    ) {
-      return
-    }
-    const next = cloneData(current)
-    if (!next.sync) return
-    next.sync.state = state
-    next.sync.unlockMaterial = unlockMaterial
-    next.updatedAt = this.core.nowIso()
-    await this.core.commit(next)
   }
 
   protected async persistAttachmentMutation(
@@ -1924,7 +1462,7 @@ export class VaultServiceBase {
       pending.sync.lastSyncAt = this.core.nowIso()
       pending.updatedAt = pending.sync.lastSyncAt
       await this.core.commit(pending)
-      this.clearSyncErrorState()
+      this.syncSession.clearSyncErrorState()
       return {
         status: 'pending',
         remainingItems: remoteLogins.length + isolatedPersonalCipherIds.size,
@@ -1965,7 +1503,7 @@ export class VaultServiceBase {
     complete.sync.lastSyncAt = this.core.nowIso()
     complete.updatedAt = complete.sync.lastSyncAt
     await this.core.commit(complete)
-    this.clearSyncErrorState()
+    this.syncSession.clearSyncErrorState()
     return { status: 'complete', removedItems, removedFolders }
   }
 
@@ -1987,9 +1525,9 @@ export class VaultServiceBase {
     } else if (pendingPurge?.phase === 'dispatched') {
       const reconciled = await this.reconcilePersonalVaultPurge(client)
       if (reconciled.status === 'pending') throw new VaultError('SYNC_FAILED')
-      const completedSync = this.requireSyncData()
+      const completedSync = this.syncSession.requireSyncData()
       return {
-        ...this.baseSyncStatus(completedSync, 'ready'),
+        ...this.syncSession.baseSyncStatus(completedSync, 'ready'),
         pulled: 0,
         pushed: 0,
         deleted: reconciled.removedItems + reconciled.removedFolders,
@@ -2277,8 +1815,8 @@ export class VaultServiceBase {
     next.updatedAt = syncedAt
     await this.core.commit(next)
     this.applyBitwardenPolicyRuntimeState(next)
-    this.clearSyncErrorState()
-    return { ...this.baseSyncStatus(next.sync, 'ready'), ...counts }
+    this.syncSession.clearSyncErrorState()
+    return { ...this.syncSession.baseSyncStatus(next.sync, 'ready'), ...counts }
   }
 
   protected async skipUnchangedRemoteSync(
@@ -2314,9 +1852,9 @@ export class VaultServiceBase {
     completed.updatedAt = syncStartedAt
     await this.core.commit(completed)
     this.applyBitwardenPolicyRuntimeState(completed)
-    this.clearSyncErrorState()
+    this.syncSession.clearSyncErrorState()
     return {
-      ...this.baseSyncStatus(completed.sync, 'ready'),
+      ...this.syncSession.baseSyncStatus(completed.sync, 'ready'),
       pulled: 0,
       pushed: 0,
       deleted: 0,
@@ -3398,17 +2936,17 @@ export class VaultServiceBase {
     generation: number
   } {
     const operation = {
-      abort: this.startSyncOperation(),
+      abort: this.syncSession.startSyncOperation(),
       client,
       generation: this.core.generation
     }
-    this.nativeAttachmentRestoreAborts.add(operation.abort)
+    this.syncSession.nativeAttachmentRestoreAborts.add(operation.abort)
     return operation
   }
 
   protected finishNativeAttachmentRestoreOperation(operation: { abort: AbortController }): void {
-    this.nativeAttachmentRestoreAborts.delete(operation.abort)
-    this.finishSyncOperation(operation.abort)
+    this.syncSession.nativeAttachmentRestoreAborts.delete(operation.abort)
+    this.syncSession.finishSyncOperation(operation.abort)
   }
 
   protected assertNativeAttachmentRestoreLease(operation: {
@@ -3419,7 +2957,7 @@ export class VaultServiceBase {
     if (
       operation.abort.signal.aborted ||
       operation.generation !== this.core.generation ||
-      operation.client !== this.syncClient ||
+      operation.client !== this.syncSession.syncClient ||
       !operation.client.exportState().session
     ) {
       throw new VaultError('LOCKED')
