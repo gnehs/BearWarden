@@ -936,6 +936,7 @@ export class VaultServiceBase {
         this.key = null
         this.salt = null
         this.data = null
+        this.syncClient = null
         throw error
       } finally {
         request.pin = ''

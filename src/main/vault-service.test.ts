@@ -12623,6 +12623,44 @@ describe('VaultService commit races with lock and dispose', () => {
     expect((await service.listLogins()).map((login) => login.name)).toContain('Kept local login')
   })
 
+  it('does not reuse a sync client that a failed PIN unlock restored key material into', async () => {
+    const clients: string[] = []
+    let failRestore = false
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const name = `client-${clients.length + 1}`
+        clients.push(name)
+        return {
+          ...createSyncFake(sync.state),
+          pinUnlockMaterial: () => ({
+            accountKey: Buffer.alloc(64, 7),
+            wrappedKeyFingerprint: Buffer.alloc(32, 9)
+          }),
+          restorePinUnlockMaterial: () => {
+            if (failRestore) throw new BitwardenDirectError('AUTH_REQUIRED')
+          }
+        }
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+    await service.enablePinUnlock({ pin: 'bear-2026', masterPassword: MASTER_PASSWORD })
+    await service.lock()
+
+    failRestore = true
+    await expect(service.unlockWithPin({ pin: 'bear-2026' })).rejects.toBeDefined()
+    await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+    const clientsAfterFailedUnlock = clients.length
+    failRestore = false
+    await service.unlock(MASTER_PASSWORD)
+    await service.syncStatus()
+    expect(clients.length).toBe(clientsAfterFailedUnlock + 1)
+  })
+
   it('rejects a PIN unlock with LOCKED when lock() is queued behind it, without spending an attempt', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
