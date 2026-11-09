@@ -28,10 +28,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  SELECTED_ITEM_COPY_SHORTCUTS,
-  type SelectedItemCopyCommand
-} from '../../../shared/selected-item-shortcuts'
 import type {
   AppSettingsUpdate,
   FolderView,
@@ -81,6 +77,7 @@ import { useSyncStatus } from '@renderer/hooks/use-sync-status'
 import { useLoginApprovalQueue } from '@renderer/hooks/use-login-approval-queue'
 import { useVaultItemAccess } from '@renderer/hooks/use-vault-item-access'
 import { useVaultLock } from '@renderer/hooks/use-vault-lock'
+import { useVaultShortcuts } from '@renderer/hooks/use-vault-shortcuts'
 import { useVaultDragAndDrop } from '@renderer/hooks/use-vault-drag-and-drop'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
@@ -185,13 +182,6 @@ interface VaultShellProps {
   onLocked: () => void
   promptSyncSetup: boolean
   onSyncSetupPromptHandled: () => void
-}
-
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    target.matches('input, textarea, select, [contenteditable="true"]')
-  )
 }
 
 function VaultShellContent({
@@ -878,122 +868,28 @@ function VaultShellContent({
     isEditorDirty,
     requestEditorTransition
   })
-  const shortcutCopyFieldRef = useRef(secrets.copyField)
-  const shortcutCopyTotpRef = useRef(secrets.copyTotp)
-  useEffect(() => {
-    shortcutCopyFieldRef.current = secrets.copyField
-    shortcutCopyTotpRef.current = secrets.copyTotp
-  })
-
-  useEffect(() => {
-    function copySelectedItem(command: SelectedItemCopyCommand): boolean {
-      if (
-        editorMode ||
-        searchOpen ||
-        settingsOpen ||
-        healthOpen ||
-        sendsOpen ||
-        organizationsOpen ||
-        emergencyAccessOpen ||
-        !selectedLogin ||
-        selectedLogin.deletedAt
-      ) {
-        return false
-      }
-      if (command === 'username' && selectedLogin.type === 'login' && selectedLogin.username) {
-        void shortcutCopyFieldRef.current('username')
-        return true
-      }
-      if (command === 'password' && selectedLogin.type === 'login') {
-        void shortcutCopyFieldRef.current('password')
-        return true
-      }
-      if (command === 'totp' && selectedLogin.type === 'login' && selectedLogin.hasTotp) {
-        void shortcutCopyTotpRef.current()
-        return true
-      }
-      if (command === 'website' && selectedLogin.uris.length > 0) {
-        void shortcutCopyFieldRef.current('uri', 0)
-        return true
-      }
-      return false
-    }
-
-    function handleShortcut(event: KeyboardEvent): void {
-      const command = event.metaKey || event.ctrlKey
-      if (!command) return
-      const key = event.key.toLocaleLowerCase()
-
-      if (!isEditableShortcutTarget(event.target)) {
-        const copyCommand = Object.entries(SELECTED_ITEM_COPY_SHORTCUTS).find(
-          ([, shortcut]) => shortcut.key === key && shortcut.shiftKey === event.shiftKey
-        )?.[0] as SelectedItemCopyCommand | undefined
-        if (copyCommand && copySelectedItem(copyCommand)) {
-          event.preventDefault()
-          return
-        }
-      }
-
-      if (settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen)
-        return
-      if (key === 'a' && !editorMode && !searchOpen && !isEditableShortcutTarget(event.target)) {
-        event.preventDefault()
-        const nextIds = new Set(scopedItemIds)
-        setSelectedIds(nextIds)
-        selectionAnchorIdRef.current = scopedItemIds[0] ?? null
-        const activeId = currentSelectedId()
-        const nextActiveId =
-          activeId && nextIds.has(activeId) ? activeId : (scopedItemIds[0] ?? null)
-        activateLogin(nextActiveId)
-      }
-      if (key === 'f') {
-        event.preventDefault()
-        setSearchOpen(true)
-      }
-      if (key === 'n' && !editorMode && scope.kind !== 'trash' && scope.kind !== 'archive') {
-        event.preventDefault()
-        openEditor('create')
-      }
-      if (key === 'e' && selectedLogin && !selectedLogin.deletedAt && !editorMode) {
-        event.preventDefault()
-        openEditor('edit')
-      }
-      if (key === 's' && editorMode && !busy) {
-        event.preventDefault()
-        document.querySelector<HTMLFormElement>('form[data-vault-editor]')?.requestSubmit()
-      }
-      if (key === 'm' && event.shiftKey && selectedSummary && !selectedSummary.deletedAt) {
-        event.preventDefault()
-        openMoveDialogForSelection()
-      }
-    }
-    const unsubscribeCopySelectedItem =
-      window.bearwarden.applicationMenu.onCopySelectedItem(copySelectedItem)
-    window.addEventListener('keydown', handleShortcut)
-    return () => {
-      unsubscribeCopySelectedItem()
-      window.removeEventListener('keydown', handleShortcut)
-    }
-  }, [
-    activateLogin,
-    busy,
+  useVaultShortcuts({
+    auxiliaryPageOpen:
+      settingsOpen || healthOpen || sendsOpen || organizationsOpen || emergencyAccessOpen,
     editorMode,
-    healthOpen,
-    openMoveDialogForSelection,
-    openEditor,
-    scopedItemIds,
     searchOpen,
-    setSearchOpen,
+    busy,
+    canCreate: scope.kind !== 'trash' && scope.kind !== 'archive',
     selectedLogin,
     selectedSummary,
-    scope.kind,
-    organizationsOpen,
-    emergencyAccessOpen,
-    sendsOpen,
-    settingsOpen,
-    setSelectedIds,
-    currentSelectedId
-  ])
+    copyField: secrets.copyField,
+    copyTotp: secrets.copyTotp,
+    selectAll: () => {
+      const nextIds = new Set(scopedItemIds)
+      setSelectedIds(nextIds)
+      selectionAnchorIdRef.current = scopedItemIds[0] ?? null
+      const activeId = currentSelectedId()
+      activateLogin(activeId && nextIds.has(activeId) ? activeId : (scopedItemIds[0] ?? null))
+    },
+    openSearch: () => setSearchOpen(true),
+    openEditor,
+    openMoveDialog: openMoveDialogForSelection
+  })
 
   useEffect(() => {
     if (!searchOpen) return
