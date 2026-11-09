@@ -294,3 +294,6 @@ export class VaultCore {
     return id
   }
 }
+
+/** The clock and id source record builders need, without the rest of the core. */
+export type VaultClock = Pick<VaultCore, 'nowIso' | 'validatedNewId'>

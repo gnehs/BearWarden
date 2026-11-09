@@ -167,6 +167,8 @@ import {
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 import { remoteDraft } from './vault/sync-snapshots'
+import { sharedLoginFromRemote } from './vault/local-records'
+
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -287,7 +289,7 @@ export class VaultService extends VaultTransferService {
       if (generation !== this.core.generation || this.syncSession.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
-      const created = this.sharedLoginFromRemote(remote)
+      const created = sharedLoginFromRemote(this.core, remote)
       const remoteCollectionIds = new Set(created.collectionIds)
       if (
         created.organizationId !== request.organizationId ||
@@ -458,7 +460,7 @@ export class VaultService extends VaultTransferService {
       if (generation !== this.core.generation || this.syncSession.syncClient !== client) {
         throw new VaultError('LOCKED')
       }
-      const updated = this.sharedLoginFromRemote(remote)
+      const updated = sharedLoginFromRemote(this.core, remote)
       updated.usageCount = login.usageCount
       updated.lastUsedAt = login.lastUsedAt
       const next = cloneData(current)

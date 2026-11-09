@@ -21,7 +21,6 @@ import {
   type BitwardenFolder,
   type BitwardenLoginItem,
   type BitwardenLoginApprovalRequest,
-  type BitwardenOrganizationCipher,
   type BitwardenSendItem,
   type BitwardenSyncClient,
   type BitwardenWebAuthnRegistrationSetup
@@ -50,8 +49,7 @@ import {
   planSync,
   type SyncAction,
   type SyncActionResult,
-  type SyncLink,
-  type SyncLogin
+  type SyncLink
 } from './sync-merge'
 import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
@@ -62,7 +60,6 @@ import {
   MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
-  MAX_NOTES_LENGTH,
   MAX_ATTACHMENT_ID_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
@@ -70,7 +67,6 @@ import {
 import {
   assertUuid,
   normalizeRequiredString,
-  normalizeNullableString,
   normalizeMasterPassword,
   normalizeSyncPassword
 } from './vault/parse-primitives'
@@ -79,16 +75,13 @@ import { isCompositeRemoteLoginUpdate } from './vault/views'
 import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
 import { parseFolder, parseStoredLogin } from './vault/login-parsing'
 import { sendViewFromRemote } from './vault/send-parsing'
-import { validateRemotePasskeys } from './vault/passkey-parsing'
 import { cloneCustomFields } from './vault/custom-fields'
-import { cloneLoginUris, uriAlias, remoteLoginUris } from './vault/login-uris'
-import { normalizeItemFieldsForStorage, normalizeItemType } from './vault/item-fields'
+import { cloneLoginUris, uriAlias } from './vault/login-uris'
 import {
   cloneEquivalentDomainSettings,
   validateRemoteEquivalentDomainSettings
 } from './vault/equivalent-domains'
 import { parseStoredOrganization, parseStoredCollection } from './vault/org-collection-parsing'
-import { validateRemoteAttachments } from './vault/attachments-parsing'
 import { VaultGeneratorService } from './vault/generator-service'
 import { VaultSendService } from './vault/send-service'
 import { VaultCore } from './vault/core'
@@ -161,6 +154,13 @@ import {
   masterPasswordChangeAccountFingerprint,
   assertMasterPasswordChangeAccount
 } from './vault/master-password-change'
+import {
+  createLocalLogin,
+  sharedLoginFromRemote,
+  updateLocalLogin,
+  createLocalFolder,
+  deleteLocalFolder
+} from './vault/local-records'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -1829,7 +1829,7 @@ export class VaultServiceBase {
     }
     let parsedSharedLogins: StoredSharedLogin[]
     try {
-      parsedSharedLogins = sharedLogins.map((login) => this.sharedLoginFromRemote(login))
+      parsedSharedLogins = sharedLogins.map((login) => sharedLoginFromRemote(this.core, login))
     } catch (error) {
       throwSharedSnapshotError(error, 'cipher')
     }
@@ -2260,18 +2260,18 @@ export class VaultServiceBase {
       } else if (action.kind === 'push-update') {
         await client.editFolder(action.remoteId, action.local.name, signal)
       } else if (action.kind === 'pull-create') {
-        result.localId = this.createLocalFolder(data, action.remote.name).id
+        result.localId = createLocalFolder(this.core, data, action.remote.name).id
       } else if (action.kind === 'pull-update') {
         const folder = findFolder(data, action.localId)
         folder.name = action.remote.name
         folder.updatedAt = this.core.nowIso()
       } else if (action.kind === 'delete-local') {
-        this.deleteLocalFolder(data, action.localId)
+        deleteLocalFolder(this.core, data, action.localId)
       } else if (action.kind === 'delete-remote') {
         await client.deleteFolder(action.remoteId, signal)
       } else if (action.reason === 'both-modified') {
         if (!action.local || !action.remote) throw new VaultError('SYNC_FAILED')
-        this.createLocalFolder(data, action.conflictName)
+        createLocalFolder(this.core, data, action.conflictName)
         const primary = findFolder(data, action.local.id)
         primary.name = action.remote.name
         primary.updatedAt = this.core.nowIso()
@@ -2284,7 +2284,7 @@ export class VaultServiceBase {
       } else {
         if (!action.remote) throw new VaultError('SYNC_FAILED')
         await client.editFolder(action.remote.id, action.conflictName, signal)
-        result.localId = this.createLocalFolder(data, action.conflictName).id
+        result.localId = createLocalFolder(this.core, data, action.conflictName).id
       }
       return result
     }
@@ -2328,10 +2328,10 @@ export class VaultServiceBase {
       }
     } else if (action.kind === 'pull-create') {
       const folderId = resolveFolderReference(action.localFolder, completed, 'localId')
-      result.localId = this.createLocalLogin(data, action.remote, folderId).id
+      result.localId = createLocalLogin(this.core, data, action.remote, folderId).id
     } else if (action.kind === 'pull-update') {
       const folderId = resolveFolderReference(action.localFolder, completed, 'localId')
-      this.updateLocalLogin(data, action.localId, action.remote, folderId)
+      updateLocalLogin(this.core, data, action.localId, action.remote, folderId)
     } else if (action.kind === 'delete-local') {
       data.logins = data.logins.filter((login) => login.id !== action.localId)
     } else if (action.kind === 'delete-remote') {
@@ -2342,9 +2342,14 @@ export class VaultServiceBase {
         action.local.folderId && data.folders.some((folder) => folder.id === action.local!.folderId)
           ? action.local.folderId
           : null
-      this.createLocalLogin(data, { ...action.local, name: action.conflictName }, copyFolderId)
+      createLocalLogin(
+        this.core,
+        data,
+        { ...action.local, name: action.conflictName },
+        copyFolderId
+      )
       const primaryFolderId = resolveFolderReference(action.localFolder, completed, 'localId')
-      this.updateLocalLogin(data, action.local.id, action.remote, primaryFolderId)
+      updateLocalLogin(this.core, data, action.local.id, action.remote, primaryFolderId)
     } else if (action.reason === 'remote-deleted') {
       if (!action.local) throw new VaultError('SYNC_FAILED')
       const local = findLogin(data, action.local.id)
@@ -2371,40 +2376,14 @@ export class VaultServiceBase {
         signal
       )
       const localFolderId = resolveFolderReference(action.localFolder, completed, 'localId')
-      result.localId = this.createLocalLogin(
+      result.localId = createLocalLogin(
+        this.core,
         data,
         { ...action.remote, name: action.conflictName },
         localFolderId
       ).id
     }
     return result
-  }
-
-  protected createLocalFolder(data: VaultData, name: string): FolderView {
-    const now = this.core.nowIso()
-    const folder: FolderView = {
-      id: this.core.validatedNewId(),
-      name: normalizeRequiredString(name, MAX_NAME_LENGTH),
-      position: data.folders.length,
-      createdAt: now,
-      updatedAt: now
-    }
-    data.folders.push(folder)
-    return folder
-  }
-
-  protected deleteLocalFolder(data: VaultData, id: string): void {
-    data.folders = data.folders
-      .filter((folder) => folder.id !== id)
-      .sort((left, right) => left.position - right.position)
-      .map((folder, position) => ({ ...folder, position }))
-    const now = this.core.nowIso()
-    for (const login of data.logins) {
-      if (login.folderId === id) {
-        login.folderId = null
-        login.updatedAt = now
-      }
-    }
   }
 
   protected appendPortableSnapshot(
@@ -2452,7 +2431,7 @@ export class VaultServiceBase {
       const folderId =
         source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
       if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
-      const created = this.createLocalLogin(data, source, folderId)
+      const created = createLocalLogin(this.core, data, source, folderId)
       parseStoredLogin(created)
       itemMappings.push({ sourceItemId: source.id, localItemId: created.id })
     }
@@ -2533,103 +2512,6 @@ export class VaultServiceBase {
     )
     next.updatedAt = next.nativeAttachmentRestore.updatedAt
     await this.core.commit(next)
-  }
-
-  protected createLocalLogin(
-    data: VaultData,
-    source: SyncLogin,
-    folderId: string | null
-  ): StoredLogin {
-    const now = this.core.nowIso()
-    const createdAt = source.createdAt ?? now
-    const updatedAt = source.updatedAt ?? createdAt
-    const login: StoredLogin = {
-      id: this.core.validatedNewId(),
-      type: normalizeItemType(source.type),
-      name: normalizeRequiredString(source.name, MAX_NAME_LENGTH),
-      notes: normalizeNullableString(source.notes, MAX_NOTES_LENGTH),
-      folderId,
-      favorite: source.favorite,
-      usageCount: 0,
-      lastUsedAt: source.lastUsedAt ?? null,
-      createdAt,
-      updatedAt,
-      deletedAt: source.deletedAt,
-      archivedAt: source.archivedAt,
-      reprompt: source.reprompt,
-      passkeys: validateRemotePasskeys(source.passkeys),
-      customFields: cloneCustomFields(source.customFields),
-      passwordHistory: clonePasswordHistory(source.passwordHistory),
-      passwordRevisionDate: source.passwordRevisionDate,
-      autofillOnPageLoad: source.autofillOnPageLoad,
-      attachments: [],
-      uris: remoteLoginUris(source),
-      ...normalizeItemFieldsForStorage(source)
-    }
-    data.logins.push(login)
-    return login
-  }
-
-  protected sharedLoginFromRemote(source: BitwardenOrganizationCipher): StoredSharedLogin {
-    const normalized = remoteSyncSnapshot([], [{ ...source, organizationId: null }]).logins[0]
-    if (!normalized) throw new VaultError('SYNC_FAILED')
-    return {
-      id: source.id,
-      type: normalizeItemType(normalized.type),
-      name: normalizeRequiredString(normalized.name, MAX_NAME_LENGTH),
-      notes: normalizeNullableString(normalized.notes, MAX_NOTES_LENGTH),
-      folderId: null,
-      favorite: normalized.favorite,
-      usageCount: 0,
-      lastUsedAt: null,
-      createdAt: normalized.createdAt ?? this.core.nowIso(),
-      updatedAt: normalized.updatedAt ?? this.core.nowIso(),
-      deletedAt: normalized.deletedAt,
-      archivedAt: normalized.archivedAt,
-      reprompt: normalized.reprompt,
-      passkeys: validateRemotePasskeys(normalized.passkeys),
-      customFields: cloneCustomFields(normalized.customFields),
-      passwordHistory: clonePasswordHistory(normalized.passwordHistory),
-      passwordRevisionDate: normalized.passwordRevisionDate,
-      autofillOnPageLoad: normalized.autofillOnPageLoad,
-      attachments: validateRemoteAttachments(source.attachments),
-      uris: remoteLoginUris(normalized),
-      ...normalizeItemFieldsForStorage(normalized),
-      organizationId: source.organizationId,
-      collectionIds: [...source.collectionIds],
-      shared: true,
-      edit: source.edit,
-      viewPassword: source.viewPassword,
-      delete: source.delete,
-      restore: source.restore
-    }
-  }
-
-  protected updateLocalLogin(
-    data: VaultData,
-    id: string,
-    source: SyncLogin,
-    folderId: string | null
-  ): void {
-    const login = findLogin(data, id)
-    login.type = normalizeItemType(source.type)
-    login.name = normalizeRequiredString(source.name, MAX_NAME_LENGTH)
-    login.notes = normalizeNullableString(source.notes, MAX_NOTES_LENGTH)
-    Object.assign(login, normalizeItemFieldsForStorage(source))
-    login.uris = remoteLoginUris(source)
-    login.uri = uriAlias(login.uris)
-    login.passkeys = validateRemotePasskeys(source.passkeys)
-    login.customFields = cloneCustomFields(source.customFields)
-    login.passwordHistory = clonePasswordHistory(source.passwordHistory)
-    login.passwordRevisionDate = source.passwordRevisionDate
-    login.autofillOnPageLoad = source.autofillOnPageLoad
-    login.folderId = folderId
-    login.favorite = source.favorite
-    login.deletedAt = source.deletedAt
-    login.archivedAt = source.archivedAt
-    login.reprompt = source.reprompt
-    if (source.createdAt) login.createdAt = source.createdAt
-    login.updatedAt = source.updatedAt ?? this.core.nowIso()
   }
 
   protected useLogin<T>(
