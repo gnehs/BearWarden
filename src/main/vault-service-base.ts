@@ -14,12 +14,8 @@ import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
 import { recoverInterruptedNativeAttachmentRestore } from './native-attachment-restore'
 import { VaultError } from './vault-errors'
 import type { VaultAttachmentFileService } from './vault-attachment-files'
-import { DATA_VERSION, MAX_MASTER_PASSWORD_LENGTH, MAX_USERNAME_LENGTH } from './vault/limits'
-import {
-  normalizeRequiredString,
-  normalizeMasterPassword,
-  normalizeSyncPassword
-} from './vault/parse-primitives'
+import { DATA_VERSION, MAX_MASTER_PASSWORD_LENGTH } from './vault/limits'
+import { normalizeMasterPassword } from './vault/parse-primitives'
 import { cloneData } from './vault/vault-data-parsing'
 import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
 import { VaultGeneratorService } from './vault/generator-service'
@@ -64,6 +60,7 @@ import { VaultWebsiteIcons } from './vault/website-icons'
 import { VaultAccountSecurity } from './vault/account-security'
 import { VaultPinUnlockState } from './vault/pin-unlock-state'
 import { VaultSyncEngine } from './vault/sync-engine'
+import { VaultSyncService } from './vault/sync-service'
 
 /**
  * Owns the vault's mutable runtime state, persistence transaction boundary, and sync engine.
@@ -95,6 +92,7 @@ export class VaultServiceBase {
   protected readonly accountSecurity: VaultAccountSecurity
   protected readonly pinUnlock: VaultPinUnlockState
   protected readonly syncEngine: VaultSyncEngine
+  protected readonly sync: VaultSyncService
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -187,6 +185,13 @@ export class VaultServiceBase {
     )
     this.pinUnlock = new VaultPinUnlockState()
     this.syncEngine = new VaultSyncEngine(this.core, this.syncSession, this.pinUnlock)
+    this.sync = new VaultSyncService(
+      this.core,
+      this.syncSession,
+      this.syncEngine,
+      this.pinUnlock,
+      this.health
+    )
   }
 
   status(): Promise<VaultStatus> {
@@ -696,57 +701,6 @@ export class VaultServiceBase {
       return requested.type === 'appInactivity' && requested.minutes <= maximum
         ? requested
         : { type: 'appInactivity', minutes: maximum }
-    })
-  }
-
-  resendSyncNewDeviceOtp(request: {
-    serverUrl: string
-    email: string
-    masterPassword: string
-  }): Promise<void> {
-    return this.core.exclusive(async () => {
-      let abort: AbortController | null = null
-      try {
-        this.core.requireData()
-        const serverUrl = this.syncSession.normalizeSyncServerUrl(request.serverUrl)
-        const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
-        const password = normalizeSyncPassword(request.masterPassword)
-        const sync: PersistedSyncData = {
-          provider: 'bitwarden',
-          serverUrl,
-          email,
-          state: {
-            session: null,
-            deviceIdentifier: randomUUID(),
-            profileId: null,
-            securityStamp: null
-          },
-          unlockMaterial: null,
-          lastSyncAt: null,
-          requiresFullSyncAfterCipherIsolation: false,
-          folderMappings: [],
-          loginMappings: [],
-          folderTombstones: [],
-          loginTombstones: [],
-          pendingLoginMutation: null,
-          pendingLoginImport: null,
-          pendingPersonalVaultPurge: null,
-          domainSettings: null
-        }
-        const client = this.syncSession.createDetachedClient(sync)
-        if (!client.resendNewDeviceOtp) throw new VaultError('SYNC_FAILED')
-        abort = this.syncSession.startSyncOperation()
-        await client.resendNewDeviceOtp(password, abort.signal)
-      } catch (error) {
-        throw this.syncSession.mapSyncError(error)
-      } finally {
-        try {
-          request.masterPassword = ''
-        } catch {
-          // Frozen or exotic input must not replace the intended service result.
-        }
-        if (abort) this.syncSession.finishSyncOperation(abort)
-      }
     })
   }
 

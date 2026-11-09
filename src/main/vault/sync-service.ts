@@ -1,4 +1,16 @@
+import type { VaultCore } from './core'
+import type { AccountBreachReports } from './health'
+import type { PinUnlockInvalidator } from './pin-unlock-state'
+import type { VaultSyncEngine } from './sync-engine'
+import type { VaultSyncSession } from './sync-session'
 import { randomUUID } from 'node:crypto'
+import { BitwardenDirectError, type BitwardenSyncClient } from '../bitwarden-direct'
+import { VaultError } from '../vault-errors'
+import { MAX_MASTER_PASSWORD_LENGTH, MAX_USERNAME_LENGTH } from './limits'
+import { normalizeRequiredString, normalizeSyncPassword } from './parse-primitives'
+import { cloneData } from './vault-data-parsing'
+import { assertNoPendingPersonalVaultPurge } from './sync-data-parsing'
+import type { PersistedSyncData, VaultData } from './types'
 import type {
   EquivalentDomainSettingsUpdate,
   EquivalentDomainSettingsView,
@@ -9,24 +21,16 @@ import type {
   SyncResult,
   SyncStatus,
   SyncUnlockRequest
-} from '../shared/vault-contract'
-import { BitwardenDirectError, type BitwardenSyncClient } from './bitwarden-direct'
-import { VaultError } from './vault-errors'
-import { MAX_MASTER_PASSWORD_LENGTH, MAX_USERNAME_LENGTH } from './vault/limits'
-import { normalizeRequiredString, normalizeSyncPassword } from './vault/parse-primitives'
-import { cloneData } from './vault/vault-data-parsing'
-import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
+} from '../../shared/vault-contract'
 import {
   cloneEquivalentDomainSettings,
   validateRemoteEquivalentDomainSettings,
   equivalentDomainRevision,
   equivalentDomainSettingsView,
   normalizeEquivalentDomainUpdate
-} from './vault/equivalent-domains'
-import type { PersistedSyncData, VaultData } from './vault/types'
-import { VaultServiceBase } from './vault-service-base'
-import { isRecord } from './validation-primitives'
-import { getAuthoritativeEquivalentDomainSettings } from './vault/sync-snapshots'
+} from './equivalent-domains'
+import { isRecord } from '../validation-primitives'
+import { getAuthoritativeEquivalentDomainSettings } from './sync-snapshots'
 
 function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   return {
@@ -52,8 +56,20 @@ function initialSyncData(serverUrl: string, email: string): PersistedSyncData {
   }
 }
 
-/** Account security, authentication, and public synchronization operations. */
-export class VaultAccountService extends VaultServiceBase {
+/**
+ * Public sync operations: connect, unlock, sync now, disconnect and remote logout, the pending
+ * import and personal-vault purge resolutions, and equivalent-domain settings. They run under the
+ * vault mutex, and those that sync take the session's single sync-operation lease.
+ */
+export class VaultSyncService {
+  constructor(
+    private readonly core: VaultCore,
+    private readonly syncSession: VaultSyncSession,
+    private readonly syncEngine: VaultSyncEngine,
+    private readonly pinUnlock: PinUnlockInvalidator,
+    private readonly health: AccountBreachReports
+  ) {}
+
   syncStatus(): Promise<SyncStatus> {
     return this.core.exclusive(async () => this.syncSession.currentSyncStatus())
   }
@@ -166,6 +182,57 @@ export class VaultAccountService extends VaultServiceBase {
       } finally {
         request.masterPassword = ''
         this.syncSession.finishSyncOperation(abort)
+      }
+    })
+  }
+
+  resendSyncNewDeviceOtp(request: {
+    serverUrl: string
+    email: string
+    masterPassword: string
+  }): Promise<void> {
+    return this.core.exclusive(async () => {
+      let abort: AbortController | null = null
+      try {
+        this.core.requireData()
+        const serverUrl = this.syncSession.normalizeSyncServerUrl(request.serverUrl)
+        const email = normalizeRequiredString(request.email, MAX_USERNAME_LENGTH)
+        const password = normalizeSyncPassword(request.masterPassword)
+        const sync: PersistedSyncData = {
+          provider: 'bitwarden',
+          serverUrl,
+          email,
+          state: {
+            session: null,
+            deviceIdentifier: randomUUID(),
+            profileId: null,
+            securityStamp: null
+          },
+          unlockMaterial: null,
+          lastSyncAt: null,
+          requiresFullSyncAfterCipherIsolation: false,
+          folderMappings: [],
+          loginMappings: [],
+          folderTombstones: [],
+          loginTombstones: [],
+          pendingLoginMutation: null,
+          pendingLoginImport: null,
+          pendingPersonalVaultPurge: null,
+          domainSettings: null
+        }
+        const client = this.syncSession.createDetachedClient(sync)
+        if (!client.resendNewDeviceOtp) throw new VaultError('SYNC_FAILED')
+        abort = this.syncSession.startSyncOperation()
+        await client.resendNewDeviceOtp(password, abort.signal)
+      } catch (error) {
+        throw this.syncSession.mapSyncError(error)
+      } finally {
+        try {
+          request.masterPassword = ''
+        } catch {
+          // Frozen or exotic input must not replace the intended service result.
+        }
+        if (abort) this.syncSession.finishSyncOperation(abort)
       }
     })
   }

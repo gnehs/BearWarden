@@ -73,7 +73,15 @@ import type {
   LoginApprovalPrompt,
   AccountSessionDeauthorizationRequest,
   LoginApprovalResponse,
-  SyncStatus
+  SyncStatus,
+  EquivalentDomainSettingsUpdate,
+  EquivalentDomainSettingsView,
+  SyncConnectRequest,
+  SyncEmailTwoFactorCodeRequest,
+  SyncPurgePersonalVaultRequest,
+  SyncPurgePersonalVaultResult,
+  SyncResult,
+  SyncUnlockRequest
 } from '../shared/vault-contract'
 import type { SshKeyMaterial } from './ssh-key'
 import type {
@@ -103,7 +111,7 @@ import type {
   VaultNativeAttachmentBackupSource,
   VaultNativeAttachmentRestoreSummary
 } from './vault/types'
-import { VaultAccountService } from './vault-account-service'
+import { VaultServiceBase } from './vault-service-base'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 import type { PortableVaultSnapshot } from './vault-portability-codec'
 import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-restore'
@@ -132,7 +140,7 @@ export type {
 } from './vault/types'
 
 /** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
-export class VaultService extends VaultAccountService {
+export class VaultService extends VaultServiceBase {
   /**
    * Test-only view of the committed in-memory snapshot, for planting records the public API cannot
    * create and trapping reads of protected fields. Production code must not call it.
@@ -814,5 +822,72 @@ export class VaultService extends VaultAccountService {
 
   notificationConnectionInfo(): Promise<BitwardenNotificationConnectionInfo | null> {
     return this.accountSecurity.notificationConnectionInfo()
+  }
+
+  syncStatus(): Promise<SyncStatus> {
+    return this.sync.syncStatus()
+  }
+
+  remoteLogoutSync(): Promise<SyncStatus> {
+    return this.sync.remoteLogoutSync()
+  }
+
+  connectSync(request: SyncConnectRequest): Promise<SyncResult> {
+    return this.sync.connectSync(request)
+  }
+
+  sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
+    return this.sync.sendSyncEmailTwoFactorCode(request)
+  }
+
+  resendSyncNewDeviceOtp(request: {
+    serverUrl: string
+    email: string
+    masterPassword: string
+  }): Promise<void> {
+    return this.sync.resendSyncNewDeviceOtp(request)
+  }
+
+  unlockSync(request: SyncUnlockRequest): Promise<SyncStatus> {
+    return this.sync.unlockSync(request)
+  }
+
+  unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
+    return this.sync.unlockAndSync(request)
+  }
+
+  unlockSyncWithLocalPassword(masterPassword: string): Promise<SyncStatus> {
+    return this.sync.unlockSyncWithLocalPassword(masterPassword)
+  }
+
+  syncNow(): Promise<SyncResult> {
+    return this.sync.syncNow()
+  }
+
+  disconnectSync(): Promise<SyncStatus> {
+    return this.sync.disconnectSync()
+  }
+
+  resolvePendingLoginImport(request: {
+    masterPassword: string
+    confirmRetry: true
+  }): Promise<SyncStatus> {
+    return this.sync.resolvePendingLoginImport(request)
+  }
+
+  purgePersonalVault(
+    request: SyncPurgePersonalVaultRequest
+  ): Promise<SyncPurgePersonalVaultResult> {
+    return this.sync.purgePersonalVault(request)
+  }
+
+  getEquivalentDomainSettings(): Promise<EquivalentDomainSettingsView> {
+    return this.sync.getEquivalentDomainSettings()
+  }
+
+  updateEquivalentDomainSettings(
+    request: EquivalentDomainSettingsUpdate
+  ): Promise<EquivalentDomainSettingsView> {
+    return this.sync.updateEquivalentDomainSettings(request)
   }
 }
