@@ -19,7 +19,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        'bg-popover text-popover-foreground flex size-full flex-col overflow-hidden rounded-xl p-1',
+        'bg-popover text-popover-foreground flex size-full flex-col overflow-hidden rounded-3xl p-1',
         className
       )}
       {...props}
@@ -48,7 +48,10 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn('gap-0 overflow-hidden rounded-xl p-0 sm:max-w-xl', className)}
+        className={cn(
+          'gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-xl [&_[data-slot=command]]:bg-transparent',
+          className
+        )}
         showCloseButton={showCloseButton}
       >
         {children}

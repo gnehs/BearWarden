@@ -11,7 +11,8 @@ import { cn } from '../lib/utils'
 import { ColoredPassword } from './ColoredPassword'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { Button } from './ui/button'
-import { detailFieldClassName, TooltipIconButton } from './VaultShell-primitives'
+import { detailFieldClassName, detailRowActionClassName } from './VaultDetailSurface'
+import { TooltipIconButton } from './VaultShell-primitives'
 import type { RevealedCustomFieldsState, RevealedSecretsState } from './VaultShell-model'
 import {
   customFieldCopyFeedbackKey,
@@ -155,6 +156,7 @@ function VaultDetailFieldRow({
         <>
           {isPasswordField ? (
             <TooltipIconButton
+              className={detailRowActionClassName}
               variant="outline"
               size="icon"
               type="button"
@@ -165,6 +167,7 @@ function VaultDetailFieldRow({
             </TooltipIconButton>
           ) : (
             <TooltipIconButton
+              className={detailRowActionClassName}
               variant="outline"
               size="icon"
               type="button"
@@ -176,6 +179,7 @@ function VaultDetailFieldRow({
             </TooltipIconButton>
           )}
           <TooltipIconButton
+            className={detailRowActionClassName}
             variant="outline"
             size="icon"
             type="button"
@@ -189,6 +193,7 @@ function VaultDetailFieldRow({
         <>
           {field.copyable && (
             <TooltipIconButton
+              className={detailRowActionClassName}
               variant="outline"
               size="icon"
               type="button"
@@ -201,6 +206,7 @@ function VaultDetailFieldRow({
           )}
           {field.openUri && (
             <TooltipIconButton
+              className={detailRowActionClassName}
               variant="outline"
               size="icon"
               type="button"
@@ -317,6 +323,7 @@ function VaultCustomFieldRow({
       </Button>
       {hidden && (
         <TooltipIconButton
+          className={detailRowActionClassName}
           variant="outline"
           size="icon"
           type="button"
@@ -328,6 +335,7 @@ function VaultCustomFieldRow({
         </TooltipIconButton>
       )}
       <TooltipIconButton
+        className={detailRowActionClassName}
         variant="outline"
         size="icon"
         type="button"

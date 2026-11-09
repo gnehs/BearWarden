@@ -102,7 +102,7 @@ describe('VaultItemMetadataCards shared presentation', () => {
       />
     )
 
-    expect(markup).toContain('data-variant="item"')
+    expect(markup).toContain('data-variant="folder"')
     expect(markup).toContain('>Home</dd>')
     expect(markup).toContain('>Default collection</dd>')
     expect(markup).toContain('>Network closet</p>')

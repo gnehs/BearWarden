@@ -24,11 +24,11 @@ function Tabs({ className, orientation = 'horizontal', ...props }: TabsPrimitive
 }
 
 const tabsListVariants = cva(
-  'group/tabs-list text-muted-foreground inline-flex w-fit items-center justify-center rounded-lg p-1 group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none',
+  'group/tabs-list text-muted-foreground inline-flex w-fit items-center justify-center rounded-full p-1 group-data-horizontal/tabs:h-10 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col group-data-vertical/tabs:rounded-3xl data-[variant=line]:rounded-none',
   {
     variants: {
       variant: {
-        default: 'bg-muted',
+        default: 'bg-(--segment-track) shadow-(--inset-shadow)',
         line: 'gap-1 bg-transparent'
       }
     },
@@ -63,7 +63,7 @@ function TabsList({
         {motionEnabled && (
           <TabsPrimitive.Indicator
             data-slot="tabs-indicator"
-            className="group-data-[variant=line]/tabs-list:bg-foreground pointer-events-none absolute top-1 left-0 z-0 h-[calc(100%-0.5rem)] w-[var(--active-tab-width,0px)] [transform:translateX(var(--active-tab-left,0px))] rounded-[var(--radius-md)] bg-[var(--tabs-pill-bg)] transition-[transform,width] duration-[var(--tabs-dur)] ease-[var(--tabs-ease)] will-change-[transform,width] group-data-[variant=line]/tabs-list:top-auto group-data-[variant=line]/tabs-list:bottom-0 group-data-[variant=line]/tabs-list:h-0.5 group-data-[variant=line]/tabs-list:rounded-none motion-reduce:!transition-none"
+            className="group-data-[variant=line]/tabs-list:bg-foreground pointer-events-none absolute top-1 left-0 z-0 h-[calc(100%-0.5rem)] w-[var(--active-tab-width,0px)] [transform:translateX(var(--active-tab-left,0px))] rounded-full bg-[var(--tabs-pill-bg)] shadow-(--segment-thumb-shadow) transition-[transform,width] duration-[var(--tabs-dur)] ease-[var(--tabs-ease)] will-change-[transform,width] group-data-[variant=line]/tabs-list:top-auto group-data-[variant=line]/tabs-list:bottom-0 group-data-[variant=line]/tabs-list:h-0.5 group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:shadow-none motion-reduce:!transition-none"
             aria-hidden="true"
           />
         )}
@@ -79,10 +79,10 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "text-foreground/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 group-data-[variant=default]/tabs-list:data-active:shadow-(--control-highlight) group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "text-foreground/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-full border border-transparent px-3 py-0.5 text-sm font-medium whitespace-nowrap group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 group-data-[variant=default]/tabs-list:data-active:shadow-(--segment-thumb-shadow) group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         !sliding && 'transition-all',
         'group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent',
-        'data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground',
+        'data-active:text-foreground dark:data-active:text-foreground data-active:bg-(--segment-thumb)',
         'after:bg-foreground after:absolute after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100',
         sliding &&
           'relative z-1 transition-[color] duration-[var(--tabs-dur)] ease-[var(--tabs-ease)] after:hidden data-active:bg-transparent data-active:shadow-none motion-reduce:!transition-none dark:data-active:border-transparent dark:data-active:bg-transparent',

@@ -20,6 +20,7 @@ import type {
   OrganizationView,
   SharedLoginSummary
 } from '../../../shared/vault-contract'
+import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import {
@@ -48,11 +49,13 @@ import { totpListCountdownPeriodSeconds } from './VaultShell-model'
 import {
   DetailCard,
   DetailHeader,
-  TooltipIconButton,
+  DetailHeading,
+  DetailMetaRow,
+  DetailRowGroup,
   detailIconClassName,
-  detailScrollClassName,
-  hostLabel
-} from './VaultShell-primitives'
+  detailScrollClassName
+} from './VaultDetailSurface'
+import { TooltipIconButton, hostLabel } from './VaultShell-primitives'
 import { hasTrashPasswordHistory } from './VaultShell-security'
 import { detailFields } from './vault-detail-view-model'
 import WebsiteIcon from './WebsiteIcon'
@@ -96,16 +99,18 @@ export function TrashedItemDetail({
         <span className={detailIconClassName()} aria-hidden="true">
           <Trash2 />
         </span>
-        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
-          <p className="text-primary m-0 mb-1 text-xs font-bold tracking-wide uppercase">
-            <Trans>Trash</Trans>
-          </p>
-          <h2>{summary.name}</h2>
-          <span>{itemTypeMeta[summary.type].label}</span>
-        </div>
+        <DetailHeading
+          title={summary.name}
+          subtitle={itemTypeMeta[summary.type].label}
+          chips={
+            <Badge variant="warning">
+              <Trans>Trash</Trans>
+            </Badge>
+          }
+        />
       </DetailHeader>
       <div className={cn('scroll-fade-y forced-colors:scroll-fade-none', detailScrollClassName)}>
-        <DetailCard>
+        <DetailCard tone="rose">
           <CardHeader>
             <CardTitle>
               <Trash2 aria-hidden="true" />
@@ -119,56 +124,46 @@ export function TrashedItemDetail({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <dl className="m-0 px-(--card-spacing) py-1">
-              <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                <dt className="text-muted-foreground text-xs">
-                  <Trans>Deleted</Trans>
-                </dt>
-                <dd className="m-0 text-xs">{formatVaultDate(summary.deletedAt)}</dd>
-              </div>
-              <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_1fr] border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:gap-1">
-                <dt className="text-muted-foreground text-xs">
-                  <Trans>Original folder</Trans>
-                </dt>
-                <dd className="m-0 text-xs">
-                  {folders.find((folder) => folder.id === summary.folderId)?.name ?? t`Unfiled`}
-                </dd>
-              </div>
-            </dl>
+            <DetailRowGroup as="dl">
+              <DetailMetaRow label={<Trans>Deleted</Trans>}>
+                {formatVaultDate(summary.deletedAt)}
+              </DetailMetaRow>
+              <DetailMetaRow label={<Trans>Original folder</Trans>}>
+                {folders.find((folder) => folder.id === summary.folderId)?.name ?? t`Unfiled`}
+              </DetailMetaRow>
+            </DetailRowGroup>
           </CardContent>
         </DetailCard>
         {hasTrashPasswordHistory(summary) && (
-          <DetailCard role="region" aria-labelledby="trash-password-history-title">
+          <DetailCard tone="neutral" role="region" aria-labelledby="trash-password-history-title">
             <CardHeader>
               <CardTitle id="trash-password-history-title">
                 <History aria-hidden="true" />
                 <Trans>Item history</Trans>
               </CardTitle>
             </CardHeader>
-            <CardContent className="contents">
-              <dl className="m-0 px-(--card-spacing) py-1">
-                <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                  <dt className="text-muted-foreground text-xs leading-4">
-                    <Trans>Password history</Trans>
-                  </dt>
-                  <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
-                    <span className="min-w-0 flex-1 truncate">
-                      <Trans>{summary.passwordHistoryCount} read-only records</Trans>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="-my-1.5 ml-auto"
-                      type="button"
-                      aria-label={t`View password history`}
-                      disabled={busy}
-                      onClick={onViewPasswordHistory}
-                    >
-                      <History aria-hidden="true" />
-                    </Button>
-                  </dd>
-                </div>
-              </dl>
+            <CardContent>
+              <DetailRowGroup as="dl">
+                <DetailMetaRow
+                  label={<Trans>Password history</Trans>}
+                  valueClassName="flex items-center gap-2"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    <Trans>{summary.passwordHistoryCount} read-only records</Trans>
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="-my-1.5 ml-auto"
+                    type="button"
+                    aria-label={t`View password history`}
+                    disabled={busy}
+                    onClick={onViewPasswordHistory}
+                  >
+                    <History aria-hidden="true" />
+                  </Button>
+                </DetailMetaRow>
+              </DetailRowGroup>
             </CardContent>
           </DetailCard>
         )}
@@ -335,15 +330,32 @@ export function SelectedItemDetail({
             })()
           )}
         </span>
-        <div className="[&>span]:text-muted-foreground min-w-0 flex-1 [&>h2]:m-0 [&>h2]:truncate [&>h2]:text-base [&>h2]:font-medium [&>span]:mt-0.5 [&>span]:block [&>span]:truncate [&>span]:text-xs">
-          <h2>{login.name}</h2>
-          <span>
-            {login.subtitle ||
-              (login.type === 'login'
-                ? hostLabel(login.uri, t`Website not set`)
-                : t`Securely stored item`)}
-          </span>
-        </div>
+        <DetailHeading
+          title={login.name}
+          subtitle={
+            login.subtitle ||
+            (login.type === 'login'
+              ? hostLabel(login.uri, t`Website not set`)
+              : t`Securely stored item`)
+          }
+          chips={
+            <>
+              <Badge variant="chip">{itemTypeMeta[login.type].label}</Badge>
+              {sharedContext?.organization ? (
+                <Badge variant="chip">{sharedContext.organization.name}</Badge>
+              ) : (
+                <Badge variant="chip">
+                  {folders.find((folder) => folder.id === login.folderId)?.name ?? t`Unfiled`}
+                </Badge>
+              )}
+              {login.archivedAt && (
+                <Badge variant="warning">
+                  <Trans>Archive</Trans>
+                </Badge>
+              )}
+            </>
+          }
+        />
         {sharedSummary?.edit && sharedSummary.reprompt === 0 && (
           <TooltipIconButton
             variant="outline"
@@ -378,7 +390,7 @@ export function SelectedItemDetail({
                         <Button
                           variant="outline"
                           size="icon"
-                          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight)"
+                          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-xl shadow-(--control-highlight)"
                           type="button"
                           aria-label={t`More actions`}
                           disabled={busy}
@@ -431,7 +443,7 @@ export function SelectedItemDetail({
 
       <div className={cn('scroll-fade-y forced-colors:scroll-fade-none', detailScrollClassName)}>
         {detailFieldList.length > 0 && (
-          <DetailCard role="region" aria-labelledby="credentials-title" className="gap-1 pb-0">
+          <DetailCard tone="amber" role="region" aria-labelledby="credentials-title">
             <CardHeader>
               <CardTitle id="credentials-title">
                 {(() => {
@@ -441,57 +453,61 @@ export function SelectedItemDetail({
                 {t`${itemTypeMeta[login.type].label} details`}
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col">
-              <VaultDetailFieldRows
-                fields={detailFieldList.filter(
-                  (field) =>
-                    (!sharedSummary || sharedSummary.viewPassword || !field.secret) &&
-                    (field.secret || Boolean(field.value))
-                )}
-                copy={{
-                  copiedKey: secrets.copiedKey,
-                  itemId: login.id,
-                  copyField: secrets.copyField
-                }}
-                reveal={{
-                  state: secrets.revealedSecrets,
-                  selectedItemId: login.id,
-                  hoveringFieldsRef: secrets.hoveringSecretFieldsRef,
-                  hoverRevealedFieldsRef: secrets.hoverRevealedSecretFieldsRef,
-                  passwordZoomOpenRef: secrets.passwordZoomOpenRef,
-                  reveal: secrets.revealSecret,
-                  hide: secrets.hideRevealedSecret,
-                  openPasswordZoom: secrets.openPasswordZoom,
-                  revealOnHover: canRevealSecretsOnHover(sharedSummary)
-                }}
-                website={{ openWebsite: secrets.openWebsite }}
-              />
+            <CardContent>
+              <DetailRowGroup>
+                <VaultDetailFieldRows
+                  fields={detailFieldList.filter(
+                    (field) =>
+                      (!sharedSummary || sharedSummary.viewPassword || !field.secret) &&
+                      (field.secret || Boolean(field.value))
+                  )}
+                  copy={{
+                    copiedKey: secrets.copiedKey,
+                    itemId: login.id,
+                    copyField: secrets.copyField
+                  }}
+                  reveal={{
+                    state: secrets.revealedSecrets,
+                    selectedItemId: login.id,
+                    hoveringFieldsRef: secrets.hoveringSecretFieldsRef,
+                    hoverRevealedFieldsRef: secrets.hoverRevealedSecretFieldsRef,
+                    passwordZoomOpenRef: secrets.passwordZoomOpenRef,
+                    reveal: secrets.revealSecret,
+                    hide: secrets.hideRevealedSecret,
+                    openPasswordZoom: secrets.openPasswordZoom,
+                    revealOnHover: canRevealSecretsOnHover(sharedSummary)
+                  }}
+                  website={{ openWebsite: secrets.openWebsite }}
+                />
+              </DetailRowGroup>
             </CardContent>
           </DetailCard>
         )}
 
         {login.customFields.length > 0 && (
-          <DetailCard role="region" aria-labelledby="custom-fields-title" className="gap-1 pb-0">
+          <DetailCard tone="violet" role="region" aria-labelledby="custom-fields-title">
             <CardHeader>
               <CardTitle id="custom-fields-title">
                 <Settings2 aria-hidden="true" />
                 <Trans>Custom fields</Trans>
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col">
-              <VaultCustomFieldRows
-                fields={login.customFields}
-                item={{ id: login.id, updatedAt: login.updatedAt }}
-                labels={customFieldLabels}
-                copy={{
-                  copiedKey: secrets.copiedKey,
-                  copyField: secrets.copyCustomField
-                }}
-                reveal={{
-                  state: secrets.revealedCustomFields,
-                  reveal: secrets.revealCustomField
-                }}
-              />
+            <CardContent>
+              <DetailRowGroup>
+                <VaultCustomFieldRows
+                  fields={login.customFields}
+                  item={{ id: login.id, updatedAt: login.updatedAt }}
+                  labels={customFieldLabels}
+                  copy={{
+                    copiedKey: secrets.copiedKey,
+                    copyField: secrets.copyCustomField
+                  }}
+                  reveal={{
+                    state: secrets.revealedCustomFields,
+                    reveal: secrets.revealCustomField
+                  }}
+                />
+              </DetailRowGroup>
             </CardContent>
           </DetailCard>
         )}

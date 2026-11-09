@@ -26,7 +26,8 @@ import {
   type AttachmentDeleteTarget,
   type AttachmentOperationState
 } from './vault-attachment-ui'
-import { DetailCard, TooltipIconButton } from './VaultShell-primitives'
+import { DetailCard, DetailRowGroup } from './VaultDetailSurface'
+import { TooltipIconButton } from './VaultShell-primitives'
 
 interface VaultItemAttachmentsCardProps {
   itemId: string
@@ -60,12 +61,7 @@ export function VaultItemAttachmentsCard({
   if (attachments.length === 0 && operation?.itemId !== itemId) return null
 
   return (
-    <DetailCard
-      variant="attachment"
-      role="region"
-      aria-labelledby="attachments-title"
-      className="gap-1 pb-0"
-    >
+    <DetailCard variant="attachment" tone="sky" role="region" aria-labelledby="attachments-title">
       <CardHeader>
         <CardTitle id="attachments-title">
           <Paperclip aria-hidden="true" />
@@ -106,14 +102,14 @@ export function VaultItemAttachmentsCard({
           </section>
         )}
         {attachments.length > 0 && (
-          <div className="-mx-(--card-spacing) -mb-(--card-spacing) grid">
+          <DetailRowGroup>
             {attachments.map((attachment) => (
               <article
                 key={attachment.id}
-                className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
+                className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
               >
                 <span
-                  className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
+                  className="text-primary bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
                   aria-hidden="true"
                 >
                   <Paperclip size={16} />
@@ -182,7 +178,7 @@ export function VaultItemAttachmentsCard({
                 </section>
               </article>
             ))}
-          </div>
+          </DetailRowGroup>
         )}
       </CardContent>
     </DetailCard>
@@ -216,7 +212,8 @@ export function VaultItemTotpCard({
 
   return (
     <DetailCard
-      className="gap-2 py-2"
+      tone="brand"
+      className="gap-2"
       role="region"
       aria-labelledby="totp-title"
       aria-busy={!revealReady}
@@ -248,7 +245,7 @@ export function VaultItemTotpCard({
         )}
       </CardHeader>
       <CardContent className="contents">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-(--card-spacing) py-2.5 [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:tracking-widest">
+        <div className="mx-(--card-spacing) grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-(--inset-surface) py-2 pr-2 pl-3.5 shadow-(--inset-shadow) [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:tracking-widest">
           <div className="flex h-8 min-w-0 items-center">
             {code ? (
               <strong>

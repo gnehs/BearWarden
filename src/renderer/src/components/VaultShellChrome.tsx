@@ -164,7 +164,7 @@ export function VaultShellTitlebar({
       {appearance.isMac && (
         <div className="inline-flex items-center gap-2 max-[680px]:hidden">
           <BrandMark hideMark />
-          <Badge variant="secondary" className="bg-black/5 shadow-(--control-highlight)">
+          <Badge variant="chip">
             <Trans>Beta</Trans>
           </Badge>
         </div>
@@ -172,8 +172,8 @@ export function VaultShellTitlebar({
       {!navigation.auxiliaryPageOpen && (
         <InputGroup
           className={cn(
-            'text-muted-foreground [@media(prefers-reduced-transparency:reduce)]:bg-card bg-card/50 hover:bg-muted hover:text-foreground focus-within:border-ring absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-xl border-0 py-0 pr-2 pl-2.5 max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
-            'shadow-(--control-highlight) hover:shadow-(--control-highlight)',
+            'text-muted-foreground hover:text-foreground focus-within:border-ring absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-full border border-(--glass-ring) bg-(--glass-surface) py-0 pr-2 pl-3 backdrop-blur-xl backdrop-saturate-150 hover:bg-(--segment-thumb) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+            'shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)] hover:shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)]',
             '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
           )}
         >
@@ -218,7 +218,7 @@ export function VaultShellTitlebar({
         <TooltipIconButton
           variant="outline"
           size="icon"
-          className="border-border text-foreground rounded-lg bg-[color-mix(in_oklch,var(--card)_32%,transparent)] shadow-[var(--control-highlight),0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)]"
+          className="text-foreground rounded-full border-(--glass-ring) bg-(--glass-surface) shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_12%,transparent)] backdrop-blur-xl backdrop-saturate-150"
           type="button"
           label={t`Add item`}
           onClick={itemCreation.onCreate}

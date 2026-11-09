@@ -84,7 +84,21 @@ import {
   AlertDialogTitle
 } from './ui/alert-dialog'
 import { Badge } from './ui/badge'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import {
+  DetailHeader,
+  DetailHeading,
+  detailIconClassName,
+  detailScrollClassName
+} from './VaultDetailSurface'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  type CardTone
+} from './ui/card'
 import { Checkbox } from './ui/checkbox'
 import {
   Dialog,
@@ -387,16 +401,19 @@ function EditorFormSection({
   title,
   titleId,
   icon,
+  tone,
   children
 }: {
   title: string
   titleId: string
   icon: ReactNode
+  tone: CardTone
   children: ReactNode
 }): React.JSX.Element {
   return (
     <Card
-      variant="item"
+      variant="folder"
+      tone={tone}
       className="mx-auto mb-3 w-full max-w-[720px]"
       role="region"
       aria-labelledby={titleId}
@@ -1631,39 +1648,26 @@ function LoginEditor({
       onSubmit={submit}
       aria-labelledby="editor-title"
     >
-      <header className="bg-muted/30 flex items-center gap-2.5 px-4 py-3 max-[680px]:px-3 max-[680px]:py-2.5">
-        <span
-          className={cn(
-            'outline-foreground/5 bg-muted text-primary dark:border-border dark:bg-muted dark:text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md shadow-(--control-highlight) outline max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-4.5',
-            draft.type === 'login' && 'overflow-hidden',
-            draft.type === 'card' && 'text-chart-4 dark:bg-website-icon-background',
-            draft.type === 'identity' && 'bg-accent text-primary',
-            draft.type === 'secureNote' && 'bg-muted text-chart-3',
-            draft.type === 'sshKey' && 'bg-accent text-chart-2'
-          )}
-          data-detail-icon=""
-          aria-hidden="true"
-        >
+      <DetailHeader>
+        <span className={detailIconClassName(draft.type)} data-detail-icon="" aria-hidden="true">
           <ItemTypeIcon />
         </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="m-0 truncate text-base font-medium" id="editor-title">
-            {headerContent.heading}
-          </h2>
-          <p className="text-muted-foreground mt-1 mb-0 truncate text-xs">
-            {headerContent.eyebrow}
-            {dirty && (
-              <>
-                {' · '}
+        <DetailHeading
+          title={headerContent.heading}
+          titleId="editor-title"
+          subtitle={headerContent.eyebrow}
+          chips={
+            dirty ? (
+              <Badge variant="warning">
                 <Trans>Unsaved</Trans>
-              </>
-            )}
-          </p>
-        </div>
+              </Badge>
+            ) : undefined
+          }
+        />
         <Button
           variant="outline"
           size="icon"
-          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-md shadow-(--control-highlight)"
+          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-xl shadow-(--control-highlight)"
           type="button"
           aria-label={t`Cancel editing`}
           onClick={requestCancel}
@@ -1671,9 +1675,14 @@ function LoginEditor({
         >
           <X />
         </Button>
-      </header>
+      </DetailHeader>
 
-      <div className="scroll-fade-y forced-colors:scroll-fade-none bg-muted/30 grid min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] content-start gap-3 overflow-auto px-4 pt-4 pb-7 max-[680px]:px-3 max-[680px]:pt-3 max-[680px]:pb-5">
+      <div
+        className={cn(
+          'scroll-fade-y forced-colors:scroll-fade-none grid content-start gap-3',
+          detailScrollClassName
+        )}
+      >
         <div className="flex w-full flex-col">
           {error && (
             <FieldError id="editor-error" role="alert" className="mt-2">
@@ -1685,6 +1694,7 @@ function LoginEditor({
             <EditorFormSection
               title={t`${currentTypeLabel} details`}
               titleId="item-section-title"
+              tone="amber"
               icon={<ItemTypeIcon aria-hidden="true" />}
             >
               <FieldGroup className="gap-3">
@@ -2464,6 +2474,7 @@ function LoginEditor({
 
           <EditorSection value="organize" className="flex flex-col">
             <EditorFormSection
+              tone="sky"
               title={
                 sharedContext
                   ? t({
@@ -2669,6 +2680,7 @@ function LoginEditor({
               <EditorFormSection
                 title={t`Attachments`}
                 titleId="attachments-section-title"
+                tone="sky"
                 icon={<Paperclip aria-hidden="true" />}
               >
                 <FieldGroup className="gap-3">
@@ -2747,6 +2759,7 @@ function LoginEditor({
               <EditorFormSection
                 title={t`Notes`}
                 titleId="notes-section-title"
+                tone="rose"
                 icon={<NotebookPen aria-hidden="true" />}
               >
                 <FieldGroup className="gap-3">
@@ -2772,6 +2785,7 @@ function LoginEditor({
             <EditorFormSection
               title={t`Custom fields`}
               titleId="custom-fields-section-title"
+              tone="violet"
               icon={<ListPlus aria-hidden="true" />}
             >
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

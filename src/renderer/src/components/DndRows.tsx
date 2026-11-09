@@ -106,11 +106,11 @@ export const ItemRow = memo(function ItemRow({
       data-item-row=""
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'group/item border-border has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-none border-0 border-b has-[[data-item-row-main]:focus-visible]:rounded-lg has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        'group/item has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-2xl border-0 has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
         shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto] pr-3',
-        !selected && 'active:bg-accent/85 hover:bg-accent/50 hover:rounded-lg',
+        !selected && 'hover:bg-sidebar-overlay-hover active:bg-sidebar-overlay-active',
         selected &&
-          'active:bg-primary active:text-primary-foreground bg-primary text-primary-foreground hover:bg-primary rounded-xl border-b-transparent shadow-[0_4px_13px_color-mix(in_oklch,var(--shadow-color)_18%,transparent)] hover:rounded-xl has-[[data-item-row-main]:focus-visible]:rounded-xl forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
+          'text-foreground bg-(--segment-thumb) shadow-[var(--segment-thumb-shadow),0_0_0_1px_var(--surface-ring)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isDragging && 'cursor-grabbing opacity-0'
       )}
       {...attributes}
@@ -158,7 +158,7 @@ export const ItemRow = memo(function ItemRow({
       >
         <span
           className={cn(
-            'bg-muted text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-md shadow-(--control-highlight) outline forced-colors:[forced-color-adjust:none]',
+            'bg-card text-muted-foreground outline-foreground/5 grid size-10 place-items-center rounded-xl shadow-(--surface-shadow) outline forced-colors:[forced-color-adjust:none]',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
               'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
@@ -183,17 +183,12 @@ export const ItemRow = memo(function ItemRow({
           <strong
             className={cn(
               'text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm font-medium',
-              selected && 'text-primary-foreground'
+              selected && 'font-semibold'
             )}
           >
             {item.name}
           </strong>
-          <small
-            className={cn(
-              'text-muted-foreground truncate text-xs',
-              selected && 'text-primary-foreground/82'
-            )}
-          >
+          <small className="text-muted-foreground truncate text-xs">
             {item.deletedAt
               ? t`Deleted item`
               : item.subtitle || item.username || item.uri || t`No summary set`}
@@ -201,10 +196,7 @@ export const ItemRow = memo(function ItemRow({
         </span>
         {shouldShowTotpCode && (
           <span
-            className={cn(
-              'grid min-w-20 justify-items-end text-right',
-              selected ? 'text-primary-foreground' : 'text-foreground'
-            )}
+            className={cn('text-foreground grid min-w-20 justify-items-end text-right')}
             aria-label={
               totpCode
                 ? t`Authentication code ${totpCode.code}, ${totpCode.remainingSeconds} seconds remaining`
@@ -237,8 +229,7 @@ export const ItemRow = memo(function ItemRow({
           size="icon-sm"
           className={cn(
             'text-muted-foreground hover:text-foreground size-7 min-w-7 cursor-pointer self-center opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 hover:bg-transparent focus-visible:opacity-100',
-            selected &&
-              'text-primary-foreground/82 hover:bg-primary-foreground/10 hover:text-primary-foreground active:bg-primary-foreground/10 active:text-primary-foreground focus-visible:bg-primary-foreground/10 focus-visible:text-primary-foreground opacity-100 hover:shadow-none active:shadow-none',
+            selected && 'opacity-100 hover:shadow-none active:shadow-none',
             item.favorite && !selected && 'text-chart-4 opacity-100',
             item.favorite && selected && 'opacity-100'
           )}
@@ -311,9 +302,9 @@ export function FolderRow({
       {...attributes}
       {...listeners}
       className={cn(
-        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg py-1 pe-3',
+        'group/folder text-foreground relative grid min-h-10 cursor-grab touch-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl py-1 pe-3',
         !selected && !isOver && !isDragging && 'hover:bg-sidebar-overlay-hover',
-        selected && !isDragging && 'bg-sidebar-overlay-active shadow-none',
+        selected && !isDragging && 'bg-(--segment-thumb) shadow-(--segment-thumb-shadow)',
         isDragging &&
           'bg-sidebar-overlay-active relative z-10 cursor-grabbing shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_55%,transparent)] forced-colors:outline-2 forced-colors:outline-offset-[-2px] forced-colors:outline-[Highlight]',
         isOver &&

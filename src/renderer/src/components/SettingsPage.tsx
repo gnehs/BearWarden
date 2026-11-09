@@ -736,10 +736,9 @@ function SettingsPage({
         headerNavigation={
           settings ? (
             <TabsList
-              variant="line"
               sliding
               aria-label={t`Settings categories`}
-              className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none w-full justify-start gap-1 overflow-x-auto px-1 group-data-horizontal/tabs:h-10"
+              className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none max-w-full justify-start gap-0.5 overflow-x-auto"
             >
               {localizedSettingsCategories.map(({ id, label, description, icon: Icon }) => (
                 <TabsTrigger

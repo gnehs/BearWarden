@@ -142,9 +142,9 @@ describe('LoginEditor design language', () => {
     const markup = renderLoginEditor()
 
     expect(markup).toContain('aria-labelledby="editor-title"')
-    expect(markup).toContain('id="editor-title">登入</h2>')
+    expect(markup).toMatch(/id="editor-title"[^>]*>登入<\/h2>/)
     expect(markup).toContain('data-slot="card"')
-    expect(markup).toContain('data-variant="item"')
+    expect(markup).toContain('data-variant="folder"')
     expect(markup).toContain('data-slot="card-header"')
     expect(markup).toContain('aria-labelledby="item-section-title"')
     expect(markup).toContain('id="organization-section-title"')

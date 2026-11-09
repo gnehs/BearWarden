@@ -11,7 +11,7 @@ import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import { CardContent, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { ItemHistoryRows } from './ItemHistoryRows'
-import { DetailCard } from './VaultShell-primitives'
+import { DetailCard, DetailMetaRow, DetailRowGroup } from './VaultDetailSurface'
 
 interface VaultItemMetadataCardsProps {
   selectedLogin: LoginView
@@ -40,7 +40,7 @@ export function VaultItemMetadataCards({
   return (
     <>
       {!sharedContext && selectedLogin.type === 'login' && selectedLogin.passkeys.length > 0 && (
-        <DetailCard role="region" aria-labelledby="passkeys-title" className="gap-1 pb-0">
+        <DetailCard tone="brand" role="region" aria-labelledby="passkeys-title">
           <CardHeader>
             <CardTitle id="passkeys-title">
               <KeyRound aria-hidden="true" />
@@ -48,14 +48,14 @@ export function VaultItemMetadataCards({
             </CardTitle>
           </CardHeader>
           <CardContent className="contents">
-            <div className="grid">
+            <DetailRowGroup className="mx-(--card-spacing)">
               {selectedLogin.passkeys.map((passkey) => (
                 <article
                   key={passkey.credentialId}
-                  className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border-b px-(--card-spacing) py-3 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
+                  className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                 >
                   <span
-                    className="text-primary grid size-8 place-items-center rounded-md bg-(--accent-soft)"
+                    className="text-primary bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
                     aria-hidden="true"
                   >
                     <KeyRound size={16} />
@@ -70,8 +70,8 @@ export function VaultItemMetadataCards({
                   </div>
                 </article>
               ))}
-            </div>
-            <p className="text-muted-foreground m-0 px-(--card-spacing) pt-2.5 pb-3 text-xs leading-normal">
+            </DetailRowGroup>
+            <p className="text-muted-foreground m-0 px-(--card-spacing) text-xs leading-normal">
               <Trans>
                 You can safely delete passkeys while editing the item. Private key material is never
                 sent to the renderer.
@@ -82,7 +82,7 @@ export function VaultItemMetadataCards({
       )}
 
       {(selectedLogin.type === 'secureNote' || selectedLogin.notes) && (
-        <DetailCard role="region" aria-labelledby="notes-title" className="gap-1 pb-0">
+        <DetailCard tone="rose" role="region" aria-labelledby="notes-title">
           <CardHeader>
             <CardTitle id="notes-title">
               <NotebookPen aria-hidden="true" />
@@ -92,7 +92,7 @@ export function VaultItemMetadataCards({
           <CardContent className="contents">
             <p
               className={cn(
-                'm-0 px-(--card-spacing) pt-3.5 pb-4 text-xs leading-relaxed whitespace-pre-wrap',
+                'mx-(--card-spacing) my-0 rounded-xl bg-(--inset-surface) px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-(--inset-shadow)',
                 !selectedLogin.notes?.trim() && 'text-muted-foreground'
               )}
             >
@@ -102,7 +102,7 @@ export function VaultItemMetadataCards({
         </DetailCard>
       )}
 
-      <DetailCard role="region" aria-labelledby="organization-title" className="gap-1 pb-0">
+      <DetailCard tone="sky" role="region" aria-labelledby="organization-title">
         <CardHeader>
           <CardTitle id="organization-title">
             {sharedContext ? <UsersRound aria-hidden="true" /> : <FolderOpen aria-hidden="true" />}
@@ -120,73 +120,62 @@ export function VaultItemMetadataCards({
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="contents">
-          <dl className="m-0 px-(--card-spacing) py-1">
+        <CardContent>
+          <DetailRowGroup as="dl">
             {sharedContext ? (
               <>
-                <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                  <dt className="text-muted-foreground text-xs leading-4">
-                    <Trans>Organization</Trans>
-                  </dt>
-                  <dd className="m-0 min-w-0 truncate text-xs leading-4">
-                    {sharedContext.organization?.name ?? t`Unavailable`}
-                  </dd>
-                </div>
-                <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                  <dt className="text-muted-foreground text-xs leading-4">
-                    <Trans>Collections</Trans>
-                  </dt>
-                  <dd className="m-0 min-w-0 text-xs leading-4">
-                    {sharedContext.collections.length > 0
-                      ? sharedContext.collections.map((collection) => collection.name).join(' · ')
-                      : t`Unavailable`}
-                  </dd>
-                </div>
+                <DetailMetaRow label={<Trans>Organization</Trans>} valueClassName="truncate">
+                  {sharedContext.organization?.name ?? t`Unavailable`}
+                </DetailMetaRow>
+                <DetailMetaRow label={<Trans>Collections</Trans>}>
+                  {sharedContext.collections.length > 0
+                    ? sharedContext.collections.map((collection) => collection.name).join(' · ')
+                    : t`Unavailable`}
+                </DetailMetaRow>
               </>
             ) : (
-              <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-                <dt className="text-muted-foreground text-xs leading-4">
+              <DetailMetaRow
+                label={
                   <Trans comment="Field label for the folder that contains this login item.">
                     Folder
                   </Trans>
-                </dt>
-                <dd className="m-0 flex min-w-0 items-center gap-2 text-xs leading-4">
-                  <span className="min-w-0 flex-1 truncate">
-                    {folders.find((folder) => folder.id === selectedLogin.folderId)?.name ??
-                      t`Unfiled`}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="-my-1.5 ml-auto"
-                    type="button"
-                    aria-label={t`Move to folder`}
-                    disabled={busy}
-                    onClick={onMoveToFolder}
-                  >
-                    <Pencil aria-hidden="true" />
-                  </Button>
-                </dd>
-              </div>
+                }
+                valueClassName="flex items-center gap-2"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {folders.find((folder) => folder.id === selectedLogin.folderId)?.name ??
+                    t`Unfiled`}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="-my-1.5 ml-auto"
+                  type="button"
+                  aria-label={t`Move to folder`}
+                  disabled={busy}
+                  onClick={onMoveToFolder}
+                >
+                  <Pencil aria-hidden="true" />
+                </Button>
+              </DetailMetaRow>
             )}
-            <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-              <dt className="text-muted-foreground text-xs leading-4">
+            <DetailMetaRow
+              label={
                 <Trans
                   context="item-last-used"
                   comment="Field label for the last time this vault item was used; this is a usage timestamp, not a recent calendar event."
                 >
                   Recently used
                 </Trans>
-              </dt>
-              <dd className="m-0 min-w-0 text-xs leading-4">
-                {formatDate(selectedLogin.lastUsedAt)}
-              </dd>
-            </div>
-          </dl>
+              }
+            >
+              {formatDate(selectedLogin.lastUsedAt)}
+            </DetailMetaRow>
+          </DetailRowGroup>
         </CardContent>
       </DetailCard>
 
-      <DetailCard role="region" aria-labelledby="history-title" className="gap-1 pb-0">
+      <DetailCard tone="neutral" role="region" aria-labelledby="history-title">
         <CardHeader>
           <CardTitle id="history-title">
             <History aria-hidden="true" />
@@ -195,7 +184,7 @@ export function VaultItemMetadataCards({
             </Trans>
           </CardTitle>
         </CardHeader>
-        <CardContent className="contents">
+        <CardContent>
           <ItemHistoryRows
             item={selectedLogin}
             formatDate={formatDate}

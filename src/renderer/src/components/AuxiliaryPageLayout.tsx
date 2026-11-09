@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from 'react'
+import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 
 interface AuxiliaryPageLayoutProps {
@@ -46,11 +47,11 @@ function AuxiliaryPageLayout({
   scrollClassName
 }: AuxiliaryPageLayoutProps): React.JSX.Element {
   return (
-    <div className="flex min-h-0 flex-1 flex-col" aria-labelledby={titleId}>
+    <div className="relative isolate flex min-h-0 flex-1 flex-col" aria-labelledby={titleId}>
+      <DotGridBackdrop />
       <header
         className={cn(
-          'border-border min-h-24 border-b bg-[color-mix(in_oklch,var(--card)_94%,transparent)] px-[clamp(1.25rem,3vw,2.5rem)] backdrop-blur-lg max-[680px]:min-h-0',
-          headerNavigation ? 'pt-4' : 'py-4'
+          'min-h-24 border-b border-(--surface-ring) bg-(--glass-surface) px-[clamp(1.25rem,3vw,2.5rem)] py-4 backdrop-blur-xl backdrop-saturate-150 max-[680px]:min-h-0'
         )}
       >
         <div className="mx-auto grid w-full max-w-4xl grid-cols-[minmax(0,1fr)] items-center justify-center gap-5">
@@ -58,14 +59,14 @@ function AuxiliaryPageLayout({
             <div className="flex min-w-0 items-center gap-3">
               {headerIcon && (
                 <span
-                  className="text-primary grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] [&>svg]:size-5"
+                  className="text-primary bg-card grid size-12 shrink-0 place-items-center rounded-2xl shadow-(--surface-shadow) [&>svg]:size-5"
                   aria-hidden="true"
                 >
                   {headerIcon}
                 </span>
               )}
               <div className="min-w-0">
-                <h1 id={titleId} className="m-0 text-2xl leading-tight">
+                <h1 id={titleId} className="m-0 text-2xl leading-tight font-bold tracking-tight">
                   {title}
                 </h1>
                 <p className="text-muted-foreground mt-1 text-xs leading-[1.45]">{subtitle}</p>
@@ -79,7 +80,7 @@ function AuxiliaryPageLayout({
       <div
         ref={scrollRef}
         className={cn(
-          'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto bg-[color-mix(in_oklch,var(--muted)_34%,var(--background))] p-[clamp(1rem,3vw,2rem)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
+          'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto p-[clamp(1rem,3vw,2rem)] max-[680px]:px-3 max-[680px]:pt-3.5 max-[680px]:pb-6',
           scrollClassName
         )}
       >

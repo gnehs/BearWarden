@@ -102,7 +102,7 @@ export function VaultItemListPane({
     <>
       <header className="flex min-h-20 items-center justify-between gap-3 px-5 pt-4 pb-3 max-[430px]:px-3">
         <div className="grid gap-0.5">
-          <h1 className="m-0 text-xl leading-tight font-bold" id="list-title">
+          <h1 className="m-0 text-2xl leading-tight font-bold tracking-tight" id="list-title">
             {list.scopeTitle}
           </h1>
           <small className="text-muted-foreground text-xs">
@@ -111,8 +111,8 @@ export function VaultItemListPane({
               : t`${list.itemCount} items`}
           </small>
         </div>
-        <div className="border-border flex items-center gap-2 rounded-2xl border bg-[color-mix(in_oklch,var(--card)_78%,transparent)] p-1 shadow-none dark:bg-[color-mix(in_oklch,var(--card)_70%,transparent)]">
-          <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-1.5 shadow-none">
+        <div className="bg-card flex items-center gap-2 rounded-full border border-(--surface-ring) p-0.5 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_8%,transparent)] dark:bg-(--segment-thumb)">
+          <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-2.5 shadow-none">
             <ListFilter size={16} aria-hidden="true" />
             <Select
               items={list.sortOptions}

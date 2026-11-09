@@ -3,27 +3,13 @@ import { useLingui } from '@lingui/react/macro'
 import { Button } from '@renderer/components/ui/button'
 import { History } from 'lucide-react'
 import { formatVaultDate } from '../lib/vault-date'
+import { DetailMetaRow, DetailRowGroup } from './VaultDetailSurface'
 
 interface ItemHistoryRowsProps {
   item: Pick<LoginView, 'updatedAt' | 'createdAt' | 'passwordUpdatedAt' | 'passwordHistoryCount'>
   formatDate?: (value: string | null) => string
   onViewPasswordHistory?: () => void
   busy?: boolean
-}
-
-function HistoryRow({
-  label,
-  children
-}: {
-  label: string
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <div className="border-border grid grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b py-2.5 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-      <dt className="text-muted-foreground text-xs leading-4">{label}</dt>
-      <dd className="m-0 min-w-0 text-xs leading-4">{children}</dd>
-    </div>
-  )
 }
 
 export function ItemHistoryRows({
@@ -35,16 +21,16 @@ export function ItemHistoryRows({
   const { t } = useLingui()
 
   return (
-    <dl className="m-0 px-(--card-spacing) py-1">
-      <HistoryRow
+    <DetailRowGroup as="dl">
+      <DetailMetaRow
         label={t({
           message: 'Last edited',
           comment: 'Metadata label showing when this vault item was last modified.'
         })}
       >
         {formatDate(item.updatedAt)}
-      </HistoryRow>
-      <HistoryRow
+      </DetailMetaRow>
+      <DetailMetaRow
         label={t({
           message: 'Created',
           context: 'item-created',
@@ -52,19 +38,19 @@ export function ItemHistoryRows({
         })}
       >
         {formatDate(item.createdAt)}
-      </HistoryRow>
+      </DetailMetaRow>
       {item.passwordUpdatedAt !== null && (
-        <HistoryRow
+        <DetailMetaRow
           label={t({
             message: 'Password last updated',
             comment: 'Metadata label showing when the password in this login item was last changed.'
           })}
         >
           {formatDate(item.passwordUpdatedAt)}
-        </HistoryRow>
+        </DetailMetaRow>
       )}
       {item.passwordHistoryCount > 0 && onViewPasswordHistory && (
-        <HistoryRow label={t`Password history`}>
+        <DetailMetaRow label={t`Password history`}>
           <div className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate">{t`${item.passwordHistoryCount} records`}</span>
             <Button
@@ -79,8 +65,8 @@ export function ItemHistoryRows({
               <History aria-hidden="true" />
             </Button>
           </div>
-        </HistoryRow>
+        </DetailMetaRow>
       )}
-    </dl>
+    </DetailRowGroup>
   )
 }

@@ -82,6 +82,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
+import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 import { activateLanguagePreference } from '@renderer/i18n'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
@@ -1091,15 +1092,15 @@ function VaultShellContent({
                 ? 'grid-cols-[minmax(0,1fr)]'
                 : 'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
 
-              (isMac || isWindows) &&
-                '[@media(prefers-reduced-transparency:reduce)]:bg-card rounded-2xl border border-(--native-material-border) bg-(--native-panel-material) shadow-(--native-material-shadow) [backdrop-filter:saturate(145%)_blur(24px)] [-webkit-backdrop-filter:saturate(145%)_blur(24px)] [@media(prefers-reduced-transparency:reduce)]:[backdrop-filter:none] [@media(prefers-reduced-transparency:reduce)]:[-webkit-backdrop-filter:none]'
+              (isMac || isWindows) && 'gap-2 bg-transparent max-[680px]:gap-0'
             )}
             data-vault-pane-group=""
           >
             <section
               className={cn(
                 'border-border relative flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
-                (isMac || isWindows) && 'border-r-(--native-material-border)'
+                (isMac || isWindows) &&
+                  'overflow-hidden rounded-3xl border border-(--glass-ring) bg-(--glass-surface) shadow-(--surface-shadow) backdrop-blur-2xl backdrop-saturate-150'
               )}
               data-vault-list-pane=""
               aria-labelledby={
@@ -1193,10 +1194,15 @@ function VaultShellContent({
             </section>
 
             <section
-              className="relative flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex"
+              className={cn(
+                'relative isolate flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex',
+                (isMac || isWindows) &&
+                  'rounded-3xl border border-(--surface-ring) shadow-(--surface-shadow)'
+              )}
               data-vault-detail-pane=""
               aria-label={t`Item details`}
             >
+              <DotGridBackdrop />
               {editorMode ? (
                 <LoginEditor
                   key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}
