@@ -123,7 +123,8 @@ import type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
   VaultServiceOptions,
-  VaultNativeAttachmentRestoreSummary
+  VaultNativeAttachmentRestoreSummary,
+  AttachmentAuthorizationValidator
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
 import {
@@ -146,6 +147,8 @@ import {
 } from './vault/sync-session'
 import { VaultFolders } from './vault/folders'
 import { VaultHealth } from './vault/health'
+import { VaultListings } from './vault/listings'
+import { VaultPasswordHistory } from './vault/password-history-service'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
@@ -163,16 +166,6 @@ interface LoginImportCandidate {
   remoteFolderId: string | null
   baseFingerprint: string
 }
-
-type AttachmentAuthorizationValidator = (
-  ids: readonly string[],
-  state: { generation: number }
-) => boolean
-
-type ItemReadAuthorizationValidator = (
-  ids: readonly string[],
-  state: { generation: number }
-) => boolean
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -219,11 +212,7 @@ export {
   clearAccountWebAuthnAttestation,
   scrubAccountSessionDeauthorizationRequest
 }
-export type {
-  AttachmentAuthorizationValidator,
-  ItemReadAuthorizationValidator,
-  AccountWebAuthnOperationLease
-}
+export type { AccountWebAuthnOperationLease }
 
 function changesRemote(action: SyncAction): boolean {
   if (action.kind === 'conflict-copy') return action.reason !== 'both-modified'
@@ -268,6 +257,8 @@ export class VaultServiceBase {
   protected readonly syncSession: VaultSyncSession
   protected readonly folders: VaultFolders
   protected readonly health: VaultHealth
+  protected readonly listings: VaultListings
+  protected readonly passwordHistory: VaultPasswordHistory
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -342,6 +333,8 @@ export class VaultServiceBase {
     )
     this.folders = new VaultFolders(this.core)
     this.health = new VaultHealth(this.core, this.syncSession, this.platform, this.fetch)
+    this.listings = new VaultListings(this.core, this.syncSession)
+    this.passwordHistory = new VaultPasswordHistory(this.core, this.platform)
   }
 
   status(): Promise<VaultStatus> {

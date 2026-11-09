@@ -1,9 +1,9 @@
+import type { VaultCore } from './core'
+import type { VaultSyncSession } from './sync-session'
 import type {
   LoginIdRequest,
   LoginListRequest,
   LoginPrefetchRequest,
-  PasswordHistoryEntryRequest,
-  PasswordHistoryRestoreRequest,
   LoginSummary,
   LoginView,
   OrganizationView,
@@ -11,15 +11,12 @@ import type {
   SharedLoginListRequest,
   SharedLoginSummary,
   SharedLoginView,
-  EmergencyAccessView,
-  VaultPasswordHistoryEntry,
-  VaultPasswordHistoryView
-} from '../shared/vault-contract'
-import { MAX_LOGIN_PREFETCH_IDS, MAX_LOGIN_SEARCH_QUERY_LENGTH } from '../shared/vault-contract'
-import { searchVaultItems } from './vault-search'
-import { VaultError } from './vault-errors'
-import { MAX_PASSWORD_HISTORY } from './vault/limits'
-import { assertUuid } from './vault/parse-primitives'
+  EmergencyAccessView
+} from '../../shared/vault-contract'
+import { MAX_LOGIN_PREFETCH_IDS, MAX_LOGIN_SEARCH_QUERY_LENGTH } from '../../shared/vault-contract'
+import { searchVaultItems } from '../vault-search'
+import { VaultError } from '../vault-errors'
+import { assertUuid } from './parse-primitives'
 import {
   toSummary,
   toSharedSummary,
@@ -27,16 +24,17 @@ import {
   toView,
   toSharedView,
   compareText
-} from './vault/views'
-import { emergencyAccessViewFromRemote } from './vault/org-collection-parsing'
-import { clonePasswordHistory } from './vault/password-history'
-import type { StoredLogin } from './vault/types'
-import { type ItemReadAuthorizationValidator } from './vault-service-base'
-import { VaultAccountService } from './vault-account-service'
-import { findFolder, findLogin, assertActiveLogin } from './vault/data-lookup'
+} from './views'
+import { emergencyAccessViewFromRemote } from './org-collection-parsing'
+import { findFolder, findLogin, assertActiveLogin } from './data-lookup'
 
-/** Vault queries and local content domains: sends, folders, health, and password history. */
-export class VaultContentService extends VaultAccountService {
+/** Read-only item queries: personal and shared item lists, item views, organizations, collections and emergency access. */
+export class VaultListings {
+  constructor(
+    private readonly core: VaultCore,
+    private readonly syncSession: VaultSyncSession
+  ) {}
+
   async listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
     const data = this.core.requireFastReadData()
     const sort = request.sort ?? 'recent'
@@ -218,122 +216,6 @@ export class VaultContentService extends VaultAccountService {
       return login && login.deletedAt === null && login.archivedAt === null && login.reprompt === 0
         ? [toView(login)]
         : []
-    })
-  }
-
-  async getPasswordHistory(
-    request: LoginIdRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): Promise<VaultPasswordHistoryEntry[]> {
-    const login = this.passwordHistoryLogin(request, validateAuthorization)
-    return clonePasswordHistory(login.passwordHistory)
-  }
-
-  async getPasswordHistoryView(
-    request: LoginIdRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): Promise<VaultPasswordHistoryView> {
-    const login = this.passwordHistoryLogin(request, validateAuthorization)
-    return {
-      expectedUpdatedAt: login.updatedAt,
-      entries: login.passwordHistory.map(({ lastUsedDate }) => ({ lastUsedDate }))
-    }
-  }
-
-  async revealPasswordHistory(
-    request: PasswordHistoryEntryRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): Promise<string> {
-    return this.passwordHistoryEntry(request, validateAuthorization).password
-  }
-
-  async copyPasswordHistory(
-    request: PasswordHistoryEntryRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): Promise<void> {
-    const entry = this.passwordHistoryEntry(request, validateAuthorization)
-    await this.platform.copyText(entry.password)
-  }
-
-  private passwordHistoryLogin(
-    request: LoginIdRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): StoredLogin {
-    assertUuid(request.id)
-    // History is cloned synchronously from the last committed snapshot so a background sync
-    // cannot leave the explicit reveal action waiting behind network I/O. Lock starts by
-    // blocking fast reads, and authorization is validated before this turn can yield.
-    const login = findLogin(this.core.requireFastReadData(), request.id)
-    if (
-      (login.reprompt === 1 || login.deletedAt !== null) &&
-      !validateAuthorization?.([login.id], { generation: this.core.generation })
-    ) {
-      throw new VaultError('REPROMPT_REQUIRED')
-    }
-    return login
-  }
-
-  private passwordHistoryEntry(
-    request: PasswordHistoryEntryRequest,
-    validateAuthorization?: ItemReadAuthorizationValidator
-  ): VaultPasswordHistoryEntry {
-    if (
-      !Number.isSafeInteger(request.index) ||
-      request.index < 0 ||
-      request.index >= MAX_PASSWORD_HISTORY ||
-      typeof request.lastUsedDate !== 'string' ||
-      !Number.isFinite(Date.parse(request.lastUsedDate)) ||
-      typeof request.expectedUpdatedAt !== 'string' ||
-      !Number.isFinite(Date.parse(request.expectedUpdatedAt))
-    ) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    const login = this.passwordHistoryLogin(request, validateAuthorization)
-    if (login.updatedAt !== request.expectedUpdatedAt) throw new VaultError('INVALID_INPUT')
-    const entry = login.passwordHistory[request.index]
-    if (!entry || entry.lastUsedDate !== request.lastUsedDate) {
-      throw new VaultError('INVALID_INPUT')
-    }
-    return entry
-  }
-
-  restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {
-    return this.core.mutate((data, now) => {
-      assertUuid(request.id)
-      if (
-        !Number.isSafeInteger(request.index) ||
-        request.index < 0 ||
-        request.index >= MAX_PASSWORD_HISTORY ||
-        typeof request.lastUsedDate !== 'string' ||
-        !Number.isFinite(Date.parse(request.lastUsedDate)) ||
-        typeof request.expectedUpdatedAt !== 'string'
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      const login = findLogin(data, request.id)
-      assertActiveLogin(login)
-      if (login.type !== 'login' || login.updatedAt !== request.expectedUpdatedAt) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      const entry = login.passwordHistory[request.index]
-      if (
-        !entry ||
-        entry.lastUsedDate !== request.lastUsedDate ||
-        entry.password === login.password
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      const previousPassword = login.password
-      const previousHistory = clonePasswordHistory(login.passwordHistory)
-      login.password = entry.password
-      login.passwordHistory = (
-        previousPassword.length > 0
-          ? [{ password: previousPassword, lastUsedDate: now }, ...previousHistory]
-          : previousHistory
-      ).slice(0, MAX_PASSWORD_HISTORY)
-      login.passwordRevisionDate = now
-      login.updatedAt = now
-      return toView(login)
     })
   }
 }

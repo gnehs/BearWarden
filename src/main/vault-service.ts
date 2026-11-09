@@ -44,7 +44,17 @@ import type {
   VaultHealthExposedReport,
   VaultHealthAccountBreachReport,
   VaultHealthAccountBreachRequest,
-  VaultHealthReport
+  VaultHealthReport,
+  LoginListRequest,
+  LoginPrefetchRequest,
+  OrganizationView,
+  CollectionView,
+  SharedLoginListRequest,
+  SharedLoginSummary,
+  EmergencyAccessView,
+  PasswordHistoryEntryRequest,
+  PasswordHistoryRestoreRequest,
+  VaultPasswordHistoryView
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
@@ -143,9 +153,9 @@ import type {
   PasskeyVaultCreateResult,
   PasskeyVaultAssertionRequest,
   PasskeyVaultAssertionResult,
-  VaultData
+  VaultData,
+  ItemReadAuthorizationValidator
 } from './vault/types'
-import type { ItemReadAuthorizationValidator } from './vault-service-base'
 import { VaultTransferService } from './vault-transfer-service'
 import {
   findLogin,
@@ -156,7 +166,6 @@ import {
 } from './vault/data-lookup'
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
-
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -1728,5 +1737,69 @@ export class VaultService extends VaultTransferService {
 
   openHibpWebsite(): Promise<void> {
     return this.health.openHibpWebsite()
+  }
+
+  listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
+    return this.listings.listLogins(request)
+  }
+
+  listOrganizations(): Promise<OrganizationView[]> {
+    return this.listings.listOrganizations()
+  }
+
+  listCollections(organizationId?: string): Promise<CollectionView[]> {
+    return this.listings.listCollections(organizationId)
+  }
+
+  listSharedLogins(request: SharedLoginListRequest = {}): Promise<SharedLoginSummary[]> {
+    return this.listings.listSharedLogins(request)
+  }
+
+  getSharedLogin(request: LoginIdRequest): Promise<SharedLoginView> {
+    return this.listings.getSharedLogin(request)
+  }
+
+  listEmergencyAccess(): Promise<EmergencyAccessView[]> {
+    return this.listings.listEmergencyAccess()
+  }
+
+  getLogin(request: LoginIdRequest): Promise<LoginView> {
+    return this.listings.getLogin(request)
+  }
+
+  prefetchLogins(request: LoginPrefetchRequest): Promise<LoginView[]> {
+    return this.listings.prefetchLogins(request)
+  }
+
+  getPasswordHistory(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<VaultPasswordHistoryEntry[]> {
+    return this.passwordHistory.getPasswordHistory(request, validateAuthorization)
+  }
+
+  getPasswordHistoryView(
+    request: LoginIdRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<VaultPasswordHistoryView> {
+    return this.passwordHistory.getPasswordHistoryView(request, validateAuthorization)
+  }
+
+  revealPasswordHistory(
+    request: PasswordHistoryEntryRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<string> {
+    return this.passwordHistory.revealPasswordHistory(request, validateAuthorization)
+  }
+
+  copyPasswordHistory(
+    request: PasswordHistoryEntryRequest,
+    validateAuthorization?: ItemReadAuthorizationValidator
+  ): Promise<void> {
+    return this.passwordHistory.copyPasswordHistory(request, validateAuthorization)
+  }
+
+  restorePasswordHistory(request: PasswordHistoryRestoreRequest): Promise<LoginView> {
+    return this.passwordHistory.restorePasswordHistory(request)
   }
 }

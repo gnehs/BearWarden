@@ -55,10 +55,10 @@ import type {
   VaultExportSnapshot,
   VaultNativeAttachmentBackupSource,
   VaultNativeAttachmentRestoreSummary,
-  PersistedSyncData
+  PersistedSyncData,
+  AttachmentAuthorizationValidator
 } from './vault/types'
-import { type AttachmentAuthorizationValidator } from './vault-service-base'
-import { VaultContentService } from './vault-content-service'
+import { VaultAccountService } from './vault-account-service'
 import { findLogin, assertActiveLogin } from './vault/data-lookup'
 import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
 const MAX_ATTACHMENT_PREVIEW_BYTES = 10 * 1024 * 1024
@@ -182,7 +182,7 @@ async function collectPreviewBytes(
 }
 
 /** Attachment I/O, portable exports/imports, and resumable native attachment restoration. */
-export class VaultTransferService extends VaultContentService {
+export class VaultTransferService extends VaultAccountService {
   async downloadAttachment(
     request: AttachmentDownloadRequest,
     reportProgress?: (progress: AttachmentProgressEvent) => void,

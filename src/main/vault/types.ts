@@ -383,3 +383,15 @@ export interface PasskeyVaultMatch {
   passkeyIndex: number
   credentialId: Buffer
 }
+
+/** Confirms a reprompt-protected attachment read or write was authorized in this vault generation. */
+export type AttachmentAuthorizationValidator = (
+  ids: readonly string[],
+  state: { generation: number }
+) => boolean
+
+/** Confirms a reprompt-protected item read was authorized in this vault generation. */
+export type ItemReadAuthorizationValidator = (
+  ids: readonly string[],
+  state: { generation: number }
+) => boolean
