@@ -69,7 +69,8 @@ import type {
   AttachmentPreviewResult,
   AttachmentUploadCardCoverRequest,
   AttachmentUploadRequest,
-  AttachmentUploadResult
+  AttachmentUploadResult,
+  VaultImportResult
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
@@ -170,9 +171,12 @@ import type {
   PasskeyVaultAssertionResult,
   VaultData,
   ItemReadAuthorizationValidator,
-  AttachmentAuthorizationValidator
+  AttachmentAuthorizationValidator,
+  VaultExportSnapshot,
+  VaultNativeAttachmentBackupSource,
+  VaultNativeAttachmentRestoreSummary
 } from './vault/types'
-import { VaultTransferService } from './vault-transfer-service'
+import { VaultAccountService } from './vault-account-service'
 import {
   findLogin,
   resolveLoginBatch,
@@ -184,6 +188,11 @@ import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from
 import type { InactiveTwoFactorReport, TwoFactorDirectoryDataset } from './inactive-two-factor'
 import { remoteDraft } from './vault/sync-snapshots'
 import { sharedLoginFromRemote } from './vault/local-records'
+import type { PortableVaultSnapshot } from './vault-portability-codec'
+import type { NativeAttachmentRestoreAttachmentKey } from './native-attachment-restore'
+import type { NativeAttachmentBackupPreview } from './native-attachment-backup'
+import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
+
 export type {
   VaultAccountWebAuthnAssertionRequester,
   VaultAccountWebAuthnRegistrationRequester,
@@ -210,7 +219,7 @@ const WEBSITE_ICON_MISSING_TTL_MS = 24 * 60 * 60 * 1000
 const WEBSITE_ICON_RETRY_MS = 10 * 60 * 1000
 
 /** Stable public entry point for item, autofill, passkey, SSH, and generator operations. */
-export class VaultService extends VaultTransferService {
+export class VaultService extends VaultAccountService {
   /**
    * Test-only view of the committed in-memory snapshot, for planting records the public API cannot
    * create and trapping reads of protected fields. Production code must not call it.
@@ -1894,5 +1903,67 @@ export class VaultService extends VaultTransferService {
 
   cancelAttachmentOperation(request: AttachmentCancelRequest): AttachmentCancelResult {
     return this.attachments.cancelAttachmentOperation(request)
+  }
+
+  verifyPortabilityOwner(masterPassword: string): Promise<void> {
+    return this.portability.verifyPortabilityOwner(masterPassword)
+  }
+
+  exportPortableSnapshot(masterPassword: string): Promise<VaultExportSnapshot> {
+    return this.portability.exportPortableSnapshot(masterPassword)
+  }
+
+  createNativeAttachmentBackupSource(
+    masterPassword: string,
+    options: { includeLoginWireMetadata?: boolean } = {}
+  ): Promise<VaultNativeAttachmentBackupSource> {
+    return this.portability.createNativeAttachmentBackupSource(masterPassword, options)
+  }
+
+  nativeAttachmentRestoreStatus(): Promise<VaultNativeAttachmentRestoreSummary | null> {
+    return this.portability.nativeAttachmentRestoreStatus()
+  }
+
+  clearCompletedNativeAttachmentRestore(archiveFingerprint: string): Promise<void> {
+    return this.portability.clearCompletedNativeAttachmentRestore(archiveFingerprint)
+  }
+
+  beginNativeAttachmentRestore(
+    preview: NativeAttachmentBackupPreview,
+    masterPassword: string
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.portability.beginNativeAttachmentRestore(preview, masterPassword)
+  }
+
+  syncNativeAttachmentRestoreItems(
+    archiveFingerprint: string
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.portability.syncNativeAttachmentRestoreItems(archiveFingerprint)
+  }
+
+  uploadNativeAttachmentRestoreEntry(
+    archiveFingerprint: string,
+    key: NativeAttachmentRestoreAttachmentKey,
+    source: BitwardenAttachmentByteSource
+  ): Promise<VaultNativeAttachmentRestoreSummary> {
+    return this.portability.uploadNativeAttachmentRestoreEntry(archiveFingerprint, key, source)
+  }
+
+  reconcileNativeAttachmentRestoreEntry(
+    archiveFingerprint: string,
+    key: NativeAttachmentRestoreAttachmentKey
+  ): Promise<{
+    outcome: 'uploaded' | 'missing' | 'conflict'
+    summary: VaultNativeAttachmentRestoreSummary
+  }> {
+    return this.portability.reconcileNativeAttachmentRestoreEntry(archiveFingerprint, key)
+  }
+
+  importPortableSnapshot(
+    snapshot: PortableVaultSnapshot,
+    skippedTrashItems: number,
+    masterPassword: string
+  ): Promise<Omit<VaultImportResult, 'canceled'>> {
+    return this.portability.importPortableSnapshot(snapshot, skippedTrashItems, masterPassword)
   }
 }

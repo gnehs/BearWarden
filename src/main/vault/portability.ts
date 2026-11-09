@@ -1,51 +1,78 @@
-import type { VaultImportResult } from '../shared/vault-contract'
-import { type BitwardenSyncClient } from './bitwarden-direct'
-import { BITWARDEN_POLICY_TYPE } from './bitwarden-policy'
+import type { VaultCore } from './core'
+import type { VaultSyncSession } from './sync-session'
+import type { FolderView, SyncResult, VaultImportResult } from '../../shared/vault-contract'
 import {
+  type BitwardenFolder,
+  type BitwardenLoginItem,
+  type BitwardenSyncClient
+} from '../bitwarden-direct'
+import { BITWARDEN_POLICY_TYPE } from '../bitwarden-policy'
+import {
+  type PortableVaultSnapshot,
   buildBitwardenJson,
-  parseBitwardenJson,
-  type PortableVaultSnapshot
-} from './vault-portability-codec'
-import type {
-  NativeAttachmentBackupEntry,
-  NativeAttachmentBackupPreview
-} from './native-attachment-backup'
-import type { BitwardenAttachmentByteSource } from './bitwarden-attachment-stream'
+  parseBitwardenJson
+} from '../vault-portability-codec'
 import {
+  failNativeAttachmentRestoreAttempt,
+  type NativeAttachmentRestoreAttachmentKey,
   beginNativeAttachmentRestoreAttempt,
   bindNativeAttachmentRestoreRemoteItem,
   completeNativeAttachmentRestoreAttempt,
   createNativeAttachmentRestoreJournal,
   reconcileNativeAttachmentRestoreMissing,
-  reconcileNativeAttachmentRestoreUploaded,
-  type NativeAttachmentRestoreAttachmentKey
-} from './native-attachment-restore'
-import { VaultError } from './vault-errors'
-import { cloneData } from './vault/vault-data-parsing'
-import {
-  assertNoPendingLoginImport,
-  assertNoPendingPersonalVaultPurge
-} from './vault/sync-data-parsing'
-import { cloneCustomFields } from './vault/custom-fields'
-import { cloneLoginUris } from './vault/login-uris'
-import { clonePasswordHistory } from './vault/password-history'
+  reconcileNativeAttachmentRestoreUploaded
+} from '../native-attachment-restore'
+import { VaultError } from '../vault-errors'
+import { MAX_NAME_LENGTH } from './limits'
+import { normalizeRequiredString } from './parse-primitives'
+import { cloneData } from './vault-data-parsing'
+import { assertNoPendingPersonalVaultPurge, assertNoPendingLoginImport } from './sync-data-parsing'
+import { parseFolder, parseStoredLogin } from './login-parsing'
+import { cloneCustomFields } from './custom-fields'
+import { cloneLoginUris } from './login-uris'
+import { clonePasswordHistory } from './password-history'
 import type {
+  VaultData,
   VaultExportSnapshot,
   VaultNativeAttachmentBackupSource,
   VaultNativeAttachmentRestoreSummary
-} from './vault/types'
-import { VaultAccountService } from './vault-account-service'
-import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './vault/policy'
-import { localSyncSnapshot } from './vault/sync-snapshots'
+} from './types'
+import { uniqueImportedFolderName } from './data-lookup'
+import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './policy'
+import { localSyncSnapshot, reconcileServerAuthoritativeAttachments } from './sync-snapshots'
+import { createLocalLogin } from './local-records'
+import type {
+  NativeAttachmentBackupEntry,
+  NativeAttachmentBackupPreview
+} from '../native-attachment-backup'
+import type { BitwardenAttachmentByteSource } from '../bitwarden-attachment-stream'
 import {
   nativeAttachmentRestoreAccountFingerprint,
   nativeAttachmentRestoreSummary,
   nativeAttachmentRestoreCandidateMatches,
   requireBoundNativeAttachmentRestore
-} from './vault/native-restore-binding'
+} from './native-restore-binding'
 
-/** Attachment I/O, portable exports/imports, and resumable native attachment restoration. */
-export class VaultTransferService extends VaultAccountService {
+/** Runs one authoritative sync; the native restore uses it to learn the server cipher state. */
+export interface VaultSyncRunner {
+  performSync(
+    current: VaultData,
+    client: BitwardenSyncClient,
+    signal: AbortSignal
+  ): Promise<SyncResult>
+}
+
+/**
+ * Moving vault content in and out: owner verification, portable export and import, native
+ * attachment backup sources, and the resumable native attachment restore journal.
+ */
+export class VaultPortability {
+  constructor(
+    private readonly core: VaultCore,
+    private readonly syncSession: VaultSyncSession,
+    private readonly syncRunner: VaultSyncRunner
+  ) {}
+
   verifyPortabilityOwner(masterPassword: string): Promise<void> {
     return this.core.exclusive(() => this.core.assertMasterPassword(masterPassword))
   }
@@ -399,7 +426,7 @@ export class VaultTransferService extends VaultAccountService {
       if (journal.phase !== 'syncing-items') return nativeAttachmentRestoreSummary(journal)
       const operation = this.startNativeAttachmentRestoreOperation(client)
       try {
-        await this.performSync(current, client, operation.abort.signal)
+        await this.syncRunner.performSync(current, client, operation.abort.signal)
         this.assertNativeAttachmentRestoreLease(operation)
         const next = cloneData(this.core.requireData())
         let updated = next.nativeAttachmentRestore
@@ -661,5 +688,133 @@ export class VaultTransferService extends VaultAccountService {
         skippedTrashItems
       }
     })
+  }
+
+  private appendPortableSnapshot(
+    data: VaultData,
+    snapshot: PortableVaultSnapshot
+  ): {
+    itemMappings: { sourceItemId: string; localItemId: string }[]
+  } {
+    const now = this.core.nowIso()
+    const sourceFolderIds = new Set<string>()
+    const sourceItemIds = new Set<string>()
+    const importedFolderIds = new Map<string, string>()
+    const itemMappings: { sourceItemId: string; localItemId: string }[] = []
+    for (const source of snapshot.folders) {
+      if (
+        !source ||
+        typeof source.id !== 'string' ||
+        sourceFolderIds.has(source.id) ||
+        typeof source.name !== 'string'
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      sourceFolderIds.add(source.id)
+      const folder: FolderView = {
+        id: this.core.validatedNewId(),
+        name: uniqueImportedFolderName(data, normalizeRequiredString(source.name, MAX_NAME_LENGTH)),
+        position: data.folders.length,
+        createdAt: now,
+        updatedAt: now
+      }
+      parseFolder(folder)
+      data.folders.push(folder)
+      importedFolderIds.set(source.id, folder.id)
+    }
+    for (const source of snapshot.items) {
+      if (
+        !source ||
+        typeof source.id !== 'string' ||
+        sourceItemIds.has(source.id) ||
+        source.deletedAt !== null
+      ) {
+        throw new VaultError('INVALID_INPUT')
+      }
+      sourceItemIds.add(source.id)
+      const folderId =
+        source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
+      if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
+      const created = createLocalLogin(this.core, data, source, folderId)
+      parseStoredLogin(created)
+      itemMappings.push({ sourceItemId: source.id, localItemId: created.id })
+    }
+    return { itemMappings }
+  }
+
+  private startNativeAttachmentRestoreOperation(client: BitwardenSyncClient): {
+    abort: AbortController
+    client: BitwardenSyncClient
+    generation: number
+  } {
+    const operation = {
+      abort: this.syncSession.startSyncOperation(),
+      client,
+      generation: this.core.generation
+    }
+    this.syncSession.nativeAttachmentRestoreAborts.add(operation.abort)
+    return operation
+  }
+
+  private finishNativeAttachmentRestoreOperation(operation: { abort: AbortController }): void {
+    this.syncSession.nativeAttachmentRestoreAborts.delete(operation.abort)
+    this.syncSession.finishSyncOperation(operation.abort)
+  }
+
+  private assertNativeAttachmentRestoreLease(operation: {
+    abort: AbortController
+    client: BitwardenSyncClient
+    generation: number
+  }): void {
+    if (
+      operation.abort.signal.aborted ||
+      operation.generation !== this.core.generation ||
+      operation.client !== this.syncSession.syncClient ||
+      !operation.client.exportState().session
+    ) {
+      throw new VaultError('LOCKED')
+    }
+  }
+
+  private applyNativeAttachmentRestoreRemoteSnapshot(
+    current: VaultData,
+    client: BitwardenSyncClient,
+    remoteFolders: BitwardenFolder[],
+    remoteLogins: BitwardenLoginItem[]
+  ): VaultData {
+    if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    const next = cloneData(current)
+    reconcileServerAuthoritativeAttachments(
+      next,
+      current.sync.loginMappings,
+      remoteFolders,
+      remoteLogins
+    )
+    if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
+    next.sync.state = client.exportState()
+    next.sync.lastSyncAt = this.core.nowIso()
+    return next
+  }
+
+  private async persistFailedNativeAttachmentRestoreAttempt(
+    key: NativeAttachmentRestoreAttachmentKey
+  ): Promise<void> {
+    const current = this.core.currentData()
+    if (!current?.nativeAttachmentRestore) return
+    const target = current.nativeAttachmentRestore.attachments.find(
+      (attachment) =>
+        attachment.sourceItemId === key.sourceItemId &&
+        attachment.sourceAttachmentId === key.sourceAttachmentId
+    )
+    if (target?.status !== 'attempting') return
+    const next = cloneData(current)
+    next.nativeAttachmentRestore = failNativeAttachmentRestoreAttempt(
+      next.nativeAttachmentRestore!,
+      key,
+      null,
+      this.core.nowIso()
+    )
+    next.updatedAt = next.nativeAttachmentRestore.updatedAt
+    await this.core.commit(next)
   }
 }

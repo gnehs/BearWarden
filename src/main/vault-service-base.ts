@@ -1,7 +1,6 @@
 import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import type {
   LoginApprovalPrompt,
-  FolderView,
   LoginIdRequest,
   OrganizationView,
   CollectionView,
@@ -30,12 +29,7 @@ import {
   type PinVaultKeyMaterial
 } from './pin-unlock'
 import type { TouchIdUnlockMaterial } from './touch-id-unlock-capsule'
-import { type PortableVaultSnapshot } from './vault-portability-codec'
-import {
-  failNativeAttachmentRestoreAttempt,
-  recoverInterruptedNativeAttachmentRestore,
-  type NativeAttachmentRestoreAttachmentKey
-} from './native-attachment-restore'
+import { recoverInterruptedNativeAttachmentRestore } from './native-attachment-restore'
 import {
   completeSyncMetadata,
   fingerprintLogin,
@@ -52,7 +46,6 @@ import {
   DATA_VERSION,
   MAX_MASTER_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
-  MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_PENDING_LOGIN_IMPORT_ENTRIES,
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
@@ -66,7 +59,6 @@ import {
 import { cloneData } from './vault/vault-data-parsing'
 import { isCompositeRemoteLoginUpdate } from './vault/views'
 import { assertNoPendingPersonalVaultPurge } from './vault/sync-data-parsing'
-import { parseFolder, parseStoredLogin } from './vault/login-parsing'
 import { sendViewFromRemote } from './vault/send-parsing'
 import { cloneCustomFields } from './vault/custom-fields'
 import { cloneLoginUris, uriAlias } from './vault/login-uris'
@@ -95,12 +87,7 @@ import type {
   VaultServiceOptions
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
-import {
-  findFolder,
-  findLogin,
-  assertActiveLogin,
-  uniqueImportedFolderName
-} from './vault/data-lookup'
+import { findFolder, findLogin, assertActiveLogin } from './vault/data-lookup'
 import {
   currentBitwardenPolicySet,
   bitwardenPolicyDecision,
@@ -153,6 +140,7 @@ import {
   deleteLocalFolder
 } from './vault/local-records'
 import { VaultAttachments } from './vault/attachments'
+import { VaultPortability } from './vault/portability'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -241,6 +229,7 @@ export class VaultServiceBase {
   protected readonly listings: VaultListings
   protected readonly passwordHistory: VaultPasswordHistory
   protected readonly attachments: VaultAttachments
+  protected readonly portability: VaultPortability
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -321,6 +310,9 @@ export class VaultServiceBase {
       this.attachmentFiles,
       this.imageCache
     )
+    this.portability = new VaultPortability(this.core, this.syncSession, {
+      performSync: (data, client, signal) => this.performSync(data, client, signal)
+    })
   }
 
   status(): Promise<VaultStatus> {
@@ -2259,134 +2251,6 @@ export class VaultServiceBase {
       ).id
     }
     return result
-  }
-
-  protected appendPortableSnapshot(
-    data: VaultData,
-    snapshot: PortableVaultSnapshot
-  ): {
-    itemMappings: { sourceItemId: string; localItemId: string }[]
-  } {
-    const now = this.core.nowIso()
-    const sourceFolderIds = new Set<string>()
-    const sourceItemIds = new Set<string>()
-    const importedFolderIds = new Map<string, string>()
-    const itemMappings: { sourceItemId: string; localItemId: string }[] = []
-    for (const source of snapshot.folders) {
-      if (
-        !source ||
-        typeof source.id !== 'string' ||
-        sourceFolderIds.has(source.id) ||
-        typeof source.name !== 'string'
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      sourceFolderIds.add(source.id)
-      const folder: FolderView = {
-        id: this.core.validatedNewId(),
-        name: uniqueImportedFolderName(data, normalizeRequiredString(source.name, MAX_NAME_LENGTH)),
-        position: data.folders.length,
-        createdAt: now,
-        updatedAt: now
-      }
-      parseFolder(folder)
-      data.folders.push(folder)
-      importedFolderIds.set(source.id, folder.id)
-    }
-    for (const source of snapshot.items) {
-      if (
-        !source ||
-        typeof source.id !== 'string' ||
-        sourceItemIds.has(source.id) ||
-        source.deletedAt !== null
-      ) {
-        throw new VaultError('INVALID_INPUT')
-      }
-      sourceItemIds.add(source.id)
-      const folderId =
-        source.folderId === null ? null : (importedFolderIds.get(source.folderId) ?? null)
-      if (source.folderId !== null && folderId === null) throw new VaultError('INVALID_INPUT')
-      const created = createLocalLogin(this.core, data, source, folderId)
-      parseStoredLogin(created)
-      itemMappings.push({ sourceItemId: source.id, localItemId: created.id })
-    }
-    return { itemMappings }
-  }
-
-  protected startNativeAttachmentRestoreOperation(client: BitwardenSyncClient): {
-    abort: AbortController
-    client: BitwardenSyncClient
-    generation: number
-  } {
-    const operation = {
-      abort: this.syncSession.startSyncOperation(),
-      client,
-      generation: this.core.generation
-    }
-    this.syncSession.nativeAttachmentRestoreAborts.add(operation.abort)
-    return operation
-  }
-
-  protected finishNativeAttachmentRestoreOperation(operation: { abort: AbortController }): void {
-    this.syncSession.nativeAttachmentRestoreAborts.delete(operation.abort)
-    this.syncSession.finishSyncOperation(operation.abort)
-  }
-
-  protected assertNativeAttachmentRestoreLease(operation: {
-    abort: AbortController
-    client: BitwardenSyncClient
-    generation: number
-  }): void {
-    if (
-      operation.abort.signal.aborted ||
-      operation.generation !== this.core.generation ||
-      operation.client !== this.syncSession.syncClient ||
-      !operation.client.exportState().session
-    ) {
-      throw new VaultError('LOCKED')
-    }
-  }
-
-  protected applyNativeAttachmentRestoreRemoteSnapshot(
-    current: VaultData,
-    client: BitwardenSyncClient,
-    remoteFolders: BitwardenFolder[],
-    remoteLogins: BitwardenLoginItem[]
-  ): VaultData {
-    if (!current.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-    const next = cloneData(current)
-    reconcileServerAuthoritativeAttachments(
-      next,
-      current.sync.loginMappings,
-      remoteFolders,
-      remoteLogins
-    )
-    if (!next.sync) throw new VaultError('SYNC_AUTH_REQUIRED')
-    next.sync.state = client.exportState()
-    next.sync.lastSyncAt = this.core.nowIso()
-    return next
-  }
-
-  protected async persistFailedNativeAttachmentRestoreAttempt(
-    key: NativeAttachmentRestoreAttachmentKey
-  ): Promise<void> {
-    const current = this.core.currentData()
-    if (!current?.nativeAttachmentRestore) return
-    const target = current.nativeAttachmentRestore.attachments.find(
-      (attachment) =>
-        attachment.sourceItemId === key.sourceItemId &&
-        attachment.sourceAttachmentId === key.sourceAttachmentId
-    )
-    if (target?.status !== 'attempting') return
-    const next = cloneData(current)
-    next.nativeAttachmentRestore = failNativeAttachmentRestoreAttempt(
-      next.nativeAttachmentRestore!,
-      key,
-      null,
-      this.core.nowIso()
-    )
-    next.updatedAt = next.nativeAttachmentRestore.updatedAt
-    await this.core.commit(next)
   }
 
   protected useLogin<T>(
