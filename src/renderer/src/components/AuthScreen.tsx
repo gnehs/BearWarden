@@ -4,6 +4,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucide-react'
 import type { AccountStatus, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
+import MasterPasswordStrengthMeter from './MasterPasswordStrengthMeter'
 import RevealableSecretInput from './RevealableSecretInput'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
@@ -408,6 +409,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                         <Trans>At least 12 characters. BearWarden cannot recover it.</Trans>
                       </FieldDescription>
                     )}
+                    {isSetup && <MasterPasswordStrengthMeter password={masterPassword} />}
                   </Field>
                 )}
 

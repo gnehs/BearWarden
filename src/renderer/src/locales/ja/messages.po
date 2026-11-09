@@ -103,7 +103,7 @@ msgid "{0, plural, one {{1, plural, one {The server still has {2} personal item 
 msgstr "{0, plural, one {{1, plural, one {サーバーには個人項目が {2} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。} other {サーバーには個人項目が {3} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。}}} other {{4, plural, one {サーバーには個人項目が {5} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。} other {サーバーには個人項目が {6} 件、フォルダーが # 件残っています。BearWarden は自動的に再送信しません。再試行しても残りのデータのみが削除されます。}}}}"
 
 #. placeholder {0}: nextStatus.remainingAttempts
-#: src/renderer/src/components/AuthScreen.tsx:187
+#: src/renderer/src/components/AuthScreen.tsx:188
 msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 msgstr "{0, plural, one {{base} 残りの試行回数は # 回です。} other {{base} 残りの試行回数は # 回です。}}"
 
@@ -877,7 +877,7 @@ msgstr "この時刻以降、サーバーは Send を完全に削除します。
 msgid "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
 msgstr "BearWarden のアップデート後：システムのスイッチがオンでも、このページに「権限が必要」と表示される場合は、アクセシビリティの一覧で BearWarden を選択し、− をクリックして古い項目を削除してから、ここに戻って権限を再度要求してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:335
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:336
 msgid "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 msgstr "これを確認した後、再接続してください。新しいマスターパスワードの変更は再接続後にのみ開始できます。"
 
@@ -902,7 +902,7 @@ msgstr "すべて"
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "分析したログインアイテムはすべて、弱いパスワードと判定される基準を上回っています。"
 
-#: src/renderer/src/components/AuthScreen.tsx:290
+#: src/renderer/src/components/AuthScreen.tsx:291
 msgid "All data is decrypted on this device."
 msgstr "すべてのデータはこのデバイスで復号されます。"
 
@@ -1060,11 +1060,11 @@ msgstr "{affectedCount} 個のアイテムをアーカイブしました。"
 msgid "Ask before every signature"
 msgstr "署名のたびに確認する"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:384
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:385
 msgid "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
 msgstr "{MIN_PASSWORD_LENGTH} 文字以上。安全に保管してください。BearWarden では復元できません。"
 
-#: src/renderer/src/components/AuthScreen.tsx:408
+#: src/renderer/src/components/AuthScreen.tsx:409
 msgid "At least 12 characters. BearWarden cannot recover it."
 msgstr "12 文字以上。BearWarden では復元できません。"
 
@@ -1076,7 +1076,7 @@ msgstr "12 文字以上。暗号化または復号のため、ローカルのメ
 msgid "At least one URI explicitly uses http://"
 msgstr "少なくとも 1 つの URI が明示的に http:// を使用しています"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:419
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:421
 msgid "At most {MAX_HINT_LENGTH} characters. Do not enter your master password directly."
 msgstr "最大 {MAX_HINT_LENGTH} 文字。マスターパスワードを直接入力しないでください。"
 
@@ -1169,7 +1169,7 @@ msgstr "戻る"
 msgid "Back to item list"
 msgstr "アイテム一覧に戻る"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:482
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:484
 msgid "Back to review"
 msgstr "確認に戻る"
 
@@ -1205,7 +1205,7 @@ msgstr "BearWarden の自動入力"
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden は現在のブラウザーを操作して自動入力できます。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:98
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:99
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden は現在の接続ではリモート側の結果を安全に判断できません。変更の重複を防ぐため、新しい操作は送信されません。"
 
@@ -1221,7 +1221,7 @@ msgstr "BearWarden はこの組織のアカウントを安全にロック解除�
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden は SSH Agent エンドポイントを安全に作成できませんでした。ホームディレクトリの権限とソケットパスを確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:307
+#: src/renderer/src/components/AuthScreen.tsx:308
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden は保管庫サービスを読み込めませんでした。データは変更されていません。"
 
@@ -1490,13 +1490,13 @@ msgstr "キャッチオールドメイン"
 msgid "Categories"
 msgstr "カテゴリー"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:244
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:249
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:489
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:245
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:250
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:491
 msgid "Change master password"
 msgstr "マスターパスワードを変更"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:470
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:472
 msgid "Change your master password?"
 msgstr "マスターパスワードを変更しますか？"
 
@@ -1508,7 +1508,7 @@ msgstr "文字種"
 msgid "Check again"
 msgstr "もう一度確認"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:430
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:432
 msgid "Check and continue"
 msgstr "確認して続行"
 
@@ -1582,7 +1582,7 @@ msgstr "今回確認済み"
 msgid "Checking"
 msgstr "確認中"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:261
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:262
 msgid "Checking the status of the previous change…"
 msgstr "前回の変更の状態を確認中…"
 
@@ -1731,7 +1731,7 @@ msgstr "クリップボードとウェブサイトのアイコン"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:918
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:442
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:444
 #: src/renderer/src/components/SyncDialog.tsx:905
 #: src/renderer/src/components/SyncDialog.tsx:1438
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:136
@@ -1810,16 +1810,16 @@ msgstr "Command、Option、バックスラッシュ"
 msgid "Company"
 msgstr "会社"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:429
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:488
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:431
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:490
 msgid "Complete local change"
 msgstr "ローカルの変更を完了"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:469
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:471
 msgid "Complete the confirmed local master-password change?"
 msgstr "確認済みのローカルのマスターパスワード変更を完了しますか？"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:299
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:300
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "サーバーで確認されたローカル保留中の変更を完了"
 
@@ -1843,8 +1843,8 @@ msgstr "完了記録のクリアを確認"
 msgid "Confirm disabling {disableTargetName}"
 msgstr "{disableTargetName} を無効にすることを確認"
 
-#: src/renderer/src/components/AuthScreen.tsx:417
-#: src/renderer/src/components/AuthScreen.tsx:421
+#: src/renderer/src/components/AuthScreen.tsx:419
+#: src/renderer/src/components/AuthScreen.tsx:423
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
 #: src/renderer/src/components/SettingsPage.tsx:1142
 #: src/renderer/src/components/SettingsPage.tsx:1252
@@ -1852,13 +1852,13 @@ msgstr "{disableTargetName} を無効にすることを確認"
 msgid "Confirm master password"
 msgstr "マスターパスワードを確認"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:389
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:393
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:391
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:395
 msgid "Confirm new master password"
 msgstr "新しいマスターパスワードを確認"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:427
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:486
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:429
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:488
 msgid "Confirm remote outcome"
 msgstr "リモートの結果を確認"
 
@@ -1874,11 +1874,11 @@ msgstr "同期が接続されていることを確認して、もう一度お試
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "保管庫のロックが解除されていることを確認して、後でもう一度お試しください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:467
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:469
 msgid "Confirm the remote master-password outcome?"
 msgstr "リモートのマスターパスワード変更の結果を確認しますか？"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:283
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:284
 msgid "Confirm the remote outcome and recover the existing change"
 msgstr "リモートの結果を確認して既存の変更を復元"
 
@@ -2186,7 +2186,7 @@ msgstr "Bitwarden 互換ツールで抽出できる、個人用保管庫と添�
 msgid "Create a text Send to securely share one-time content."
 msgstr "一度限りの内容を安全に共有するテキスト Send を作成します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:469
+#: src/renderer/src/components/AuthScreen.tsx:471
 msgid "Create and unlock"
 msgstr "作成してロックを解除"
 
@@ -2211,7 +2211,7 @@ msgstr "最も頻繁に再利用されている項目から、一意のパスワ
 msgid "Create your first Send"
 msgstr "最初のSendを作成"
 
-#: src/renderer/src/components/AuthScreen.tsx:323
+#: src/renderer/src/components/AuthScreen.tsx:324
 msgid "Create your vault"
 msgstr "保管庫を作成"
 
@@ -2284,8 +2284,8 @@ msgstr "現在のデバイス"
 msgid "Current local account · Local code {code}"
 msgstr "現在のローカルアカウント · ローカルコード {code}"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:350
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:354
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:510
 msgid "Current master password"
 msgstr "現在のマスターパスワード"
@@ -2948,11 +2948,11 @@ msgstr "Vaultwarden と HIBP 経由で照会するメールアドレスを入力
 msgid "Enter the numeric verification code from the email."
 msgstr "メールで受信した数字の確認コードを入力してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:286
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:287
 msgid "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 msgstr "元のマスターパスワードと設定した新しいパスワードを入力してください。これはリモートの状態を確認してローカル復旧を完了するだけで、マスターパスワード変更を再送信するものではありません。"
 
-#: src/renderer/src/components/AuthScreen.tsx:329
+#: src/renderer/src/components/AuthScreen.tsx:330
 msgid "Enter the PIN set for this session."
 msgstr "このセッションに設定した PIN を入力してください。"
 
@@ -3008,7 +3008,7 @@ msgstr "確認するにはマスターパスワードを入力してください
 msgid "Enter your master password to continue."
 msgstr "続行するにはマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:330
+#: src/renderer/src/components/AuthScreen.tsx:331
 msgid "Enter your master password to unlock items stored on this device."
 msgstr "このデバイスに保存されたアイテムのロックを解除するには、マスターパスワードを入力してください。"
 
@@ -3018,7 +3018,7 @@ msgstr "このデバイスに保存されたアイテムのロックを解除す
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:369
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:484
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
-#: src/renderer/src/components/AuthScreen.tsx:206
+#: src/renderer/src/components/AuthScreen.tsx:207
 #: src/renderer/src/components/Dialogs.tsx:489
 #: src/renderer/src/components/SyncDialog.tsx:780
 #: src/renderer/src/components/SyncDialog.tsx:831
@@ -3119,6 +3119,12 @@ msgstr "エクスポートファイルを保存しました: {0} 個のアイテ
 #: src/renderer/src/components/VaultHealthPage.tsx:1434
 msgid "Exposed passwords"
 msgstr "漏洩したパスワード"
+
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Second level, adequate but improvable.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:23
+msgctxt "master-password-strength"
+msgid "Fair"
+msgstr "普通"
 
 #: src/renderer/src/components/VaultShell.tsx:671
 #: src/renderer/src/components/VaultShellSidebar.tsx:270
@@ -3384,6 +3390,12 @@ msgstr "ダウンロードページを開く"
 msgid "Go to Releases"
 msgstr "GitHub Releases を開く"
 
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Third level, a solid password.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:29
+msgctxt "master-password-strength"
+msgid "Good"
+msgstr "良い"
+
 #: src/renderer/src/components/EmergencyAccessPage.tsx:126
 msgid "Granted by me"
 msgstr "自分が付与"
@@ -3482,7 +3494,7 @@ msgstr "時間"
 msgid "I understand that existing CLI sessions may need to sign in again"
 msgstr "既存の CLI セッションで再ログインが必要になる場合があることを理解しています"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:329
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:330
 msgid "I understand the previous operation did not change the remote master password"
 msgstr "前回の操作ではリモートのマスターパスワードが変更されなかったことを理解しています"
 
@@ -3873,7 +3885,7 @@ msgid "Loading…"
 msgstr "読み込み中…"
 
 #. Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile.
-#: src/renderer/src/components/AuthScreen.tsx:339
+#: src/renderer/src/components/AuthScreen.tsx:340
 msgctxt "local-account-selector"
 msgid "Local account"
 msgstr "ローカルアカウント"
@@ -4060,8 +4072,8 @@ msgstr "手動更新"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1091
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1193
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1260
-#: src/renderer/src/components/AuthScreen.tsx:390
-#: src/renderer/src/components/AuthScreen.tsx:395
+#: src/renderer/src/components/AuthScreen.tsx:391
+#: src/renderer/src/components/AuthScreen.tsx:396
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
@@ -4069,7 +4081,7 @@ msgstr "手動更新"
 msgid "Master password"
 msgstr "マスターパスワード"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:85
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:86
 msgid "Master password changed"
 msgstr "マスターパスワードを変更しました"
 
@@ -4099,7 +4111,7 @@ msgstr "マスターパスワードの確認に失敗しました。再試行す
 msgid "Master password verification failed. Restart setup."
 msgstr "マスターパスワードの確認に失敗しました。セットアップを最初からやり直してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:408
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:410
 msgid "Master-password hint (optional)"
 msgstr "マスターパスワードのヒント（任意）"
 
@@ -4365,13 +4377,13 @@ msgstr "新しいデバイスの確認コードが必要です"
 #~ msgid "New item"
 #~ msgstr "新しいアイテム"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:369
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:373
 msgid "New master password"
 msgstr "新しいマスターパスワード"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:369
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:373
 msgid "New master password you set"
 msgstr "新たに設定したマスターパスワード"
 
@@ -4659,7 +4671,7 @@ msgstr "{findingName} の二要素認証セットアップ手順を開く"
 msgid "Open website"
 msgstr "ウェブサイトを開く"
 
-#: src/renderer/src/components/AuthScreen.tsx:287
+#: src/renderer/src/components/AuthScreen.tsx:288
 msgid "Opening secure vault"
 msgstr "セキュアな保管庫を開いています"
 
@@ -4738,8 +4750,8 @@ msgstr "組織"
 msgid "Original folder"
 msgstr "元のフォルダー"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:350
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:354
 msgid "Original master password"
 msgstr "元のマスターパスワード"
 
@@ -4956,7 +4968,7 @@ msgstr "全 {1} 件中 {0} 番目のローカルアカウントを持ち上げ�
 msgid "Picked up website {0} of {1}."
 msgstr "全 {1} 件中 {0} 番目のウェブサイトを持ち上げました。"
 
-#: src/renderer/src/components/AuthScreen.tsx:373
+#: src/renderer/src/components/AuthScreen.tsx:374
 #: src/renderer/src/components/SettingsPage.tsx:1111
 msgid "PIN"
 msgstr "PIN"
@@ -4981,7 +4993,7 @@ msgstr "PIN ロック解除は無効です。代わりにマスターパスワ�
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN ロック解除はこのセッションでのみ有効です。"
 
-#: src/renderer/src/components/AuthScreen.tsx:195
+#: src/renderer/src/components/AuthScreen.tsx:196
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN ロック解除は利用できなくなりました。マスターパスワードを入力してください。"
 
@@ -5179,11 +5191,11 @@ msgstr "受信者がテキストを表示する操作を行うまで、内容は
 msgid "Recommended"
 msgstr "おすすめ"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:452
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:454
 msgid "Reconnect"
 msgstr "再接続"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:97
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:98
 msgid "Reconnect required before confirmation"
 msgstr "確認する前に再接続が必要です"
 
@@ -5261,7 +5273,7 @@ msgstr "リモートのマスターパスワード"
 msgid "Remote master password verification failed."
 msgstr "リモートのマスターパスワードの検証に失敗しました。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:103
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:104
 msgid "Remote outcome remains indeterminate"
 msgstr "リモート側の結果は依然として不明です"
 
@@ -5638,7 +5650,7 @@ msgstr "ローカルアカウントを安全に削除しています"
 msgid "Securely stored item"
 msgstr "安全に保存された項目"
 
-#: src/renderer/src/components/AuthScreen.tsx:454
+#: src/renderer/src/components/AuthScreen.tsx:456
 #: src/renderer/src/hooks/use-vault-accounts.ts:130
 msgid "Securely switching accounts and restarting"
 msgstr "アカウントを安全に切り替えて再起動しています"
@@ -5769,7 +5781,7 @@ msgstr "区切り文字"
 msgid "Server"
 msgstr "サーバー"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:91
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:92
 msgid "Server confirms master password was not changed"
 msgstr "サーバーはマスターパスワードが変更されていないことを確認しました"
 
@@ -5804,7 +5816,7 @@ msgstr "セッション更新応答"
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "SSH と Git が BearWarden のローカルソケットを使用するように、ターミナル環境で <0>SSH_AUTH_SOCK</0> を設定してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:327
+#: src/renderer/src/components/AuthScreen.tsx:328
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "自分だけが知っているマスターパスワードを設定してください。BearWarden はこのパスワードを回復できません。"
 
@@ -6032,7 +6044,7 @@ msgstr "ステータスを利用できません"
 msgid "Status:"
 msgstr "ステータス:"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:104
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:105
 msgid "Stop and reconnect. Do not submit another master-password change until you confirm which master password lets you sign in."
 msgstr "中止して再接続してください。どのマスターパスワードでサインインできるかを確認するまで、別のマスターパスワード変更を送信しないでください。"
 
@@ -6051,6 +6063,12 @@ msgstr "信頼できる暗号化ドライブにのみ保存し、使用後は安
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:976
 msgid "Store your recovery code securely first. It can help you regain access to your account if you lose your security key."
 msgstr "まずリカバリーコードを安全に保管してください。セキュリティキーを紛失した場合に、アカウントへのアクセスを回復するのに役立ちます。"
+
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Highest level.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:35
+msgctxt "master-password-strength"
+msgid "Strong"
+msgstr "強い"
 
 #: src/renderer/src/components/AccountSwitcherCard.tsx:481
 msgid "Switch"
@@ -6393,7 +6411,7 @@ msgstr "ローカルアカウントとこのデバイス上のそのデータを
 msgid "The local account limit has been reached. You can keep up to 5 accounts."
 msgstr "ローカルアカウントの上限に達しました。保持できるアカウントは最大 5 件です。"
 
-#: src/renderer/src/components/AuthScreen.tsx:122
+#: src/renderer/src/components/AuthScreen.tsx:123
 #: src/renderer/src/hooks/use-vault-accounts.ts:105
 msgid "The local account list could not be loaded. Try again later."
 msgstr "ローカルアカウント一覧を読み込めませんでした。後でもう一度お試しください。"
@@ -6436,15 +6454,15 @@ msgstr "マスターパスワードは検証のためにローカルプロセス
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "PIN ロック解除を有効にするたびに、メインプロセスでマスターパスワードが再度検証されます。"
 
-#: src/renderer/src/components/AuthScreen.tsx:210
+#: src/renderer/src/components/AuthScreen.tsx:211
 msgid "The master password must contain at least 12 characters."
 msgstr "マスターパスワードは 12 文字以上にする必要があります。"
 
-#: src/renderer/src/components/AuthScreen.tsx:214
+#: src/renderer/src/components/AuthScreen.tsx:215
 msgid "The master passwords do not match."
 msgstr "マスターパスワードが一致しません。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:181
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:182
 msgid "The new master passwords do not match."
 msgstr "新しいマスターパスワードが一致しません。"
 
@@ -6485,7 +6503,7 @@ msgstr "PIN と暗号化された認証情報がディスクに書き込まれ�
 msgid "The PIN is incorrect."
 msgstr "PIN が正しくありません。"
 
-#: src/renderer/src/components/AuthScreen.tsx:165
+#: src/renderer/src/components/AuthScreen.tsx:166
 #: src/renderer/src/components/SettingsPage.tsx:546
 msgid "The PIN must contain at least 4 characters."
 msgstr "PIN は 4 文字以上で入力してください。"
@@ -6494,7 +6512,7 @@ msgstr "PIN は 4 文字以上で入力してください。"
 msgid "The PINs do not match."
 msgstr "PIN が一致しません。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:92
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:93
 msgid "The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first."
 msgstr "前回の結果不明な操作では、リモートアカウントは変更されていません。これは再試行ではありません。新しい変更を開始するには、明示的に確認してから再接続してください。"
 
@@ -6530,7 +6548,7 @@ msgstr "リカバリーコードをコピーしました。クリップボード
 msgid "The recovery code is never returned to the renderer or stored by BearWarden."
 msgstr "リカバリーコードがレンダラープロセスに返されたり、BearWarden に保存されたりすることはありません。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:476
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:478
 msgid "The remote change has already been confirmed. This only completes local vault re-encryption; the transaction record prevents the remote change from being resent."
 msgstr "リモートでの変更はすでに確認されています。この操作ではローカル保管庫の再暗号化のみを完了します。トランザクション記録により、リモート変更の再送は防止されます。"
 
@@ -6538,7 +6556,7 @@ msgstr "リモートでの変更はすでに確認されています。この操
 msgid "The remote host hasn't provided a verifiable host fingerprint. Approve only on an SSH connection you trust."
 msgstr "リモートホストから検証可能なホストフィンガープリントが提供されていません。信頼できる SSH 接続の場合にのみ承認してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:302
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:303
 msgid "The remote master password has been confirmed as changed. Enter the original master password and the new password you set so BearWarden can re-encrypt your local vault; the transaction record prevents the remote change from being sent again."
 msgstr "リモートのマスターパスワードが変更済みであることを確認しました。BearWarden がローカル保管庫を再暗号化できるよう、元のマスターパスワードと設定した新しいパスワードを入力してください。トランザクション記録により、リモート変更が再送されることはありません。"
 
@@ -6946,7 +6964,7 @@ msgstr "保管庫をロックしてから、BearWarden を安全に再起動し�
 msgid "This login request has expired, was handled on another device, or its verification phrase changed. Refresh and check again."
 msgstr "このログイン要求は期限切れか、別のデバイスで処理されたか、確認フレーズが変更されています。更新してもう一度確認してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:271
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:272
 msgid "This only changes your master password and its protection. It does not create a new account encryption key. After it is complete, biometrics will be disabled and you must reconnect using your new master password."
 msgstr "これはマスターパスワードとその保護のみを変更します。新しいアカウント暗号化キーは作成しません。完了後は生体認証が無効になり、新しいマスターパスワードで再接続する必要があります。"
 
@@ -7054,11 +7072,11 @@ msgstr "この SSH 秘密鍵のステージングセッションの有効期限�
 msgid "This SSH private key type is not supported. Use a supported key format."
 msgstr "この SSH 秘密鍵の種類はサポートされていません。サポートされているキー形式を使用してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:477
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:479
 msgid "This updates your remote account password and local encrypted vault. Your account encryption key will not be rotated; you must reconnect when it is complete."
 msgstr "これにより、リモートアカウントのパスワードとローカル暗号化保管庫が更新されます。アカウント暗号化キーはローテーションされません。完了後は再接続する必要があります。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:474
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:476
 msgid "This uses the original and new master passwords you entered to confirm the remote outcome and complete local recovery. It does not resubmit the change."
 msgstr "入力した元のマスターパスワードと新しいマスターパスワードを使用して、リモートの結果を確認し、ローカルの復旧を完了します。変更を再送信することはありません。"
 
@@ -7196,7 +7214,7 @@ msgstr "信頼できるデバイスの暗号化はサポートされていませ
 msgid "Try a shorter search term or switch to All items."
 msgstr "検索語を短くするか、「すべてのアイテム」に切り替えてください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:313
+#: src/renderer/src/components/AuthScreen.tsx:314
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
@@ -7310,7 +7328,7 @@ msgstr "更新操作を完了できません。しばらくしてからもう一
 msgid "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 msgstr "すべてのセッションの認可が解除されたか確認できません。再試行する前に、サインイン状態と他のデバイスを確認してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:304
+#: src/renderer/src/components/AuthScreen.tsx:305
 msgid "Unable to connect to the security service"
 msgstr "セキュリティサービスに接続できません"
 
@@ -7451,11 +7469,11 @@ msgstr "個人用 API キーを取得できません。"
 msgid "Unable to rotate your personal API key. The existing Client Secret may still be valid."
 msgstr "個人用 API キーをローテーションできません。既存のクライアントシークレットは引き続き有効な可能性があります。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:220
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:221
 msgid "Unable to safely complete the master-password change. Reopen this screen to check the transaction status."
 msgstr "マスターパスワードの変更を安全に完了できません。この画面を開き直して、処理の状態を確認してください。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:129
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:130
 msgid "Unable to safely read the master-password change status. Reconnect and check again."
 msgstr "マスターパスワード変更の状態を安全に読み取れません。再接続してもう一度確認してください。"
 
@@ -7626,16 +7644,16 @@ msgstr "ロック解除が必要です"
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "一時 PIN でローカル保管庫のロックを解除します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:472
+#: src/renderer/src/components/AuthScreen.tsx:474
 msgid "Unlock vault"
 msgstr "保管庫のロックを解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:504
+#: src/renderer/src/components/AuthScreen.tsx:506
 msgid "Unlock with biometrics"
 msgstr "生体認証でロック解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:471
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:473
+#: src/renderer/src/components/AuthScreen.tsx:490
 msgid "Unlock with PIN"
 msgstr "PIN でロック解除"
 
@@ -7689,7 +7707,7 @@ msgstr "最新です"
 msgid "Update available"
 msgstr "更新があります"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:252
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:253
 msgid "Update your Vaultwarden or Bitwarden account password and local vault unlock password."
 msgstr "Vaultwarden または Bitwarden のアカウントパスワードと、ローカル保管庫のロック解除パスワードを更新します。"
 
@@ -7752,7 +7770,7 @@ msgstr "Bitwarden Cloud には bitwarden.com を使用してください。Vault
 msgid "Use long passwords created by the password generator instead."
 msgstr "代わりに、パスワードジェネレーターで作成した長いパスワードを使用してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:490
 msgid "Use master password"
 msgstr "マスターパスワードを使用"
 
@@ -7997,6 +8015,12 @@ msgstr "サーバーが応答を受信したことを確認できませんでし
 msgid "Weak"
 msgstr "弱い"
 
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Lowest level. Not the vault health report.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:17
+msgctxt "master-password-strength"
+msgid "Weak"
+msgstr "弱い"
+
 #: src/renderer/src/components/VaultHealthPage.tsx:1397
 msgid "Weak passwords"
 msgstr "弱いパスワード"
@@ -8049,7 +8073,7 @@ msgstr "Web サイト: {0}"
 msgid "Websites"
 msgstr "Web サイト"
 
-#: src/renderer/src/components/AuthScreen.tsx:323
+#: src/renderer/src/components/AuthScreen.tsx:324
 msgid "Welcome back"
 msgstr "おかえりなさい"
 
@@ -8124,7 +8148,7 @@ msgstr "次回のロック後から生体認証でロックを解除できます
 msgid "You will no longer be able to sign in with this security key after removing it. Enter your master password again to confirm; previous verification is never reused."
 msgstr "このセキュリティキーを削除すると、以後このキーでサインインできなくなります。確認のためマスターパスワードをもう一度入力してください。以前の確認結果が再利用されることはありません。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:268
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:269
 msgid "Your account encryption key will not be rotated"
 msgstr "アカウント暗号化キーはローテーションされません"
 
@@ -8152,11 +8176,11 @@ msgstr "メールアドレス全体がこのデバイスの外部に送信され
 msgid "Your current Client Secret was copied, and the clipboard will be cleared within 30 seconds."
 msgstr "現在の Client Secret をコピーしました。クリップボードは 30 秒以内に消去されます。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:219
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:220
 msgid "Your current master password could not be verified."
 msgstr "現在のマスターパスワードを確認できませんでした。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:166
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:167
 msgid "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "現在のマスターパスワードは {MIN_PASSWORD_LENGTH} ～ {MAX_PASSWORD_LENGTH} 文字である必要があります。"
 
@@ -8164,7 +8188,7 @@ msgstr "現在のマスターパスワードは {MIN_PASSWORD_LENGTH} ～ {MAX_P
 msgid "Your current session has expired. Please sign in again."
 msgstr "現在のセッションは期限切れです。もう一度サインインしてください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:512
+#: src/renderer/src/components/AuthScreen.tsx:514
 msgid "Your master password and decrypted data never leave this device."
 msgstr "マスターパスワードと復号されたデータがこのデバイスから送信されることはありません。"
 
@@ -8184,7 +8208,7 @@ msgstr "マスターパスワードは確認のため、ローカルのメイン
 msgid "Your master password is used only for this add request and is cleared immediately after submission."
 msgstr "マスターパスワードはこの追加リクエストにのみ使用され、送信直後に消去されます。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:185
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:186
 msgid "Your master-password hint can be at most {MAX_HINT_LENGTH} characters."
 msgstr "マスターパスワードのヒントは最大 {MAX_HINT_LENGTH} 文字です。"
 
@@ -8192,15 +8216,15 @@ msgstr "マスターパスワードのヒントは最大 {MAX_HINT_LENGTH} 文�
 msgid "Your new Client Secret was copied. The old value is no longer valid, and the clipboard will be cleared within 30 seconds."
 msgstr "新しい Client Secret をコピーしました。古い値はすでに無効で、クリップボードは 30 秒以内に消去されます。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:172
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:173
 msgid "Your new master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "新しいマスターパスワードは {MIN_PASSWORD_LENGTH} ～ {MAX_PASSWORD_LENGTH} 文字である必要があります。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:177
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:178
 msgid "Your new master password must be different from your current master password."
 msgstr "新しいマスターパスワードは現在のマスターパスワードと異なる必要があります。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:86
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:87
 msgid "Your remote account and local encrypted vault have been updated. Reconnect using your new master password."
 msgstr "リモートアカウントとローカルの暗号化された保管庫を更新しました。新しいマスターパスワードで再接続してください。"
 

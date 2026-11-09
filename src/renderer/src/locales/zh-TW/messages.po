@@ -103,7 +103,7 @@ msgid "{0, plural, one {{1, plural, one {The server still has {2} personal item 
 msgstr "{0, plural, one {{1, plural, one {伺服器仍有 {2} 個個人項目和 # 個資料夾。BearWarden 不會自動重新傳送；再次嘗試只會移除剩餘資料。} other {伺服器仍有 {3} 個個人項目和 # 個資料夾。BearWarden 不會自動重新傳送；再次嘗試只會移除剩餘資料。}}} other {{4, plural, one {伺服器仍有 {5} 個個人項目和 # 個資料夾。BearWarden 不會自動重新傳送；再次嘗試只會移除剩餘資料。} other {伺服器仍有 {6} 個個人項目和 # 個資料夾。BearWarden 不會自動重新傳送；再次嘗試只會移除剩餘資料。}}}}"
 
 #. placeholder {0}: nextStatus.remainingAttempts
-#: src/renderer/src/components/AuthScreen.tsx:187
+#: src/renderer/src/components/AuthScreen.tsx:188
 msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 msgstr "{0, plural, one {{base} 您還有 # 次嘗試機會。} other {{base} 您還有 # 次嘗試機會。}}"
 
@@ -877,7 +877,7 @@ msgstr "此時間過後，伺服器會永久刪除 Send。"
 msgid "After updating BearWarden: if the system switch is already on but this page still says “Permission required”, select BearWarden in the Accessibility list, click − to remove the old entry, then return here and request permission again."
 msgstr "更新 BearWarden 後：若系統開關已開啟，但此頁仍顯示「需要權限」，請在「輔助使用」清單中選取 BearWarden，按下 − 移除舊項目，再回到此處重新要求權限。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:335
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:336
 msgid "After you acknowledge this, reconnect. You can start a new master-password change only after reconnecting."
 msgstr "確認後，請重新連線。重新連線後才能再次啟動主密碼變更。"
 
@@ -902,7 +902,7 @@ msgstr "全部"
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "所有已分析的登入項目均高於弱密碼門檻。"
 
-#: src/renderer/src/components/AuthScreen.tsx:290
+#: src/renderer/src/components/AuthScreen.tsx:291
 msgid "All data is decrypted on this device."
 msgstr "所有資料均在此裝置上解密。"
 
@@ -1060,11 +1060,11 @@ msgstr "已封存 {affectedCount} 個項目。"
 msgid "Ask before every signature"
 msgstr "每次簽署前詢問"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:384
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:385
 msgid "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
 msgstr "至少 {MIN_PASSWORD_LENGTH} 個字元。請妥善保管：BearWarden 無法復原它。"
 
-#: src/renderer/src/components/AuthScreen.tsx:408
+#: src/renderer/src/components/AuthScreen.tsx:409
 msgid "At least 12 characters. BearWarden cannot recover it."
 msgstr "至少 12 個字元。BearWarden 無法復原它。"
 
@@ -1076,7 +1076,7 @@ msgstr "至少 12 個字元。僅會提供給本機主程式，以進行加密�
 msgid "At least one URI explicitly uses http://"
 msgstr "至少有一個 URI 明確使用 http://"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:419
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:421
 msgid "At most {MAX_HINT_LENGTH} characters. Do not enter your master password directly."
 msgstr "最多 {MAX_HINT_LENGTH} 個字元。請勿直接輸入主密碼。"
 
@@ -1169,7 +1169,7 @@ msgstr "返回"
 msgid "Back to item list"
 msgstr "返回項目清單"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:482
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:484
 msgid "Back to review"
 msgstr "返回檢閱"
 
@@ -1205,7 +1205,7 @@ msgstr "BearWarden 自動填入"
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden 可以控制目前的瀏覽器並執行自動填入。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:98
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:99
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden 無法安全地判定目前連線的遠端結果。為避免重複變更，現在不會提交任何新動作。"
 
@@ -1221,7 +1221,7 @@ msgstr "BearWarden 無法安全解鎖此組織的帳戶。請使用官方 Bitwar
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden 無法安全地建立 SSH Agent 端點。請檢查主目錄權限與通訊端路徑，然後再試一次。"
 
-#: src/renderer/src/components/AuthScreen.tsx:307
+#: src/renderer/src/components/AuthScreen.tsx:308
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden 無法載入保管庫服務。您的資料尚未變更。"
 
@@ -1490,13 +1490,13 @@ msgstr "萬用網域"
 msgid "Categories"
 msgstr "分類"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:244
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:249
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:489
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:245
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:250
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:491
 msgid "Change master password"
 msgstr "變更主密碼"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:470
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:472
 msgid "Change your master password?"
 msgstr "要變更您的主密碼嗎？"
 
@@ -1508,7 +1508,7 @@ msgstr "字元類型"
 msgid "Check again"
 msgstr "再次檢查"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:430
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:432
 msgid "Check and continue"
 msgstr "檢查並繼續"
 
@@ -1582,7 +1582,7 @@ msgstr "本次已檢查"
 msgid "Checking"
 msgstr "檢查中"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:261
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:262
 msgid "Checking the status of the previous change…"
 msgstr "正在檢查前次變更的狀態…"
 
@@ -1731,7 +1731,7 @@ msgstr "剪貼簿和網站圖示"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:918
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:442
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:444
 #: src/renderer/src/components/SyncDialog.tsx:905
 #: src/renderer/src/components/SyncDialog.tsx:1438
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:136
@@ -1810,16 +1810,16 @@ msgstr "Command 加 Option 加反斜線"
 msgid "Company"
 msgstr "公司"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:429
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:488
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:431
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:490
 msgid "Complete local change"
 msgstr "完成本機變更"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:469
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:471
 msgid "Complete the confirmed local master-password change?"
 msgstr "要完成已確認的本機主密碼變更嗎？"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:299
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:300
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "完成由伺服器確認、仍在本機待處理的變更"
 
@@ -1843,8 +1843,8 @@ msgstr "確認清除完成紀錄"
 msgid "Confirm disabling {disableTargetName}"
 msgstr "確認停用 {disableTargetName}"
 
-#: src/renderer/src/components/AuthScreen.tsx:417
-#: src/renderer/src/components/AuthScreen.tsx:421
+#: src/renderer/src/components/AuthScreen.tsx:419
+#: src/renderer/src/components/AuthScreen.tsx:423
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
 #: src/renderer/src/components/SettingsPage.tsx:1142
 #: src/renderer/src/components/SettingsPage.tsx:1252
@@ -1852,13 +1852,13 @@ msgstr "確認停用 {disableTargetName}"
 msgid "Confirm master password"
 msgstr "確認主密碼"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:389
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:393
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:391
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:395
 msgid "Confirm new master password"
 msgstr "確認新的主密碼"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:427
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:486
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:429
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:488
 msgid "Confirm remote outcome"
 msgstr "確認遠端結果"
 
@@ -1874,11 +1874,11 @@ msgstr "請確認同步已連線後再試一次。現有資料尚未變更。"
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "請確認保管庫已解鎖，然後稍後再試。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:467
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:469
 msgid "Confirm the remote master-password outcome?"
 msgstr "要確認遠端主密碼變更結果嗎？"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:283
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:284
 msgid "Confirm the remote outcome and recover the existing change"
 msgstr "確認遠端結果並復原現有變更"
 
@@ -2186,7 +2186,7 @@ msgstr "建立您的個人保管庫及附件的純文字副本，供 Bitwarden �
 msgid "Create a text Send to securely share one-time content."
 msgstr "建立文字 Send，以安全分享一次性內容。"
 
-#: src/renderer/src/components/AuthScreen.tsx:469
+#: src/renderer/src/components/AuthScreen.tsx:471
 msgid "Create and unlock"
 msgstr "建立並解鎖"
 
@@ -2211,7 +2211,7 @@ msgstr "請先為重複使用最頻繁的項目建立唯一的密碼。"
 msgid "Create your first Send"
 msgstr "建立您的第一個 Send"
 
-#: src/renderer/src/components/AuthScreen.tsx:323
+#: src/renderer/src/components/AuthScreen.tsx:324
 msgid "Create your vault"
 msgstr "建立您的保管庫"
 
@@ -2284,8 +2284,8 @@ msgstr "目前裝置"
 msgid "Current local account · Local code {code}"
 msgstr "目前本機帳戶 · 本機代碼 {code}"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:350
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:354
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:510
 msgid "Current master password"
 msgstr "目前的主密碼"
@@ -2948,11 +2948,11 @@ msgstr "輸入要透過 Vaultwarden 與 HIBP 查詢的電子郵件地址。"
 msgid "Enter the numeric verification code from the email."
 msgstr "輸入電子郵件中的數字驗證碼。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:286
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:287
 msgid "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 msgstr "輸入原始主密碼及您設定的新密碼。這只會確認遠端狀態並完成本機復原；不會重新提交主密碼變更。"
 
-#: src/renderer/src/components/AuthScreen.tsx:329
+#: src/renderer/src/components/AuthScreen.tsx:330
 msgid "Enter the PIN set for this session."
 msgstr "輸入為此工作階段設定的 PIN。"
 
@@ -3008,7 +3008,7 @@ msgstr "請輸入主密碼以確認。"
 msgid "Enter your master password to continue."
 msgstr "請輸入主密碼以繼續。"
 
-#: src/renderer/src/components/AuthScreen.tsx:330
+#: src/renderer/src/components/AuthScreen.tsx:331
 msgid "Enter your master password to unlock items stored on this device."
 msgstr "請輸入主密碼以解鎖儲存在此裝置上的項目。"
 
@@ -3018,7 +3018,7 @@ msgstr "請輸入主密碼以解鎖儲存在此裝置上的項目。"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:369
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:484
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
-#: src/renderer/src/components/AuthScreen.tsx:206
+#: src/renderer/src/components/AuthScreen.tsx:207
 #: src/renderer/src/components/Dialogs.tsx:489
 #: src/renderer/src/components/SyncDialog.tsx:780
 #: src/renderer/src/components/SyncDialog.tsx:831
@@ -3119,6 +3119,12 @@ msgstr "匯出檔案已儲存：{0} 個項目和 {1} 個資料夾{attachments}{s
 #: src/renderer/src/components/VaultHealthPage.tsx:1434
 msgid "Exposed passwords"
 msgstr "已外洩的密碼"
+
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Second level, adequate but improvable.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:23
+msgctxt "master-password-strength"
+msgid "Fair"
+msgstr "普通"
 
 #: src/renderer/src/components/VaultShell.tsx:671
 #: src/renderer/src/components/VaultShellSidebar.tsx:270
@@ -3384,6 +3390,12 @@ msgstr "前往下載頁面"
 msgid "Go to Releases"
 msgstr "前往 Releases"
 
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Third level, a solid password.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:29
+msgctxt "master-password-strength"
+msgid "Good"
+msgstr "良好"
+
 #: src/renderer/src/components/EmergencyAccessPage.tsx:126
 msgid "Granted by me"
 msgstr "由我授與"
@@ -3482,7 +3494,7 @@ msgstr "小時"
 msgid "I understand that existing CLI sessions may need to sign in again"
 msgstr "我了解現有的 CLI 工作階段可能需要再次登入"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:329
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:330
 msgid "I understand the previous operation did not change the remote master password"
 msgstr "我了解先前的操作並未變更遠端主密碼"
 
@@ -3873,7 +3885,7 @@ msgid "Loading…"
 msgstr "正在載入…"
 
 #. Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile.
-#: src/renderer/src/components/AuthScreen.tsx:339
+#: src/renderer/src/components/AuthScreen.tsx:340
 msgctxt "local-account-selector"
 msgid "Local account"
 msgstr "本機帳戶"
@@ -4060,8 +4072,8 @@ msgstr "手動更新"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1091
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1193
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1260
-#: src/renderer/src/components/AuthScreen.tsx:390
-#: src/renderer/src/components/AuthScreen.tsx:395
+#: src/renderer/src/components/AuthScreen.tsx:391
+#: src/renderer/src/components/AuthScreen.tsx:396
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
@@ -4069,7 +4081,7 @@ msgstr "手動更新"
 msgid "Master password"
 msgstr "主密碼"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:85
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:86
 msgid "Master password changed"
 msgstr "主密碼已變更"
 
@@ -4099,7 +4111,7 @@ msgstr "主密碼驗證失敗。請再次輸入主密碼與確認文字以重試
 msgid "Master password verification failed. Restart setup."
 msgstr "主密碼驗證失敗。請重新開始設定。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:408
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:410
 msgid "Master-password hint (optional)"
 msgstr "主密碼提示（選填）"
 
@@ -4365,13 +4377,13 @@ msgstr "需要新的裝置驗證碼"
 #~ msgid "New item"
 #~ msgstr "新項目"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:369
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:373
 msgid "New master password"
 msgstr "新主密碼"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:368
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:372
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:369
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:373
 msgid "New master password you set"
 msgstr "您設定的新主密碼"
 
@@ -4659,7 +4671,7 @@ msgstr "開啟 {findingName} 的雙因素驗證設定說明"
 msgid "Open website"
 msgstr "開啟網站"
 
-#: src/renderer/src/components/AuthScreen.tsx:287
+#: src/renderer/src/components/AuthScreen.tsx:288
 msgid "Opening secure vault"
 msgstr "正在開啟安全保管庫"
 
@@ -4738,8 +4750,8 @@ msgstr "組織"
 msgid "Original folder"
 msgstr "原始資料夾"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:349
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:353
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:350
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:354
 msgid "Original master password"
 msgstr "原始主密碼"
 
@@ -4956,7 +4968,7 @@ msgstr "已選取第 {0} 個本機帳戶，共 {1} 個。"
 msgid "Picked up website {0} of {1}."
 msgstr "已選取第 {0} 個網站，共 {1} 個。"
 
-#: src/renderer/src/components/AuthScreen.tsx:373
+#: src/renderer/src/components/AuthScreen.tsx:374
 #: src/renderer/src/components/SettingsPage.tsx:1111
 msgid "PIN"
 msgstr "PIN"
@@ -4981,7 +4993,7 @@ msgstr "PIN 解鎖已停用。請改輸入主密碼。"
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN 解鎖僅限本次工作階段使用。"
 
-#: src/renderer/src/components/AuthScreen.tsx:195
+#: src/renderer/src/components/AuthScreen.tsx:196
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN 解鎖已無法使用。請輸入主密碼。"
 
@@ -5179,11 +5191,11 @@ msgstr "收件者必須主動揭露文字才能查看。"
 msgid "Recommended"
 msgstr "建議"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:452
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:454
 msgid "Reconnect"
 msgstr "重新連線"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:97
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:98
 msgid "Reconnect required before confirmation"
 msgstr "確認前需要重新連線"
 
@@ -5261,7 +5273,7 @@ msgstr "遠端主密碼"
 msgid "Remote master password verification failed."
 msgstr "遠端主密碼驗證失敗。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:103
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:104
 msgid "Remote outcome remains indeterminate"
 msgstr "遠端執行結果仍無法判定"
 
@@ -5638,7 +5650,7 @@ msgstr "正在安全移除本機帳戶"
 msgid "Securely stored item"
 msgstr "安全儲存的項目"
 
-#: src/renderer/src/components/AuthScreen.tsx:454
+#: src/renderer/src/components/AuthScreen.tsx:456
 #: src/renderer/src/hooks/use-vault-accounts.ts:130
 msgid "Securely switching accounts and restarting"
 msgstr "正在安全切換帳戶並重新啟動"
@@ -5769,7 +5781,7 @@ msgstr "分隔符號"
 msgid "Server"
 msgstr "伺服器"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:91
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:92
 msgid "Server confirms master password was not changed"
 msgstr "伺服器確認主密碼未變更"
 
@@ -5804,7 +5816,7 @@ msgstr "工作階段更新回應"
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "在終端機環境中設定 <0>SSH_AUTH_SOCK</0>，讓 SSH 與 Git 使用 BearWarden 的本機通訊端。"
 
-#: src/renderer/src/components/AuthScreen.tsx:327
+#: src/renderer/src/components/AuthScreen.tsx:328
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "請設定只有您知道的主密碼。BearWarden 無法為您復原它。"
 
@@ -6032,7 +6044,7 @@ msgstr "狀態無法取得"
 msgid "Status:"
 msgstr "狀態："
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:104
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:105
 msgid "Stop and reconnect. Do not submit another master-password change until you confirm which master password lets you sign in."
 msgstr "停止並重新連線。在確認哪一組主密碼可讓您登入前，請勿再次提交主密碼變更。"
 
@@ -6051,6 +6063,12 @@ msgstr "僅將它儲存在受信任的加密磁碟機上，並於使用後安全
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:976
 msgid "Store your recovery code securely first. It can help you regain access to your account if you lose your security key."
 msgstr "請先妥善安全地儲存您的復原碼。若您遺失安全金鑰，它可協助您重新取得帳戶存取權。"
+
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Highest level.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:35
+msgctxt "master-password-strength"
+msgid "Strong"
+msgstr "強"
 
 #: src/renderer/src/components/AccountSwitcherCard.tsx:481
 msgid "Switch"
@@ -6393,7 +6411,7 @@ msgstr "此裝置上的本機帳戶及其資料已移除。"
 msgid "The local account limit has been reached. You can keep up to 5 accounts."
 msgstr "已達本機帳戶數量上限。最多可保留 5 個帳戶。"
 
-#: src/renderer/src/components/AuthScreen.tsx:122
+#: src/renderer/src/components/AuthScreen.tsx:123
 #: src/renderer/src/hooks/use-vault-accounts.ts:105
 msgid "The local account list could not be loaded. Try again later."
 msgstr "無法載入本機帳戶清單。請稍後再試。"
@@ -6436,15 +6454,15 @@ msgstr "主密碼僅會傳送至本機程式進行驗證。"
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "每次啟用 PIN 解鎖時，主密碼都會在主程式中再次驗證。"
 
-#: src/renderer/src/components/AuthScreen.tsx:210
+#: src/renderer/src/components/AuthScreen.tsx:211
 msgid "The master password must contain at least 12 characters."
 msgstr "主密碼至少須包含 12 個字元。"
 
-#: src/renderer/src/components/AuthScreen.tsx:214
+#: src/renderer/src/components/AuthScreen.tsx:215
 msgid "The master passwords do not match."
 msgstr "主密碼不一致。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:181
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:182
 msgid "The new master passwords do not match."
 msgstr "新主密碼不一致。"
 
@@ -6485,7 +6503,7 @@ msgstr "PIN 與加密憑證絕不會寫入磁碟。一般鎖定後可以使用 P
 msgid "The PIN is incorrect."
 msgstr "PIN 不正確。"
 
-#: src/renderer/src/components/AuthScreen.tsx:165
+#: src/renderer/src/components/AuthScreen.tsx:166
 #: src/renderer/src/components/SettingsPage.tsx:546
 msgid "The PIN must contain at least 4 characters."
 msgstr "PIN 至少須包含 4 個字元。"
@@ -6494,7 +6512,7 @@ msgstr "PIN 至少須包含 4 個字元。"
 msgid "The PINs do not match."
 msgstr "PIN 不一致。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:92
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:93
 msgid "The previous uncertain operation did not change your remote account. This is not a retry; to start a new change, explicitly acknowledge it and reconnect first."
 msgstr "上次結果不確定的操作並未變更您的遠端帳戶。這不是重試；若要開始新的變更，請先明確確認並重新連線。"
 
@@ -6530,7 +6548,7 @@ msgstr "已複製復原碼。剪貼簿將在 30 秒內清除。"
 msgid "The recovery code is never returned to the renderer or stored by BearWarden."
 msgstr "復原碼絕不會回傳至轉譯程序，也不會由 BearWarden 儲存。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:476
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:478
 msgid "The remote change has already been confirmed. This only completes local vault re-encryption; the transaction record prevents the remote change from being resent."
 msgstr "遠端變更已確認。這只會完成本機保管庫的重新加密；交易記錄可避免再次傳送遠端變更。"
 
@@ -6538,7 +6556,7 @@ msgstr "遠端變更已確認。這只會完成本機保管庫的重新加密；
 msgid "The remote host hasn't provided a verifiable host fingerprint. Approve only on an SSH connection you trust."
 msgstr "遠端主機未提供可驗證的主機指紋。僅在您信任此 SSH 連線時才核准。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:302
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:303
 msgid "The remote master password has been confirmed as changed. Enter the original master password and the new password you set so BearWarden can re-encrypt your local vault; the transaction record prevents the remote change from being sent again."
 msgstr "已確認遠端主密碼變更。請輸入原始主密碼與您設定的新密碼，讓 BearWarden 重新加密本機保管庫；交易記錄可避免再次傳送遠端變更。"
 
@@ -6946,7 +6964,7 @@ msgstr "這會鎖定保管庫，然後安全地重新啟動 BearWarden。未儲�
 msgid "This login request has expired, was handled on another device, or its verification phrase changed. Refresh and check again."
 msgstr "此登入請求已過期、已在其他裝置處理，或其驗證短語已變更。請重新整理後再次檢查。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:271
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:272
 msgid "This only changes your master password and its protection. It does not create a new account encryption key. After it is complete, biometrics will be disabled and you must reconnect using your new master password."
 msgstr "這只會變更您的主密碼及其保護方式，不會建立新的帳戶加密金鑰。完成後，生物辨識將被停用，您必須使用新的主密碼重新連線。"
 
@@ -7054,11 +7072,11 @@ msgstr "此 SSH 私密金鑰暫存工作階段已過期。請在儲存前重新�
 msgid "This SSH private key type is not supported. Use a supported key format."
 msgstr "不支援此 SSH 私密金鑰類型。請使用支援的金鑰格式。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:477
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:479
 msgid "This updates your remote account password and local encrypted vault. Your account encryption key will not be rotated; you must reconnect when it is complete."
 msgstr "這會更新遠端帳戶密碼和本機加密保管庫。您的帳戶加密金鑰不會輪替；完成後您必須重新連線。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:474
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:476
 msgid "This uses the original and new master passwords you entered to confirm the remote outcome and complete local recovery. It does not resubmit the change."
 msgstr "這會使用您輸入的原始與新主密碼，確認遠端結果並完成本機復原。不會重新提交變更。"
 
@@ -7196,7 +7214,7 @@ msgstr "不支援受信任裝置加密"
 msgid "Try a shorter search term or switch to All items."
 msgstr "請嘗試較短的搜尋詞，或切換至「所有項目」。"
 
-#: src/renderer/src/components/AuthScreen.tsx:313
+#: src/renderer/src/components/AuthScreen.tsx:314
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
@@ -7310,7 +7328,7 @@ msgstr "無法完成更新操作。請稍後再試。"
 msgid "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 msgstr "無法確認是否已取消所有工作階段的授權。再次嘗試前，請檢查您的登入狀態及其他裝置。"
 
-#: src/renderer/src/components/AuthScreen.tsx:304
+#: src/renderer/src/components/AuthScreen.tsx:305
 msgid "Unable to connect to the security service"
 msgstr "無法連線至安全性服務"
 
@@ -7451,11 +7469,11 @@ msgstr "無法取得您的個人 API 金鑰。"
 msgid "Unable to rotate your personal API key. The existing Client Secret may still be valid."
 msgstr "無法輪替您的個人 API 金鑰。現有的 Client Secret 可能仍然有效。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:220
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:221
 msgid "Unable to safely complete the master-password change. Reopen this screen to check the transaction status."
 msgstr "無法安全地完成主密碼變更。請重新開啟此畫面以檢查交易狀態。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:129
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:130
 msgid "Unable to safely read the master-password change status. Reconnect and check again."
 msgstr "無法安全地讀取主密碼變更狀態。請重新連線後再檢查一次。"
 
@@ -7626,16 +7644,16 @@ msgstr "需要解鎖"
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "使用暫時性 PIN 解鎖本機保管庫。"
 
-#: src/renderer/src/components/AuthScreen.tsx:472
+#: src/renderer/src/components/AuthScreen.tsx:474
 msgid "Unlock vault"
 msgstr "解鎖保管庫"
 
-#: src/renderer/src/components/AuthScreen.tsx:504
+#: src/renderer/src/components/AuthScreen.tsx:506
 msgid "Unlock with biometrics"
 msgstr "使用生物辨識解鎖"
 
-#: src/renderer/src/components/AuthScreen.tsx:471
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:473
+#: src/renderer/src/components/AuthScreen.tsx:490
 msgid "Unlock with PIN"
 msgstr "使用 PIN 解鎖"
 
@@ -7689,7 +7707,7 @@ msgstr "已是最新版本"
 msgid "Update available"
 msgstr "有可用更新"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:252
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:253
 msgid "Update your Vaultwarden or Bitwarden account password and local vault unlock password."
 msgstr "更新您的 Vaultwarden 或 Bitwarden 帳戶密碼及本機保管庫解鎖密碼。"
 
@@ -7752,7 +7770,7 @@ msgstr "Bitwarden Cloud 請使用 bitwarden.com；Vaultwarden 請使用 HTTPS UR
 msgid "Use long passwords created by the password generator instead."
 msgstr "請改用密碼產生器建立的長密碼。"
 
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:490
 msgid "Use master password"
 msgstr "使用主密碼"
 
@@ -7997,6 +8015,12 @@ msgstr "無法確認伺服器是否已收到回應。請在重試前重新整理
 msgid "Weak"
 msgstr "弱"
 
+#. Strength label for the master password being chosen on the vault setup screen, beside the strength bar. Lowest level. Not the vault health report.
+#: src/renderer/src/components/MasterPasswordStrengthMeter.tsx:17
+msgctxt "master-password-strength"
+msgid "Weak"
+msgstr "弱"
+
 #: src/renderer/src/components/VaultHealthPage.tsx:1397
 msgid "Weak passwords"
 msgstr "弱密碼"
@@ -8049,7 +8073,7 @@ msgstr "網站：{0}"
 msgid "Websites"
 msgstr "網站"
 
-#: src/renderer/src/components/AuthScreen.tsx:323
+#: src/renderer/src/components/AuthScreen.tsx:324
 msgid "Welcome back"
 msgstr "歡迎回來"
 
@@ -8124,7 +8148,7 @@ msgstr "下次鎖定後，您可以使用生物辨識解鎖。"
 msgid "You will no longer be able to sign in with this security key after removing it. Enter your master password again to confirm; previous verification is never reused."
 msgstr "移除後，您將無法再使用這把安全金鑰登入。請再次輸入主密碼以確認；先前的驗證絕不會重複使用。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:268
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:269
 msgid "Your account encryption key will not be rotated"
 msgstr "您的帳戶加密金鑰不會輪替"
 
@@ -8152,11 +8176,11 @@ msgstr "您的完整電子郵件地址將離開此裝置"
 msgid "Your current Client Secret was copied, and the clipboard will be cleared within 30 seconds."
 msgstr "目前的 Client Secret 已複製，剪貼簿會在 30 秒內清除。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:219
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:220
 msgid "Your current master password could not be verified."
 msgstr "無法驗證您目前的主密碼。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:166
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:167
 msgid "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "您目前的主密碼必須為 {MIN_PASSWORD_LENGTH} 至 {MAX_PASSWORD_LENGTH} 個字元。"
 
@@ -8164,7 +8188,7 @@ msgstr "您目前的主密碼必須為 {MIN_PASSWORD_LENGTH} 至 {MAX_PASSWORD_L
 msgid "Your current session has expired. Please sign in again."
 msgstr "您目前的工作階段已過期。請重新登入。"
 
-#: src/renderer/src/components/AuthScreen.tsx:512
+#: src/renderer/src/components/AuthScreen.tsx:514
 msgid "Your master password and decrypted data never leave this device."
 msgstr "您的主密碼與已解密資料絕不會離開此裝置。"
 
@@ -8184,7 +8208,7 @@ msgstr "您的主密碼僅會傳送至本機主程式進行驗證。核准會授
 msgid "Your master password is used only for this add request and is cleared immediately after submission."
 msgstr "您的主密碼僅用於此新增請求，送出後會立即清除。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:185
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:186
 msgid "Your master-password hint can be at most {MAX_HINT_LENGTH} characters."
 msgstr "您的主密碼提示最多可有 {MAX_HINT_LENGTH} 個字元。"
 
@@ -8192,15 +8216,15 @@ msgstr "您的主密碼提示最多可有 {MAX_HINT_LENGTH} 個字元。"
 msgid "Your new Client Secret was copied. The old value is no longer valid, and the clipboard will be cleared within 30 seconds."
 msgstr "新的 Client Secret 已複製。舊值已失效，剪貼簿會在 30 秒內清除。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:172
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:173
 msgid "Your new master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSWORD_LENGTH} characters."
 msgstr "您的新主密碼必須為 {MIN_PASSWORD_LENGTH} 至 {MAX_PASSWORD_LENGTH} 個字元。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:177
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:178
 msgid "Your new master password must be different from your current master password."
 msgstr "您的新主密碼必須與目前的主密碼不同。"
 
-#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:86
+#: src/renderer/src/components/MasterPasswordChangeDialog.tsx:87
 msgid "Your remote account and local encrypted vault have been updated. Reconnect using your new master password."
 msgstr "您的遠端帳戶與本機加密保管庫已更新。請使用新的主密碼重新連線。"
 

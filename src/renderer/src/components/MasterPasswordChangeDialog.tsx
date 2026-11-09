@@ -38,6 +38,7 @@ import {
   FieldLabel
 } from '@renderer/components/ui/field'
 import { Input } from '@renderer/components/ui/input'
+import MasterPasswordStrengthMeter from './MasterPasswordStrengthMeter'
 import RevealableSecretInput from './RevealableSecretInput'
 import { Spinner } from '@renderer/components/ui/spinner'
 
@@ -383,6 +384,7 @@ function MasterPasswordChangeDialog({
                       <FieldDescription>
                         {t`At least ${MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it.`}
                       </FieldDescription>
+                      {!recovery && <MasterPasswordStrengthMeter password={newPassword} />}
                     </Field>
                     <Field data-invalid={Boolean(error)}>
                       <FieldLabel htmlFor="master-password-confirm">
