@@ -1,7 +1,6 @@
 import { randomInt as nodeRandomInt, randomUUID } from 'node:crypto'
 import type {
   LoginApprovalPrompt,
-  LoginIdRequest,
   OrganizationView,
   CollectionView,
   SyncPurgePersonalVaultResult,
@@ -51,7 +50,6 @@ import {
   MAX_PENDING_LOGIN_IMPORT_MARKER_LENGTH
 } from './vault/limits'
 import {
-  assertUuid,
   normalizeRequiredString,
   normalizeMasterPassword,
   normalizeSyncPassword
@@ -73,7 +71,6 @@ import { VaultCore } from './vault/core'
 import { cloneGeneratorHistory } from './vault/generator-history'
 import { clonePasswordHistory } from './vault/password-history'
 import type {
-  StoredLogin,
   StoredSharedLogin,
   PersistedSyncData,
   VaultData,
@@ -87,7 +84,7 @@ import type {
   VaultServiceOptions
 } from './vault/types'
 import { UUID_PATTERN, isRecord } from './validation-primitives'
-import { findFolder, findLogin, assertActiveLogin } from './vault/data-lookup'
+import { findFolder, findLogin } from './vault/data-lookup'
 import {
   currentBitwardenPolicySet,
   bitwardenPolicyDecision,
@@ -143,6 +140,7 @@ import { VaultAttachments } from './vault/attachments'
 import { VaultPortability } from './vault/portability'
 import { VaultSharedItems } from './vault/shared-items'
 import { VaultItemAuthorization } from './vault/item-authorization'
+import { VaultItems } from './vault/items'
 
 interface AccountWebAuthnOperationLease {
   readonly generation: number
@@ -234,6 +232,7 @@ export class VaultServiceBase {
   protected readonly portability: VaultPortability
   protected readonly sharedItems: VaultSharedItems
   protected readonly authorization: VaultItemAuthorization
+  protected readonly items: VaultItems
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -319,6 +318,7 @@ export class VaultServiceBase {
     })
     this.sharedItems = new VaultSharedItems(this.core, this.syncSession, this.platform)
     this.authorization = new VaultItemAuthorization(this.core)
+    this.items = new VaultItems(this.core, this.platform)
   }
 
   status(): Promise<VaultStatus> {
@@ -2257,28 +2257,6 @@ export class VaultServiceBase {
       ).id
     }
     return result
-  }
-
-  protected useLogin<T>(
-    request: LoginIdRequest,
-    operation: (login: StoredLogin) => Promise<T>
-  ): Promise<T> {
-    return this.core.exclusive(async () => {
-      assertUuid(request.id)
-      const current = this.core.requireData()
-      assertNoPendingPersonalVaultPurge(current.sync)
-      const currentLogin = findLogin(current, request.id)
-      assertActiveLogin(currentLogin)
-      const result = await operation(currentLogin)
-      const next = cloneData(current)
-      const usedLogin = findLogin(next, request.id)
-      const now = this.core.nowIso()
-      usedLogin.usageCount = Math.min(Number.MAX_SAFE_INTEGER, usedLogin.usageCount + 1)
-      usedLogin.lastUsedAt = now
-      next.updatedAt = now
-      await this.core.commit(next)
-      return result
-    })
   }
 
   protected assertExpectedPasskeyGeneration(value: unknown): asserts value is number {
