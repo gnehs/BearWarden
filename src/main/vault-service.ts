@@ -26,7 +26,21 @@ import type {
   SharedLoginView,
   VaultPasswordHistoryEntry,
   VaultSecretField,
-  TotpCodeView
+  TotpCodeView,
+  SendCreateRequest,
+  SendFileCreateRequest,
+  SendFileCreateResult,
+  SendFileDownloadRequest,
+  SendFileDownloadResult,
+  SendIdRequest,
+  SendUpdateRequest,
+  SendView,
+  FolderCreateRequest,
+  FolderDeleteRequest,
+  FolderReorderRequest,
+  FolderReparentRequest,
+  FolderUpdateRequest,
+  FolderView
 } from '../shared/vault-contract'
 import { MAX_LOGIN_AUTHORIZE_MANY_IDS, MAX_LOGIN_BATCH_IDS } from '../shared/vault-contract'
 import { VaultError } from './vault-errors'
@@ -509,6 +523,38 @@ export class VaultService extends VaultTransferService {
       }
       await this.platform.openExternal(url.toString())
     })
+  }
+
+  listSends(): Promise<SendView[]> {
+    return this.sendService.list()
+  }
+
+  createSend(request: SendCreateRequest): Promise<SendView> {
+    return this.sendService.create(request)
+  }
+
+  async createFileSend(request: SendFileCreateRequest): Promise<SendFileCreateResult> {
+    return this.sendService.createFile(request)
+  }
+
+  async downloadFileSend(request: SendFileDownloadRequest): Promise<SendFileDownloadResult> {
+    return this.sendService.downloadFile(request)
+  }
+
+  updateSend(request: SendUpdateRequest): Promise<SendView> {
+    return this.sendService.update(request)
+  }
+
+  removeSendPassword(request: SendIdRequest): Promise<SendView> {
+    return this.sendService.removePassword(request)
+  }
+
+  deleteSend(request: SendIdRequest): Promise<void> {
+    return this.sendService.delete(request)
+  }
+
+  copySendLink(request: SendIdRequest): Promise<void> {
+    return this.sendService.copyLink(request)
   }
 
   generateCredential(request: CredentialGeneratorRequest): Promise<CredentialGeneratorResult> {
@@ -1623,5 +1669,29 @@ export class VaultService extends VaultTransferService {
 
   private rememberWebsiteIcon(cacheKey: string, value: string | null, ttlMs: number): void {
     this.websiteIconCache.set(cacheKey, value, { size: value?.length ?? 0, ttlMs })
+  }
+
+  listFolders(): Promise<FolderView[]> {
+    return this.folders.listFolders()
+  }
+
+  createFolder(request: FolderCreateRequest): Promise<FolderView> {
+    return this.folders.createFolder(request)
+  }
+
+  updateFolder(request: FolderUpdateRequest): Promise<FolderView[]> {
+    return this.folders.updateFolder(request)
+  }
+
+  reparentFolder(request: FolderReparentRequest): Promise<FolderView[]> {
+    return this.folders.reparentFolder(request)
+  }
+
+  deleteFolder(request: FolderDeleteRequest): Promise<void> {
+    return this.folders.deleteFolder(request)
+  }
+
+  reorderFolders(request: FolderReorderRequest): Promise<FolderView[]> {
+    return this.folders.reorderFolders(request)
   }
 }

@@ -146,6 +146,7 @@ import {
   type AuthenticatorSetupSession,
   type EmailTwoFactorSetupSession
 } from './vault/sync-session'
+import { VaultFolders } from './vault/folders'
 
 type BulkRemoteLoginMutation =
   'soft-delete' | 'restore' | 'move' | 'archive' | 'unarchive' | 'hard-delete'
@@ -296,6 +297,7 @@ export class VaultServiceBase {
   protected activeAccountBreachOperation: ActiveAccountBreachOperation | null = null
   protected readonly core: VaultCore
   protected readonly syncSession: VaultSyncSession
+  protected readonly folders: VaultFolders
 
   constructor(
     protected readonly store: EncryptedVaultStore<unknown>,
@@ -372,6 +374,7 @@ export class VaultServiceBase {
       this.createSyncClient,
       this.requestAccountWebAuthnAssertion
     )
+    this.folders = new VaultFolders(this.core)
   }
 
   status(): Promise<VaultStatus> {
