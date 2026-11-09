@@ -50,12 +50,10 @@ import type {
   FolderView,
   LoginSummary,
   LoginView,
-  LoginAuthorization,
   LoginApprovalPrompt,
   PasswordHistoryEntryRequest,
   SyncStatus,
   SharedLoginView,
-  TotpCodeView,
   VaultCopyField,
   VaultCustomFieldSource,
   VaultCustomFieldView,
@@ -111,8 +109,8 @@ import { useVaultAuthorization } from '@renderer/hooks/use-vault-authorization'
 import { useLoginDetailCache } from '@renderer/hooks/use-login-detail-cache'
 import { useVaultDataSync } from '@renderer/hooks/use-vault-data-sync'
 import { useAttachmentOperations } from '@renderer/hooks/use-attachment-operations'
+import { useSelectedItemTotp, useTotpListCodes } from '@renderer/hooks/use-totp-codes'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
-import { resolveTotpRefreshTarget } from './totp-refresh-target'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { VaultCustomFieldRows, VaultDetailFieldRows } from './VaultDetailFieldRows'
@@ -184,8 +182,6 @@ import {
   type RevealedCustomFieldsState,
   type RevealedSecretsState,
   type Scope,
-  type TotpGenerationErrorState,
-  type TotpListEntry,
   type TypeFilter
 } from './VaultShell-model'
 import {
@@ -199,7 +195,6 @@ import {
   firstAuthorizationToken,
   mergeLoginSummary
 } from './vault-detail-cache'
-import { isRepromptRequired } from './vault-error-ui'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
@@ -240,10 +235,6 @@ interface VaultShellProps {
   onLocked: () => void
   promptSyncSetup: boolean
   onSyncSetupPromptHandled: () => void
-}
-
-function isTotpListItem(item: LoginSummary): boolean {
-  return !isSharedLoginSummary(item) && item.type === 'login' && Boolean(item.hasTotp)
 }
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -476,27 +467,6 @@ function VaultShellContent({
   const selectedSummary = allItems.find((item) => item.id === selectedId) ?? null
   const selectedSharedSummary =
     selectedSummary && isSharedLoginSummary(selectedSummary) ? selectedSummary : null
-  const [totpCodeState, setTotpCodeState] = useState<{
-    itemId: string
-    code: TotpCodeView
-    cycle: number
-  } | null>(null)
-  const [totpGenerationErrorState, setTotpGenerationErrorState] =
-    useState<TotpGenerationErrorState | null>(null)
-  const [totpListState, setTotpListState] = useState<Map<string, TotpListEntry>>(() => new Map())
-  const totpListStateRef = useRef(new Map<string, TotpListEntry>())
-  const totpCode =
-    selectedLogin && totpCodeState?.itemId === selectedLogin.id ? totpCodeState.code : null
-  const totpGenerationError =
-    selectedLogin && totpGenerationErrorState?.itemId === selectedLogin.id
-      ? totpGenerationErrorState.kind
-      : null
-  const totpRevealReady = totpCode !== null || totpGenerationError !== null
-  const [showTotpSkeleton, setShowTotpSkeleton] = useState(false)
-  const totpRefreshTarget =
-    selectedSharedSummary && !selectedSharedSummary.viewPassword
-      ? null
-      : resolveTotpRefreshTarget(selectedLogin, selectedId, editorMode !== null)
   const [editorSessionId, setEditorSessionId] = useState(0)
   const {
     editorDirty,
@@ -550,7 +520,6 @@ function VaultShellContent({
     selectedDetailInvalidated: () => {
       setPasswordHistoryDialogOpen(false)
       clearEditorDirty()
-      setTotpCodeState(null)
       setRevealedSecrets(emptyRevealedSecrets)
       setRevealedCustomFields(emptyRevealedCustomFields)
     },
@@ -606,6 +575,8 @@ function VaultShellContent({
     setSelectedLogin(null)
     setPasswordHistoryDialogOpen(false)
   }, [setSelectedId, setSelectedIds, setSelectedLogin])
+  const selectedTotp = useSelectedItemTotp(authorization, itemAccess, clearItemSelection)
+  const totpList = useTotpListCodes(authorization, scopedItems, typeFilter === 'totp')
 
   useEffect(
     () =>
@@ -614,7 +585,6 @@ function VaultShellContent({
         if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
-        setTotpCodeState(null)
         setRevealedSecrets(emptyRevealedSecrets)
         setRevealedCustomFields(emptyRevealedCustomFields)
       }),
@@ -814,92 +784,6 @@ function VaultShellContent({
   }, [allItems, clearItemSelection, describeVaultError, detailCache, selectedId, setSelectedLogin])
 
   useEffect(() => {
-    let active = true
-    const itemId = totpRefreshTarget?.itemId
-    const sourceRevision = totpRefreshTarget?.sourceRevision
-    queueMicrotask(() => {
-      if (!active) return
-      setTotpCodeState(null)
-      setTotpGenerationErrorState(null)
-    })
-    if (!itemId || !sourceRevision) {
-      return () => {
-        active = false
-      }
-    }
-
-    let stopped = false
-    let refreshing = false
-    const refresh = (): void => {
-      if (stopped || refreshing) return
-      refreshing = true
-      const item = findItem(itemId)
-      if (!item) {
-        refreshing = false
-        return
-      }
-      itemAccess
-        .getTotp(item)
-        .then(
-          (nextCode) => {
-            if (!active) return
-            setTotpCodeState({
-              itemId,
-              code: nextCode,
-              cycle: Math.floor(Date.now() / (nextCode.period * 1_000))
-            })
-            setTotpGenerationErrorState(null)
-          },
-          (totpError) => {
-            if (!active) return
-            if (isRepromptRequired(totpError)) {
-              stopped = true
-              window.clearInterval(timer)
-              setTotpCodeState(null)
-              authorization.revoke(itemId)
-              clearItemSelection()
-              announceError(
-                t`Authorization expired. Select the item again and verify your master password.`
-              )
-              return
-            }
-            stopped = true
-            window.clearInterval(timer)
-            setTotpCodeState(null)
-            setTotpGenerationErrorState({ itemId, kind: 'unsupported' })
-          }
-        )
-        .finally(() => {
-          refreshing = false
-        })
-    }
-    const timer = window.setInterval(refresh, 1_000)
-    refresh()
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [
-    clearItemSelection,
-    t,
-    totpRefreshTarget?.itemId,
-    totpRefreshTarget?.sourceRevision,
-    selectedSharedSummary,
-    authorization,
-    findItem,
-    itemAccess
-  ])
-
-  useEffect(() => {
-    if (totpRevealReady || !totpRefreshTarget?.itemId) {
-      queueMicrotask(() => setShowTotpSkeleton(false))
-      return
-    }
-    const timer = window.setTimeout(() => setShowTotpSkeleton(true), 100)
-    return () => window.clearTimeout(timer)
-  }, [totpRefreshTarget?.itemId, totpRefreshTarget?.sourceRevision, totpRevealReady])
-
-  useEffect(() => {
     if (Object.keys(revealedSecrets.values).length === 0) return
     const timeout = window.setTimeout(() => setRevealedSecrets(emptyRevealedSecrets), 30_000)
     return () => window.clearTimeout(timeout)
@@ -921,144 +805,6 @@ function VaultShellContent({
   }, [revealedCustomFields])
 
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
-  const totpListItemIds = useMemo(
-    () => scopedItems.filter(isTotpListItem).map((item) => item.id),
-    [scopedItems]
-  )
-  const totpListRevision = useMemo(
-    () =>
-      scopedItems
-        .filter(isTotpListItem)
-        .map((item) => `${item.id}:${item.updatedAt}`)
-        .join('\0'),
-    [scopedItems]
-  )
-  const totpListCodes = useMemo(() => {
-    const codes = new Map<string, TotpCodeView | null>()
-    for (const [id, entry] of totpListState) codes.set(id, entry?.code ?? null)
-    return codes
-  }, [totpListState])
-  const totpListCountdown = useMemo(() => {
-    for (const code of totpListCodes.values()) {
-      if (code) return code
-    }
-    return null
-  }, [totpListCodes])
-
-  useEffect(() => {
-    if (typeFilter !== 'totp' || totpListItemIds.length === 0) {
-      totpListStateRef.current = new Map()
-      queueMicrotask(() => setTotpListState(new Map()))
-      return
-    }
-
-    let active = true
-    let refreshing = false
-    let listAuthorization: LoginAuthorization | undefined
-    totpListStateRef.current = new Map()
-    queueMicrotask(() => {
-      if (active) setTotpListState(new Map())
-    })
-
-    const readCodes = async (
-      tokenFor: (id: string) => string | undefined
-    ): Promise<Array<{ id: string; code: TotpCodeView | null; fetchedAt: number }>> =>
-      Promise.all(
-        totpListItemIds.map(async (id) => {
-          try {
-            const code = await window.bearwarden.logins.getTotp({
-              id,
-              ...authorizationTokenField(tokenFor(id))
-            })
-            return { id, code, fetchedAt: Date.now() }
-          } catch (error) {
-            if (isRepromptRequired(error)) throw error
-            return { id, code: null, fetchedAt: Date.now() }
-          }
-        })
-      )
-
-    const refresh = async (): Promise<void> => {
-      if (!active || refreshing) return
-      refreshing = true
-      try {
-        const now = Date.now()
-        if (listAuthorization && listAuthorization.expiresAt <= now) listAuthorization = undefined
-        const requiresListAuthorization = totpListItemIds.some(
-          (id) => findItem(id)?.reprompt === 1 && !authorization.token(id)
-        )
-        if (!listAuthorization && requiresListAuthorization) {
-          listAuthorization = await authorization.request(totpListItemIds)
-        }
-
-        const tokenFor = (id: string): string | undefined =>
-          listAuthorization?.token ?? authorization.token(id)
-        let results: Array<{ id: string; code: TotpCodeView | null; fetchedAt: number }>
-        try {
-          results = await readCodes(tokenFor)
-        } catch (error) {
-          if (!isRepromptRequired(error)) throw error
-          listAuthorization = await authorization.request(totpListItemIds)
-          results = await readCodes(() => listAuthorization?.token)
-        }
-        if (!active) return
-
-        const next = new Map<string, TotpListEntry>()
-        for (const entry of results) {
-          next.set(
-            entry.id,
-            entry.code
-              ? {
-                  code: entry.code,
-                  expiresAt: entry.fetchedAt + entry.code.remainingSeconds * 1_000
-                }
-              : null
-          )
-        }
-        totpListStateRef.current = next
-        setTotpListState(next)
-      } catch (error) {
-        if (active) announceError(describeVaultError(error))
-      } finally {
-        refreshing = false
-      }
-    }
-
-    const tick = (): void => {
-      const now = Date.now()
-      const current = totpListStateRef.current
-      if (current.size === 0) return
-      let shouldRefresh = false
-      let changed = false
-      const next = new Map<string, TotpListEntry>()
-      for (const [id, entry] of current) {
-        if (!entry) {
-          next.set(id, null)
-          continue
-        }
-        const remainingSeconds = Math.max(0, Math.ceil((entry.expiresAt - now) / 1_000))
-        if (remainingSeconds === 0) shouldRefresh = true
-        if (remainingSeconds !== entry.code.remainingSeconds) changed = true
-        next.set(id, {
-          ...entry,
-          code: { ...entry.code, remainingSeconds }
-        })
-      }
-      if (changed || shouldRefresh) {
-        totpListStateRef.current = next
-        setTotpListState(next)
-      }
-      if (shouldRefresh) void refresh()
-    }
-
-    void refresh()
-    const timer = window.setInterval(tick, 1_000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [authorization, describeVaultError, findItem, totpListItemIds, totpListRevision, typeFilter])
-
   const selectItems = useCallback(
     (id: string, modifiers: ItemSelectionModifiers): void => {
       requestEditorTransition(() => {
@@ -2817,8 +2563,8 @@ function VaultShellContent({
                     cardCoverPreviews: cardCoverListPreviews,
                     sortOptions: sortItemsOptions,
                     showWebsiteIcons: settings?.showWebsiteIcons ?? false,
-                    totpCodes: totpListCodes,
-                    totpCountdown: totpListCountdown,
+                    totpCodes: totpList.codes,
+                    totpCountdown: totpList.countdown,
                     trashItemCount: trashItems.length,
                     readOnly: sharedScope
                   }}
@@ -3246,11 +2992,11 @@ function VaultShellContent({
 
                     {selectedLogin.type === 'login' && selectedLogin.hasTotp && (
                       <VaultItemTotpCard
-                        code={totpCode}
-                        generationError={totpGenerationError}
-                        revealReady={totpRevealReady}
-                        showSkeleton={showTotpSkeleton}
-                        codeCycle={totpCodeState?.cycle ?? null}
+                        code={selectedTotp.code}
+                        generationError={selectedTotp.generationError}
+                        revealReady={selectedTotp.revealReady}
+                        showSkeleton={selectedTotp.showSkeleton}
+                        codeCycle={selectedTotp.cycle}
                         showCountdown={typeFilter !== 'totp'}
                         copied={copiedKey === `totp:${selectedLogin.id}`}
                         defaultCountdownPeriodSeconds={totpListCountdownPeriodSeconds}
