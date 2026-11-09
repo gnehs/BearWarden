@@ -51,16 +51,11 @@ import type {
   LoginSummary,
   LoginView,
   LoginApprovalPrompt,
-  PasswordHistoryEntryRequest,
   SyncStatus,
   SharedLoginView,
-  VaultCopyField,
-  VaultCustomFieldSource,
-  VaultCustomFieldView,
   VaultExportResult,
   VaultImportResult,
-  VaultItemType,
-  VaultSecretField
+  VaultItemType
 } from '../../../shared/vault-contract'
 import { MAX_LOGIN_BATCH_IDS } from '../../../shared/vault-contract'
 import bearCutUrl from '../assets/bear-cut.svg'
@@ -99,7 +94,6 @@ import { normalizeItemSelection, updateItemSelection } from '../lib/item-selecti
 import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
 import { formatVaultDate } from '../lib/vault-date'
 import { vaultHealthRevision } from '../lib/vault-health-ui'
-import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
 import { useEditorTransitionGuard } from '@renderer/hooks/use-editor-transition-guard'
 import { useVaultAccounts } from '@renderer/hooks/use-vault-accounts'
 import { useVaultSearch } from '@renderer/hooks/use-vault-search'
@@ -110,6 +104,7 @@ import { useLoginDetailCache } from '@renderer/hooks/use-login-detail-cache'
 import { useVaultDataSync } from '@renderer/hooks/use-vault-data-sync'
 import { useAttachmentOperations } from '@renderer/hooks/use-attachment-operations'
 import { useSelectedItemTotp, useTotpListCodes } from '@renderer/hooks/use-totp-codes'
+import { useSelectedItemSecrets } from '@renderer/hooks/use-selected-item-secrets'
 import { useCardCoverPreviews } from '@renderer/hooks/use-card-cover-previews'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
@@ -172,24 +167,15 @@ import {
 } from './VaultShell-primitives'
 import { VaultShellSidebar } from './VaultShellSidebar'
 import {
-  emptyRevealedCustomFields,
-  emptyRevealedSecrets,
   totpListCountdownPeriodSeconds,
   type BulkActionKind,
   type BulkActionSnapshot,
   type BulkSelectionState,
   type MoveSnapshot,
-  type RevealedCustomFieldsState,
-  type RevealedSecretsState,
   type Scope,
   type TypeFilter
 } from './VaultShell-model'
-import {
-  customFieldCopyFeedbackKey,
-  detailFieldCopyFeedbackKey,
-  detailFields,
-  matchesCustomFieldSource
-} from './vault-detail-view-model'
+import { detailFields } from './vault-detail-view-model'
 import {
   authorizationTokenField,
   firstAuthorizationToken,
@@ -199,7 +185,7 @@ import { itemTypeIcons } from './vault-item-type-icons'
 import { VaultSearchDialog, VaultShellLoading, VaultShellTitlebar } from './VaultShellChrome'
 import { isSharedLoginSummary } from './organizations-ui'
 import { upsertAttachment } from './vault-attachment-ui'
-import { createVaultItemAccess, tracksItemUsage } from './vault-item-access'
+import { createVaultItemAccess } from './vault-item-access'
 
 interface ItemTypeMeta {
   label: string
@@ -463,7 +449,6 @@ function VaultShellContent({
     describeError: describeVaultError,
     onError: announceError
   })
-  const { copiedKey, clearCopied, showCopied } = useCopyFeedback()
   const selectedSummary = allItems.find((item) => item.id === selectedId) ?? null
   const selectedSharedSummary =
     selectedSummary && isSharedLoginSummary(selectedSummary) ? selectedSummary : null
@@ -478,24 +463,12 @@ function VaultShellContent({
     confirmEditorDiscard,
     handleDiscardEditorDialogOpenChange
   } = useEditorTransitionGuard()
-  const [revealedSecrets, setRevealedSecrets] = useState<RevealedSecretsState>(emptyRevealedSecrets)
-  const [revealedCustomFields, setRevealedCustomFields] =
-    useState<RevealedCustomFieldsState>(emptyRevealedCustomFields)
   const [folderDialog, setFolderDialog] = useState<FolderView | 'new' | null>(null)
   const [moveSnapshot, setMoveSnapshot] = useState<MoveSnapshot | null>(null)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionSnapshot | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [emptyTrashDialogOpen, setEmptyTrashDialogOpen] = useState(false)
   const [passwordHistoryDialogOpen, setPasswordHistoryDialogOpen] = useState(false)
-  const [passwordZoom, setPasswordZoom] = useState<{ itemId: string; value: string } | null>(null)
-  if (passwordZoom !== null && passwordZoom.itemId !== selectedLogin?.id) {
-    setPasswordZoom(null)
-  }
-  const passwordZoomValue =
-    passwordZoom !== null && passwordZoom.itemId === selectedLogin?.id ? passwordZoom.value : null
-  const hoveringSecretFieldsRef = useRef(new Set<VaultSecretField>())
-  const hoverRevealedSecretFieldsRef = useRef(new Set<VaultSecretField>())
-  const passwordZoomOpenRef = useRef(false)
   const [generatorDialogOpen, setGeneratorDialogOpen] = useState(false)
   const {
     previews: cardCoverListPreviews,
@@ -520,14 +493,15 @@ function VaultShellContent({
     selectedDetailInvalidated: () => {
       setPasswordHistoryDialogOpen(false)
       clearEditorDirty()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
     },
     loadStarted: () => toast.dismiss(vaultErrorToastId),
     loadFailed: (error) => announceError(describeVaultError(error))
   })
   const attachments = useAttachmentOperations(authorization, detailCache, vaultData)
   const cancelAndClearAttachment = attachments.cancelAndClear
+  const secrets = useSelectedItemSecrets(authorization, itemAccess, vaultData)
+  const resetReveals = secrets.resetReveals
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [loginApprovalPrompts, setLoginApprovalPrompts] = useState<LoginApprovalPrompt[]>([])
@@ -585,10 +559,9 @@ function VaultShellContent({
         if (!preservePasswordHistoryDialog) setPasswordHistoryDialogOpen(false)
         setSelectedLogin(null)
         setEditorMode(null)
-        setRevealedSecrets(emptyRevealedSecrets)
-        setRevealedCustomFields(emptyRevealedCustomFields)
+        resetReveals()
       }),
-    [authorization, currentSelectedId, setEditorMode, setSelectedLogin]
+    [authorization, currentSelectedId, resetReveals, setEditorMode, setSelectedLogin]
   )
 
   const sensors = useSensors(
@@ -604,13 +577,19 @@ function VaultShellContent({
         if (cached) setSelectedLogin(cached)
         else if (!id) setSelectedLogin(null)
         setSelectedId(id)
-        setRevealedSecrets(emptyRevealedSecrets)
-        setRevealedCustomFields(emptyRevealedCustomFields)
+        resetReveals()
         setPasswordHistoryDialogOpen(false)
         setEditorMode(null)
       })
     },
-    [detailCache, requestEditorTransition, setEditorMode, setSelectedId, setSelectedLogin]
+    [
+      detailCache,
+      requestEditorTransition,
+      resetReveals,
+      setEditorMode,
+      setSelectedId,
+      setSelectedLogin
+    ]
   )
 
   const selectLogin = useCallback(
@@ -624,93 +603,26 @@ function VaultShellContent({
     [activateLogin, requestEditorTransition, setSelectedIds]
   )
 
-  const showLoginContextMenu = useCallback(
-    (id: string, position: { x: number; y: number }): void => {
-      void authorization
-        .withReprompt([id], (tokenFor) =>
-          window.bearwarden.logins.showContextMenu({
-            id,
-            ...position,
-            hasTotp: items.find((item) => item.id === id)?.hasTotp ?? false,
-            ...authorizationTokenField(tokenFor(id))
-          })
-        )
-        .catch((menuError) => announceError(describeVaultError(menuError)))
-    },
-    [authorization, describeVaultError, items]
-  )
-
-  const loadPasswordHistory = useCallback(async () => {
-    const summary = selectedSummary
-    if (!summary || summary.passwordHistoryCount === 0) throw new Error('INVALID_INPUT')
-    const itemId = summary.id
-    return authorization.withReprompt(
-      [itemId],
-      (tokenFor) =>
-        window.bearwarden.logins.getPasswordHistory({
-          id: itemId,
-          ...authorizationTokenField(tokenFor(itemId))
-        }),
-      true
-    )
-  }, [authorization, selectedSummary])
-
-  const revealPasswordHistory = useCallback(
-    async (
-      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
-    ): Promise<string> => {
-      const summary = selectedSummary
-      if (!summary) throw new Error('INVALID_INPUT')
-      const itemId = summary.id
-      return authorization.withReprompt(
-        [itemId],
-        (tokenFor) =>
-          window.bearwarden.logins.revealPasswordHistory({
-            id: itemId,
-            ...locator,
-            ...authorizationTokenField(tokenFor(itemId))
-          }),
-        true
-      )
-    },
-    [authorization, selectedSummary]
-  )
-
-  const copyPasswordHistory = useCallback(
-    async (
-      locator: Omit<PasswordHistoryEntryRequest, 'id' | 'authorizationToken'>
-    ): Promise<void> => {
-      const summary = selectedSummary
-      if (!summary) throw new Error('INVALID_INPUT')
-      const itemId = summary.id
-      await authorization.withReprompt(
-        [itemId],
-        (tokenFor) =>
-          window.bearwarden.logins.copyPasswordHistory({
-            id: itemId,
-            ...locator,
-            ...authorizationTokenField(tokenFor(itemId))
-          }),
-        true
-      )
-    },
-    [authorization, selectedSummary]
-  )
-
   const refreshAfterSync = useCallback(async (): Promise<void> => {
     const applyRefresh = async (): Promise<void> => {
       await vaultData.load()
       setEditorMode(null)
       clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
     }
     if (isEditorDirty()) {
       requestEditorTransition(() => void applyRefresh())
       return
     }
     await applyRefresh()
-  }, [clearItemSelection, isEditorDirty, requestEditorTransition, setEditorMode, vaultData])
+  }, [
+    clearItemSelection,
+    isEditorDirty,
+    requestEditorTransition,
+    resetReveals,
+    setEditorMode,
+    vaultData
+  ])
 
   const syncState = syncStatus.state
   useEffect(() => {
@@ -748,8 +660,7 @@ function VaultShellContent({
     queueMicrotask(() => {
       if (!active) return
       if (!selectedId) setSelectedLogin(null)
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
     })
     if (!selectedId) {
       return () => {
@@ -781,28 +692,15 @@ function VaultShellContent({
     return () => {
       active = false
     }
-  }, [allItems, clearItemSelection, describeVaultError, detailCache, selectedId, setSelectedLogin])
-
-  useEffect(() => {
-    if (Object.keys(revealedSecrets.values).length === 0) return
-    const timeout = window.setTimeout(() => setRevealedSecrets(emptyRevealedSecrets), 30_000)
-    return () => window.clearTimeout(timeout)
-  }, [revealedSecrets])
-
-  useEffect(() => {
-    hoveringSecretFieldsRef.current.clear()
-    hoverRevealedSecretFieldsRef.current.clear()
-    passwordZoomOpenRef.current = false
-  }, [selectedLogin?.id])
-
-  useEffect(() => {
-    if (Object.keys(revealedCustomFields.values).length === 0) return
-    const timeout = window.setTimeout(
-      () => setRevealedCustomFields(emptyRevealedCustomFields),
-      30_000
-    )
-    return () => window.clearTimeout(timeout)
-  }, [revealedCustomFields])
+  }, [
+    allItems,
+    clearItemSelection,
+    describeVaultError,
+    detailCache,
+    resetReveals,
+    selectedId,
+    setSelectedLogin
+  ])
 
   const scopedItemIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems])
   const selectItems = useCallback(
@@ -1037,8 +935,7 @@ function VaultShellContent({
     cancelAndClearAttachment()
     detailCache.clear()
     clearCardCoverListPreviews()
-    setRevealedSecrets(emptyRevealedSecrets)
-    setRevealedCustomFields(emptyRevealedCustomFields)
+    resetReveals()
     setTouchIdPassword('')
     setSelectedLogin(null)
     try {
@@ -1054,6 +951,7 @@ function VaultShellContent({
     describeVaultError,
     detailCache,
     onLocked,
+    resetReveals,
     setSelectedLogin,
     t
   ])
@@ -1065,11 +963,11 @@ function VaultShellContent({
     }
     await performLockVault()
   }, [isEditorDirty, performLockVault, requestEditorTransition])
-  const shortcutCopyFieldRef = useRef(copyField)
-  const shortcutCopyTotpRef = useRef(copyTotp)
+  const shortcutCopyFieldRef = useRef(secrets.copyField)
+  const shortcutCopyTotpRef = useRef(secrets.copyTotp)
   useEffect(() => {
-    shortcutCopyFieldRef.current = copyField
-    shortcutCopyTotpRef.current = copyTotp
+    shortcutCopyFieldRef.current = secrets.copyField
+    shortcutCopyTotpRef.current = secrets.copyTotp
   })
 
   useEffect(() => {
@@ -1260,8 +1158,7 @@ function VaultShellContent({
       setEditorMode(null)
       setMoveSnapshot(null)
       clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
     })
   }
 
@@ -1273,8 +1170,7 @@ function VaultShellContent({
       setEditorMode(null)
       setMoveSnapshot(null)
       clearItemSelection()
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
     })
   }
 
@@ -1840,7 +1736,7 @@ function VaultShellContent({
           announce(t`Saved “${updatedWithCardCover.name}”.`)
         }
       }
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      secrets.resetRevealedCustomFields()
       clearEditorDirty()
       setEditorMode(null)
       return true
@@ -1905,8 +1801,7 @@ function VaultShellContent({
       setItems((current) => [...current, toLoginSummary(cloned)])
       setScope(cloned.archivedAt ? { kind: 'archive' } : { kind: 'all' })
       selectSavedItem(cloned.id, cloned.reprompt === 0 ? cloned : null)
-      setRevealedSecrets(emptyRevealedSecrets)
-      setRevealedCustomFields(emptyRevealedCustomFields)
+      resetReveals()
       announce(t`Created “${cloned.name}”.`)
     } catch (cloneError) {
       announceError(describeVaultError(cloneError))
@@ -2035,179 +1930,6 @@ function VaultShellContent({
       announceError(describeVaultError(emptyError))
     } finally {
       setBusy(false)
-    }
-  }
-
-  async function revealSecret(
-    field: VaultSecretField,
-    options: { quiet?: boolean; forceShow?: boolean } = {}
-  ): Promise<string | undefined> {
-    if (!selectedSummary) return undefined
-    if (selectedSharedSummary && !canRevealSecretsOnHover(selectedSharedSummary)) return undefined
-    const itemId = selectedSummary.id
-    const revealedValue =
-      revealedSecrets.itemId === itemId ? revealedSecrets.values[field] : undefined
-    if (revealedValue !== undefined) {
-      if (options.forceShow) return revealedValue
-      setRevealedSecrets((current) => {
-        if (current.itemId !== itemId) return current
-        const next = { ...current.values }
-        delete next[field]
-        return Object.keys(next).length ? { itemId, values: next } : emptyRevealedSecrets
-      })
-      return undefined
-    }
-    try {
-      const value = await itemAccess.revealSecret(selectedSummary, field)
-      if (currentSelectedId() !== itemId) return undefined
-      if (
-        options.quiet &&
-        !hoveringSecretFieldsRef.current.has(field) &&
-        !(field === 'password' && passwordZoomOpenRef.current)
-      ) {
-        return value
-      }
-      setRevealedSecrets((current) => ({
-        itemId,
-        values: {
-          ...(current.itemId === itemId ? current.values : {}),
-          [field]: value
-        }
-      }))
-      if (!options.quiet) {
-        const revealedLabel = field === 'privateKey' ? t`Private key` : t`Sensitive data`
-        announce(t`${revealedLabel} is visible and will be hidden automatically in 30 seconds.`)
-      }
-      return value
-    } catch (revealError) {
-      announceError(describeVaultError(revealError))
-      return undefined
-    }
-  }
-
-  function hideRevealedSecret(field: VaultSecretField): void {
-    if (!selectedSummary) return
-    const itemId = selectedSummary.id
-    setRevealedSecrets((current) => {
-      if (current.itemId !== itemId || current.values[field] === undefined) return current
-      const next = { ...current.values }
-      delete next[field]
-      return Object.keys(next).length ? { itemId, values: next } : emptyRevealedSecrets
-    })
-  }
-
-  async function openPasswordZoom(): Promise<void> {
-    if (!selectedSummary) return
-    const itemId = selectedSummary.id
-    passwordZoomOpenRef.current = true
-    const value = await revealSecret('password', { quiet: true, forceShow: true })
-    if (value === undefined) {
-      passwordZoomOpenRef.current = false
-      return
-    }
-    setPasswordZoom({ itemId, value })
-  }
-
-  function closePasswordZoom(): void {
-    passwordZoomOpenRef.current = false
-    setPasswordZoom(null)
-    if (!hoveringSecretFieldsRef.current.has('password')) {
-      hoverRevealedSecretFieldsRef.current.delete('password')
-      hideRevealedSecret('password')
-    }
-  }
-
-  async function copyField(field: VaultCopyField, uriIndex?: number): Promise<void> {
-    if (!selectedSummary) return
-    clearCopied()
-    try {
-      await itemAccess.copyField(selectedSummary, field, uriIndex)
-      showCopied(detailFieldCopyFeedbackKey(selectedSummary.id, field, uriIndex))
-      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
-    } catch (copyError) {
-      announceError(describeVaultError(copyError))
-    }
-  }
-
-  async function revealCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
-    if (!selectedLogin || !selectedSummary) return
-    const itemId = selectedLogin.id
-    const revealedEntry =
-      revealedCustomFields.itemId === itemId ? revealedCustomFields.values[index] : undefined
-    if (
-      revealedEntry &&
-      revealedEntry.expectedUpdatedAt === selectedLogin.updatedAt &&
-      matchesCustomFieldSource(field, index, revealedEntry.source)
-    ) {
-      setRevealedCustomFields((current) => {
-        if (current.itemId !== itemId) return current
-        const next = { ...current.values }
-        delete next[index]
-        return Object.keys(next).length ? { itemId, values: next } : emptyRevealedCustomFields
-      })
-      return
-    }
-    try {
-      const expectedUpdatedAt = selectedLogin.updatedAt
-      const source: VaultCustomFieldSource = {
-        index,
-        name: field.name,
-        type: field.type,
-        linkedId: field.linkedId
-      }
-      const value = await itemAccess.revealCustomField(selectedSummary, {
-        expectedUpdatedAt,
-        source
-      })
-      if (currentSelectedId() !== itemId) return
-      setRevealedCustomFields((current) => ({
-        itemId,
-        values: {
-          ...(current.itemId === itemId ? current.values : {}),
-          [index]: { value, source, expectedUpdatedAt }
-        }
-      }))
-      announce(t`The hidden field is visible and will be hidden automatically in 30 seconds.`)
-    } catch (revealError) {
-      announceError(describeVaultError(revealError))
-    }
-  }
-
-  async function copyCustomField(index: number, field: VaultCustomFieldView): Promise<void> {
-    if (!selectedLogin || !selectedSummary) return
-    clearCopied()
-    try {
-      await itemAccess.copyCustomField(selectedSummary, {
-        expectedUpdatedAt: selectedLogin.updatedAt,
-        source: { index, name: field.name, type: field.type, linkedId: field.linkedId }
-      })
-      showCopied(customFieldCopyFeedbackKey(selectedLogin.id, index, field))
-      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
-    } catch (copyError) {
-      announceError(describeVaultError(copyError))
-    }
-  }
-
-  async function copyTotp(): Promise<void> {
-    if (!selectedLogin?.hasTotp || !selectedSummary) return
-    clearCopied()
-    try {
-      await itemAccess.copyTotp(selectedSummary)
-      showCopied(`totp:${selectedLogin.id}`)
-      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
-    } catch (copyError) {
-      announceError(describeVaultError(copyError))
-    }
-  }
-
-  async function openWebsite(uriIndex = 0): Promise<void> {
-    if (!selectedSummary?.uris[uriIndex]?.uri) return
-    try {
-      await itemAccess.openUri(selectedSummary, uriIndex)
-      announce(t`Website opened.`)
-      if (tracksItemUsage(selectedSummary)) await vaultData.refreshItems()
-    } catch (openError) {
-      announceError(describeVaultError(openError))
     }
   }
 
@@ -2575,7 +2297,7 @@ function VaultShellContent({
                     onPrefetch: detailCache.prefetch,
                     onSelect: selectItems,
                     onToggleFavorite: toggleFavorite,
-                    onContextMenu: showLoginContextMenu,
+                    onContextMenu: secrets.showLoginContextMenu,
                     onOpenCreate: () => openEditor('create'),
                     snapshotBulkAction,
                     onPerformBulkAction: performBulkAction,
@@ -2929,22 +2651,22 @@ function VaultShellContent({
                                 (field.secret || Boolean(field.value))
                             )}
                             copy={{
-                              copiedKey,
+                              copiedKey: secrets.copiedKey,
                               itemId: selectedSummary?.id,
-                              copyField
+                              copyField: secrets.copyField
                             }}
                             reveal={{
-                              state: revealedSecrets,
+                              state: secrets.revealedSecrets,
                               selectedItemId: selectedLogin.id,
-                              hoveringFieldsRef: hoveringSecretFieldsRef,
-                              hoverRevealedFieldsRef: hoverRevealedSecretFieldsRef,
-                              passwordZoomOpenRef,
-                              reveal: revealSecret,
-                              hide: hideRevealedSecret,
-                              openPasswordZoom,
+                              hoveringFieldsRef: secrets.hoveringSecretFieldsRef,
+                              hoverRevealedFieldsRef: secrets.hoverRevealedSecretFieldsRef,
+                              passwordZoomOpenRef: secrets.passwordZoomOpenRef,
+                              reveal: secrets.revealSecret,
+                              hide: secrets.hideRevealedSecret,
+                              openPasswordZoom: secrets.openPasswordZoom,
                               revealOnHover: canRevealSecretsOnHover(selectedSharedSummary)
                             }}
-                            website={{ openWebsite }}
+                            website={{ openWebsite: secrets.openWebsite }}
                           />
                         </CardContent>
                       </DetailCard>
@@ -2967,8 +2689,14 @@ function VaultShellContent({
                             fields={selectedLogin.customFields}
                             item={{ id: selectedLogin.id, updatedAt: selectedLogin.updatedAt }}
                             labels={customFieldLabels}
-                            copy={{ copiedKey, copyField: copyCustomField }}
-                            reveal={{ state: revealedCustomFields, reveal: revealCustomField }}
+                            copy={{
+                              copiedKey: secrets.copiedKey,
+                              copyField: secrets.copyCustomField
+                            }}
+                            reveal={{
+                              state: secrets.revealedCustomFields,
+                              reveal: secrets.revealCustomField
+                            }}
                           />
                         </CardContent>
                       </DetailCard>
@@ -2998,9 +2726,9 @@ function VaultShellContent({
                         showSkeleton={selectedTotp.showSkeleton}
                         codeCycle={selectedTotp.cycle}
                         showCountdown={typeFilter !== 'totp'}
-                        copied={copiedKey === `totp:${selectedLogin.id}`}
+                        copied={secrets.copiedKey === `totp:${selectedLogin.id}`}
                         defaultCountdownPeriodSeconds={totpListCountdownPeriodSeconds}
-                        onCopy={copyTotp}
+                        onCopy={secrets.copyTotp}
                       />
                     )}
 
@@ -3072,13 +2800,13 @@ function VaultShellContent({
               open: passwordHistoryDialogOpen,
               selectedSummary,
               onClose: () => setPasswordHistoryDialogOpen(false),
-              onLoad: loadPasswordHistory,
-              onReveal: revealPasswordHistory,
-              onCopy: copyPasswordHistory
+              onLoad: secrets.loadPasswordHistory,
+              onReveal: secrets.revealPasswordHistory,
+              onCopy: secrets.copyPasswordHistory
             },
             passwordZoom: {
-              value: passwordZoomValue,
-              onClose: closePasswordZoom
+              value: secrets.passwordZoomValue,
+              onClose: secrets.closePasswordZoom
             },
             generator: {
               open: generatorDialogOpen,
