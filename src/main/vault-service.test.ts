@@ -3400,6 +3400,81 @@ describe('VaultService encrypted local data', () => {
     ])
   })
 
+  it('sorts recent shared items by server revision because shared usage is never recorded', async () => {
+    // Shared items are replaced wholesale from the organization snapshot on every sync and their
+    // reveal and copy operations do not record usage, so lastUsedAt stays null and the server
+    // revision date is the only recency signal they carry.
+    const organizationId = '60000000-0000-4000-8000-000000000001'
+    const collectionId = '70000000-0000-4000-8000-000000000001'
+    const olderId = '80000000-0000-4000-8000-000000000001'
+    const newerId = '80000000-0000-4000-8000-000000000002'
+    const { service } = await createHarness({
+      createSyncClient: (sync) => {
+        const fake = createSyncFake(sync.state)
+        const sharedItems = [
+          { id: olderId, name: 'Alpha shared', revisionDate: '2026-07-10T00:00:00.000Z' },
+          { id: newerId, name: 'Zulu shared', revisionDate: '2026-07-12T00:00:00.000Z' }
+        ].map(({ id, name, revisionDate }) => ({
+          ...fake.remoteLogins[0]!,
+          id,
+          name,
+          organizationId,
+          collectionIds: [collectionId],
+          edit: true,
+          viewPassword: true,
+          delete: true,
+          restore: false,
+          revisionDate
+        }))
+        fake.listOrganizations = async () => [
+          {
+            id: organizationId,
+            name: 'Shared Team',
+            status: 0,
+            type: 0,
+            enabled: true,
+            identifier: 'shared-team',
+            hasPublicAndPrivateKeys: false
+          }
+        ]
+        fake.listCollections = async () => [
+          {
+            id: collectionId,
+            organizationId,
+            name: 'Shared Collection',
+            externalId: null,
+            readOnly: false,
+            hidePasswords: false,
+            manage: true,
+            type: 0,
+            assigned: true
+          }
+        ]
+        fake.listOrganizationCiphers = async () => structuredClone(sharedItems)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+
+    await service.copySharedField({ id: olderId, field: 'username' })
+    await service.syncNow()
+
+    const recent = await service.listSharedLogins({ sort: 'recent' })
+    expect(recent.map((login) => [login.id, login.lastUsedAt, login.usageCount])).toEqual([
+      [newerId, null, 0],
+      [olderId, null, 0]
+    ])
+    expect((await service.listSharedLogins({ sort: 'name' })).map((login) => login.id)).toEqual([
+      olderId,
+      newerId
+    ])
+  })
+
   it('keeps shared item access read-only and enforces organization visibility atomically', async () => {
     const { service, copyText, openExternal } = await createHarness()
     await service.setup(MASTER_PASSWORD)

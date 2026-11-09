@@ -150,6 +150,8 @@ export class VaultListings {
       if (request.sort === 'frequency' && left.usageCount !== right.usageCount) {
         return right.usageCount - left.usageCount
       }
+      // Unlike personal items, shared items have no usage to sort by: sync replaces them wholesale
+      // and their reveal and copy paths record none, so the server revision is their recency.
       return request.sort === 'name' || request.sort === 'frequency'
         ? compareText(left.name, right.name) || left.id.localeCompare(right.id)
         : right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
