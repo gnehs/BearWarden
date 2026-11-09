@@ -5,7 +5,6 @@ import { ArrowRight, Fingerprint, KeyRound, RotateCcw, ShieldAlert } from 'lucid
 import type { AccountStatus, PinUnlockStatus } from '../../../shared/vault-contract'
 import BrandMark from './BrandMark'
 import ApplicationTitlebarMenu from './ApplicationTitlebarMenu'
-import AuthMeshGradientBackground from './AuthMeshGradientBackground'
 import { Alert, AlertDescription } from '@renderer/components/ui/alert'
 import { Button } from '@renderer/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@renderer/components/ui/field'
@@ -19,6 +18,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
 import { useSettingsStore } from '../stores/settings-runtime'
@@ -251,13 +251,13 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
   return (
     <main
       className={cn(
-        'bg-background relative flex min-h-full flex-col items-center overflow-y-auto px-6',
+        'bg-background relative isolate flex min-h-full flex-col items-center overflow-y-auto px-6',
         isMac && 'platform-macos',
         isWindows && 'platform-windows',
         (isMac || isWindows) && 'bg-transparent'
       )}
     >
-      <AuthMeshGradientBackground />
+      <DotGridBackdrop className="fixed" translucent={isMac || isWindows} />
       <div
         className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-12 [-webkit-app-region:drag]"
         aria-hidden="true"
@@ -270,7 +270,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       <div className="relative z-10 mt-[20vh] mb-8 flex w-full max-w-[440px] shrink-0 flex-col items-center gap-4">
         <BrandMark stacked />
         <section
-          className="w-full max-w-[440px] rounded-2xl bg-[color-mix(in_oklch,var(--card)_84%,transparent)] p-7 shadow-[var(--shadow)] outline outline-[color-mix(in_oklch,var(--foreground)_8%,transparent)] backdrop-blur-[28px]"
+          className="w-full max-w-[440px] rounded-[1.75rem] border border-(--glass-ring) bg-(--glass-surface) p-7 shadow-(--shadow) backdrop-blur-2xl backdrop-saturate-150"
           aria-labelledby="auth-title"
         >
           {state === 'loading' && (
