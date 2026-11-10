@@ -1041,7 +1041,7 @@ function VaultShellContent({
               ? 'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden'
               : 'grid-cols-[260px_minmax(0,1fr)] max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)]',
 
-            (isMac || isWindows) && 'gap-3 pr-3 pb-3 max-[880px]:pl-3',
+            (isMac || isWindows) && 'gap-3 overflow-visible pr-3 pb-3 max-[880px]:pl-3',
             auxiliaryPageOpen && (isMac || isWindows) && 'pl-3'
           )}
         >
@@ -1091,7 +1091,7 @@ function VaultShellContent({
                 ? 'grid-cols-[minmax(0,1fr)]'
                 : 'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
 
-              (isMac || isWindows) && 'gap-3 bg-transparent max-[680px]:gap-0'
+              (isMac || isWindows) && 'gap-3 overflow-visible bg-transparent max-[680px]:gap-0'
             )}
             data-vault-pane-group=""
           >
