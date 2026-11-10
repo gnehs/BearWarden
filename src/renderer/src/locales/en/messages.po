@@ -22,7 +22,7 @@ msgid " · Legacy unauthenticated encryption"
 msgstr " · Legacy unauthenticated encryption"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)
-#: src/renderer/src/components/SendsPage.tsx:434
+#: src/renderer/src/components/SendsPage.tsx:436
 msgid " / maximum {0}"
 msgstr " / maximum {0}"
 
@@ -83,7 +83,7 @@ msgid "“{0}” will be permanently deleted from Bitwarden and cannot be recove
 msgstr "“{0}” will be permanently deleted from Bitwarden and cannot be recovered."
 
 #. placeholder {0}: deleteTarget?.name ?? ''
-#: src/renderer/src/components/SendsPage.tsx:801
+#: src/renderer/src/components/SendsPage.tsx:803
 msgid "“{0}” will be removed from Vaultwarden and cannot be restored from the trash."
 msgstr "“{0}” will be removed from Vaultwarden and cannot be restored from the trash."
 
@@ -103,12 +103,12 @@ msgid "{0, plural, one {{1, plural, one {The server still has {2} personal item 
 msgstr "{0, plural, one {{1, plural, one {The server still has {2} personal item and # folder. BearWarden will not resend automatically; trying again only removes remaining data.} other {The server still has {3} personal item and # folders. BearWarden will not resend automatically; trying again only removes remaining data.}}} other {{4, plural, one {The server still has {5} personal items and # folder. BearWarden will not resend automatically; trying again only removes remaining data.} other {The server still has {6} personal items and # folders. BearWarden will not resend automatically; trying again only removes remaining data.}}}}"
 
 #. placeholder {0}: nextStatus.remainingAttempts
-#: src/renderer/src/components/AuthScreen.tsx:188
+#: src/renderer/src/components/AuthScreen.tsx:187
 msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 msgstr "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 
 #. placeholder {0}: send.accessCount
-#: src/renderer/src/components/SendsPage.tsx:430
+#: src/renderer/src/components/SendsPage.tsx:432
 msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# access} other {# accesses}}"
 
@@ -118,7 +118,7 @@ msgid "{0, plural, one {# attachment} other {# attachments}}"
 msgstr "{0, plural, one {# attachment} other {# attachments}}"
 
 #. placeholder {0}: repromptRequest.count
-#: src/renderer/src/components/VaultShell.tsx:1382
+#: src/renderer/src/components/VaultShell.tsx:1380
 msgid "{0, plural, one {# protected item} other {# protected items}}"
 msgstr "{0, plural, one {# protected item} other {# protected items}}"
 
@@ -167,7 +167,7 @@ msgid "{0} autofill settings"
 msgstr "{0} autofill settings"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.file.size)
-#: src/renderer/src/components/SendsPage.tsx:503
+#: src/renderer/src/components/SendsPage.tsx:505
 msgid "{0} bytes"
 msgstr "{0} bytes"
 
@@ -282,7 +282,7 @@ msgstr "{0} URI match rules"
 msgid "{0}: {1}"
 msgstr "{0}: {1}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1030
+#: src/renderer/src/components/VaultHealthPage.tsx:1031
 msgid "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 msgstr "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 
@@ -294,7 +294,7 @@ msgstr "{conflicts, plural, one {# conflict} other {# conflicts}}"
 msgid "{count, plural, one {“{itemName}” has # history entry.} other {“{itemName}” has # history entries.}}"
 msgstr "{count, plural, one {“{itemName}” has # history entry.} other {“{itemName}” has # history entries.}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:227
+#: src/renderer/src/components/VaultHealthPage.tsx:228
 msgid "{count, plural, one {# item} other {# items}}"
 msgstr "{count, plural, one {# item} other {# items}}"
 
@@ -307,7 +307,7 @@ msgid "{count, plural, one {Permanently deleted # item.} other {Permanently dele
 msgstr "{count, plural, one {Permanently deleted # item.} other {Permanently deleted # items.}}"
 
 #: src/renderer/src/components/DndRows.tsx:374
-#: src/renderer/src/components/VaultShell-primitives.tsx:182
+#: src/renderer/src/components/VaultShell-primitives.tsx:233
 msgid "{count} items"
 msgstr "{count} items"
 
@@ -319,19 +319,19 @@ msgstr "{currentTypeLabel} details"
 msgid "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 msgstr "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:502
+#: src/renderer/src/components/VaultHealthPage.tsx:503
 msgid "{excludedArchivedCount, plural, one {# archived item} other {# archived items}}"
 msgstr "{excludedArchivedCount, plural, one {# archived item} other {# archived items}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:499
+#: src/renderer/src/components/VaultHealthPage.tsx:500
 msgid "{excludedDeletedCount, plural, one {# item in trash} other {# items in trash}}"
 msgstr "{excludedDeletedCount, plural, one {# item in trash} other {# items in trash}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:492
+#: src/renderer/src/components/VaultHealthPage.tsx:493
 msgid "{excludedTotpCount, plural, one {# already has TOTP} other {# already have TOTP}}"
 msgstr "{excludedTotpCount, plural, one {# already has TOTP} other {# already have TOTP}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:577
+#: src/renderer/src/components/VaultHealthPage.tsx:578
 msgid "{exposedCount, plural, one {# known breach record} other {# known breach records}}"
 msgstr "{exposedCount, plural, one {# known breach record} other {# known breach records}}"
 
@@ -384,11 +384,11 @@ msgstr "{message} The list could not be refreshed. Try again later."
 msgid "{message} The list could not be reloaded. Close Settings and try again."
 msgstr "{message} The list could not be reloaded. Close Settings and try again."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1492
+#: src/renderer/src/components/VaultHealthPage.tsx:1476
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped to prevent health labels from revealing characteristics of protected content.} other {# login items with master password reprompt enabled were skipped to prevent health labels from revealing characteristics of protected content.}}"
 msgstr "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped to prevent health labels from revealing characteristics of protected content.} other {# login items with master password reprompt enabled were skipped to prevent health labels from revealing characteristics of protected content.}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:737
+#: src/renderer/src/components/VaultHealthPage.tsx:738
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped without creating a SHA-1 or sending an HIBP range query.} other {# login items with master password reprompt enabled were skipped without creating a SHA-1 or sending an HIBP range query.}}"
 msgstr "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped without creating a SHA-1 or sending an HIBP range query.} other {# login items with master password reprompt enabled were skipped without creating a SHA-1 or sending an HIBP range query.}}"
 
@@ -404,11 +404,11 @@ msgstr "{pulled, plural, one {Pulled # item} other {Pulled # items}}"
 msgid "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 msgstr "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:942
+#: src/renderer/src/components/VaultHealthPage.tsx:943
 msgid "{pwnCount, plural, one {# account} other {# accounts}}"
 msgstr "{pwnCount, plural, one {# account} other {# accounts}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:248
+#: src/renderer/src/components/VaultHealthPage.tsx:249
 msgid "{reuseCount, plural, one {Reused # time} other {Reused # times}}"
 msgstr "{reuseCount, plural, one {Reused # time} other {Reused # times}}"
 
@@ -501,7 +501,7 @@ msgstr "15 minutes"
 msgid "240 minutes"
 msgstr "240 minutes"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:315
+#: src/renderer/src/components/VaultHealthPage.tsx:316
 msgid "2fa.directory service: {matchedDomain}"
 msgstr "2fa.directory service: {matchedDomain}"
 
@@ -569,15 +569,15 @@ msgstr "Accepted"
 msgid "Access approved"
 msgstr "Access approved"
 
-#: src/renderer/src/components/SendsPage.tsx:115
+#: src/renderer/src/components/SendsPage.tsx:116
 msgid "Access limit reached"
 msgstr "Access limit reached"
 
-#: src/renderer/src/components/SendsPage.tsx:597
+#: src/renderer/src/components/SendsPage.tsx:599
 msgid "Access password (leave blank to keep the current password)"
 msgstr "Access password (leave blank to keep the current password)"
 
-#: src/renderer/src/components/SendsPage.tsx:599
+#: src/renderer/src/components/SendsPage.tsx:601
 msgid "Access password (optional)"
 msgstr "Access password (optional)"
 
@@ -626,7 +626,7 @@ msgstr "Account {slot}"
 msgid "Account and encryption information"
 msgstr "Account and encryption information"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1457
+#: src/renderer/src/components/VaultHealthPage.tsx:1441
 msgid "Account breaches"
 msgstr "Account breaches"
 
@@ -735,7 +735,7 @@ msgid "Add fields as needed to store data specific to this item."
 msgstr "Add fields as needed to store data specific to this item."
 
 #: src/renderer/src/components/Dialogs.tsx:185
-#: src/renderer/src/components/VaultShellSidebar.tsx:259
+#: src/renderer/src/components/VaultShellSidebar.tsx:264
 msgid "Add folder"
 msgstr "Add folder"
 
@@ -832,7 +832,7 @@ msgstr "Address line 3"
 msgid "Administrator"
 msgstr "Administrator"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:953
+#: src/renderer/src/components/VaultHealthPage.tsx:954
 msgid "Affected data classes"
 msgstr "Affected data classes"
 
@@ -865,11 +865,11 @@ msgstr "After Bitwarden sync completes, shared items that you have permission to
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
 msgstr "After previewing, new local owner verification is required before syncing and restoring begin."
 
-#: src/renderer/src/components/SendsPage.tsx:685
+#: src/renderer/src/components/SendsPage.tsx:687
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
 msgstr "After this date, the link stops accepting access, but the Send is not immediately deleted."
 
-#: src/renderer/src/components/SendsPage.tsx:707
+#: src/renderer/src/components/SendsPage.tsx:709
 msgid "After this time, the server permanently removes the Send."
 msgstr "After this time, the server permanently removes the Send."
 
@@ -885,7 +885,7 @@ msgstr "After you acknowledge this, reconnect. You can start a new master-passwo
 msgid "After you enter your master password and explicitly confirm, the next sync will resend unconfirmed items. This may create duplicates on the server."
 msgstr "After you enter your master password and explicitly confirm, the next sync will resend unconfirmed items. This may create duplicates on the server."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:355
+#: src/renderer/src/components/VaultHealthPage.tsx:356
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 msgstr "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 
@@ -894,19 +894,19 @@ msgid "Agent could not start"
 msgstr "Agent could not start"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:268
-#: src/renderer/src/components/VaultShell.tsx:151
+#: src/renderer/src/components/VaultShell.tsx:150
 msgid "All"
 msgstr "All"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:161
+#: src/renderer/src/components/VaultHealthPage.tsx:162
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "All analyzed login items are above the weak-password threshold."
 
-#: src/renderer/src/components/AuthScreen.tsx:291
+#: src/renderer/src/components/AuthScreen.tsx:289
 msgid "All data is decrypted on this device."
 msgstr "All data is decrypted on this device."
 
-#: src/renderer/src/components/VaultShell.tsx:696
+#: src/renderer/src/components/VaultShell.tsx:695
 msgid "All items"
 msgstr "All items"
 
@@ -955,15 +955,15 @@ msgstr "An unknown error occurred. Please try again later."
 #~ msgid "An unknown error occurred. Try again later."
 #~ msgstr "An unknown error occurred. Try again later."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1340
+#: src/renderer/src/components/VaultHealthPage.tsx:1327
 msgid "Analyze again"
 msgstr "Analyze again"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:452
+#: src/renderer/src/components/VaultHealthPage.tsx:453
 msgid "Analyzed this time"
 msgstr "Analyzed this time"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:138
+#: src/renderer/src/components/VaultHealthPage.tsx:139
 msgid "Analyzing the vault locally"
 msgstr "Analyzing the vault locally"
 
@@ -1038,8 +1038,8 @@ msgstr "Arc reported that the focused field is not editable text."
 
 #: src/renderer/src/components/VaultItemDetailViews.tsx:353
 #: src/renderer/src/components/VaultItemListPane.tsx:329
-#: src/renderer/src/components/VaultShell.tsx:689
-#: src/renderer/src/components/VaultShellSidebar.tsx:279
+#: src/renderer/src/components/VaultShell.tsx:688
+#: src/renderer/src/components/VaultShellSidebar.tsx:284
 msgid "Archive"
 msgstr "Archive"
 
@@ -1064,7 +1064,7 @@ msgstr "Ask before every signature"
 msgid "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
 msgstr "At least {MIN_PASSWORD_LENGTH} characters. Keep it safe: BearWarden cannot recover it."
 
-#: src/renderer/src/components/AuthScreen.tsx:409
+#: src/renderer/src/components/AuthScreen.tsx:407
 msgid "At least 12 characters. BearWarden cannot recover it."
 msgstr "At least 12 characters. BearWarden cannot recover it."
 
@@ -1072,7 +1072,7 @@ msgstr "At least 12 characters. BearWarden cannot recover it."
 msgid "At least 12 characters. It is provided only to the local main process for encryption or decryption."
 msgstr "At least 12 characters. It is provided only to the local main process for encryption or decryption."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:289
+#: src/renderer/src/components/VaultHealthPage.tsx:290
 msgid "At least one URI explicitly uses http://"
 msgstr "At least one URI explicitly uses http://"
 
@@ -1085,7 +1085,7 @@ msgstr "At most {MAX_HINT_LENGTH} characters. Do not enter your master password 
 msgid "Attachment actions for {0}"
 msgstr "Attachment actions for {0}"
 
-#: src/renderer/src/components/VaultShell.tsx:1433
+#: src/renderer/src/components/VaultShell.tsx:1431
 msgid "Attachment preview"
 msgstr "Attachment preview"
 
@@ -1165,7 +1165,7 @@ msgid "Back"
 msgstr "Back"
 
 #: src/renderer/src/components/VaultItemDetailViews.tsx:309
-#: src/renderer/src/components/VaultShell-primitives.tsx:216
+#: src/renderer/src/components/VaultShell-primitives.tsx:267
 msgid "Back to item list"
 msgstr "Back to item list"
 
@@ -1221,7 +1221,7 @@ msgstr "BearWarden cannot unlock this organization's account safely. Use the off
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 
-#: src/renderer/src/components/AuthScreen.tsx:308
+#: src/renderer/src/components/AuthScreen.tsx:306
 msgid "BearWarden could not load the vault service. Your data has not been changed."
 msgstr "BearWarden could not load the vault service. Your data has not been changed."
 
@@ -1229,7 +1229,7 @@ msgstr "BearWarden could not load the vault service. Your data has not been chan
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
-#: src/renderer/src/components/SendsPage.tsx:490
+#: src/renderer/src/components/SendsPage.tsx:492
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 
@@ -1249,11 +1249,11 @@ msgstr "BearWarden provides only unarchived, undeleted SSH keys. Each signature 
 msgid "BearWarden sends only the approval result to the local main process and never shares private passkey data with the website."
 msgstr "BearWarden sends only the approval result to the local main process and never shares private passkey data with the website."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:593
+#: src/renderer/src/components/VaultHealthPage.tsx:594
 msgid "BearWarden sends only the first 5 characters of the password SHA-1 hash, downloads the padded range response from HIBP Pwned Passwords, and compares the complete SHA-1 locally in the main process. Neither the password nor the complete hash is sent to HIBP or the renderer process."
 msgstr "BearWarden sends only the first 5 characters of the password SHA-1 hash, downloads the padded range response from HIBP Pwned Passwords, and compares the complete SHA-1 locally in the main process. Neither the password nor the complete hash is sent to HIBP or the renderer process."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:823
+#: src/renderer/src/components/VaultHealthPage.tsx:824
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 
@@ -1301,11 +1301,11 @@ msgstr "Biometrics"
 msgid "Biometrics are unavailable on this device"
 msgstr "Biometrics are unavailable on this device"
 
-#: src/renderer/src/components/VaultShell.tsx:922
+#: src/renderer/src/components/VaultShell.tsx:921
 msgid "Biometrics disabled."
 msgstr "Biometrics disabled."
 
-#: src/renderer/src/components/VaultShell.tsx:913
+#: src/renderer/src/components/VaultShell.tsx:912
 msgid "Biometrics enabled."
 msgstr "Biometrics enabled."
 
@@ -1339,11 +1339,11 @@ msgstr "Block screenshots"
 msgid "Brand"
 msgstr "Brand"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:722
+#: src/renderer/src/components/VaultHealthPage.tsx:723
 msgid "Breach counts come from HIBP and do not mean the password is still circulating on a specific website."
 msgstr "Breach counts come from HIBP and do not mean the password is still circulating on a specific website."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:948
+#: src/renderer/src/components/VaultHealthPage.tsx:949
 msgid "Breach date: {breachDate}; added to HIBP: {addedDate}"
 msgstr "Breach date: {breachDate}; added to HIBP: {addedDate}"
 
@@ -1383,8 +1383,8 @@ msgstr "Can restore"
 #: src/renderer/src/components/LoginEditor.tsx:2750
 #: src/renderer/src/components/LoginEditor.tsx:3143
 #: src/renderer/src/components/LoginEditor.tsx:3377
-#: src/renderer/src/components/SendsPage.tsx:782
-#: src/renderer/src/components/SendsPage.tsx:809
+#: src/renderer/src/components/SendsPage.tsx:784
+#: src/renderer/src/components/SendsPage.tsx:811
 #: src/renderer/src/components/SyncDialog.tsx:1258
 #: src/renderer/src/components/VaultItemAccessCards.tsx:100
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:603
@@ -1392,7 +1392,7 @@ msgstr "Can restore"
 msgid "Cancel"
 msgstr "Cancel"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:651
+#: src/renderer/src/components/VaultHealthPage.tsx:652
 msgid "Cancel check"
 msgstr "Cancel check"
 
@@ -1400,7 +1400,7 @@ msgstr "Cancel check"
 msgid "Cancel editing"
 msgstr "Cancel editing"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:909
+#: src/renderer/src/components/VaultHealthPage.tsx:910
 msgid "Cancel query"
 msgstr "Cancel query"
 
@@ -1469,7 +1469,7 @@ msgstr "Card number recognized as {0}"
 msgid "Cardholder"
 msgstr "Cardholder"
 
-#: src/renderer/src/components/VaultShell.tsx:155
+#: src/renderer/src/components/VaultShell.tsx:154
 msgid "Cards"
 msgstr "Cards"
 
@@ -1486,7 +1486,7 @@ msgstr "Catch-all"
 msgid "Catch-all domain"
 msgstr "Catch-all domain"
 
-#: src/renderer/src/components/VaultShellSidebar.tsx:218
+#: src/renderer/src/components/VaultShellSidebar.tsx:223
 msgid "Categories"
 msgstr "Categories"
 
@@ -1516,7 +1516,7 @@ msgstr "Check and continue"
 msgid "Check conflicts again"
 msgstr "Check conflicts again"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:624
+#: src/renderer/src/components/VaultHealthPage.tsx:625
 msgid "Check exposed passwords"
 msgstr "Check exposed passwords"
 
@@ -1544,11 +1544,11 @@ msgstr "Check the domain format. Use commas or line breaks to separate each row.
 msgid "Check the network connection and server status, then try again."
 msgstr "Check the network connection and server status, then try again."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:385
+#: src/renderer/src/components/VaultHealthPage.tsx:386
 msgid "Check two-factor authentication"
 msgstr "Check two-factor authentication"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1536
+#: src/renderer/src/components/VaultHealthPage.tsx:1516
 msgid "Check whether the service offers HTTPS and update the saved website address."
 msgstr "Check whether the service offers HTTPS and update the saved website address."
 
@@ -1573,7 +1573,7 @@ msgstr "Check your network, server URL, and TLS certificate, and make sure the s
 msgid "Checkbox"
 msgstr "Checkbox"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:694
+#: src/renderer/src/components/VaultHealthPage.tsx:695
 msgid "Checked this time"
 msgstr "Checked this time"
 
@@ -1590,7 +1590,7 @@ msgstr "Checking the status of the previous change…"
 msgid "Checking the update service for a new version."
 msgstr "Checking the update service for a new version."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1377
+#: src/renderer/src/components/VaultHealthPage.tsx:1361
 msgid "Checks"
 msgstr "Checks"
 
@@ -1744,7 +1744,7 @@ msgstr "Close"
 msgid "Close notification"
 msgstr "Close notification"
 
-#: src/renderer/src/components/VaultShell.tsx:1013
+#: src/renderer/src/components/VaultShell.tsx:1012
 #: src/renderer/src/components/VaultShellChrome.tsx:138
 msgid "Close sidebar"
 msgstr "Close sidebar"
@@ -1754,12 +1754,12 @@ msgid "Close window"
 msgstr "Close window"
 
 #. placeholder {0}: account.syncLabel
-#: src/renderer/src/components/VaultShellSidebar.tsx:453
+#: src/renderer/src/components/VaultShellSidebar.tsx:458
 msgid "Cloud sync: {0}"
 msgstr "Cloud sync: {0}"
 
-#: src/renderer/src/components/VaultShell.tsx:154
-#: src/renderer/src/components/VaultShell.tsx:693
+#: src/renderer/src/components/VaultShell.tsx:153
+#: src/renderer/src/components/VaultShell.tsx:692
 msgid "Codes"
 msgstr "Codes"
 
@@ -1774,7 +1774,7 @@ msgstr "Collapse {0}"
 #~ msgstr "Collection"
 
 #. Fallback vault list title for a Bitwarden organization Collection when its name is unavailable.
-#: src/renderer/src/components/VaultShell.tsx:682
+#: src/renderer/src/components/VaultShell.tsx:681
 msgctxt "organization-collection"
 msgid "Collection"
 msgstr "Collection"
@@ -1843,8 +1843,8 @@ msgstr "Confirm clearing completion record"
 msgid "Confirm disabling {disableTargetName}"
 msgstr "Confirm disabling {disableTargetName}"
 
-#: src/renderer/src/components/AuthScreen.tsx:419
-#: src/renderer/src/components/AuthScreen.tsx:423
+#: src/renderer/src/components/AuthScreen.tsx:417
+#: src/renderer/src/components/AuthScreen.tsx:421
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
 #: src/renderer/src/components/SettingsPage.tsx:1129
 #: src/renderer/src/components/SettingsPage.tsx:1239
@@ -1866,7 +1866,7 @@ msgstr "Confirm remote outcome"
 msgid "Confirm removing security key"
 msgstr "Confirm removing security key"
 
-#: src/renderer/src/components/SendsPage.tsx:384
+#: src/renderer/src/components/SendsPage.tsx:386
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "Confirm that sync is connected and try again. Existing data has not been changed."
 
@@ -1908,11 +1908,11 @@ msgid "Connect to Bitwarden or Vaultwarden to sync the vault."
 msgstr "Connect to Bitwarden or Vaultwarden to sync the vault."
 
 #: src/renderer/src/components/SettingsPage.tsx:477
-#: src/renderer/src/components/VaultShell.tsx:165
+#: src/renderer/src/components/VaultShell.tsx:164
 msgid "Connected"
 msgstr "Connected"
 
-#: src/renderer/src/components/VaultShell.tsx:715
+#: src/renderer/src/components/VaultShell.tsx:714
 msgid "Connected account"
 msgstr "Connected account"
 
@@ -1931,11 +1931,11 @@ msgstr "Connected, vault unlocked"
 #: src/renderer/src/components/LoginEditor.tsx:2329
 #: src/renderer/src/components/LoginEditor.tsx:2994
 #: src/renderer/src/components/LoginEditor.tsx:3014
-#: src/renderer/src/components/SendsPage.tsx:581
+#: src/renderer/src/components/SendsPage.tsx:583
 msgid "Content"
 msgstr "Content"
 
-#: src/renderer/src/components/SendsPage.tsx:561
+#: src/renderer/src/components/SendsPage.tsx:563
 msgid "Content is encrypted in the main process before it is sent to the server."
 msgstr "Content is encrypted in the main process before it is sent to the server."
 
@@ -2017,7 +2017,7 @@ msgstr "Copy recovery code"
 msgid "Copy setup key"
 msgstr "Copy setup key"
 
-#: src/renderer/src/components/SendsPage.tsx:444
+#: src/renderer/src/components/SendsPage.tsx:446
 msgid "Copy sharing link"
 msgstr "Copy sharing link"
 
@@ -2049,7 +2049,7 @@ msgstr "Copy verification code"
 msgid "Copy website"
 msgstr "Copy website"
 
-#: src/renderer/src/components/SendsPage.tsx:367
+#: src/renderer/src/components/SendsPage.tsx:369
 msgid "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 msgstr "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 
@@ -2069,7 +2069,7 @@ msgstr "Could not connect to the sync server. Check your network, server URL, an
 msgid "Could not copy the diagnostic summary. Select the text and copy it manually."
 msgstr "Could not copy the diagnostic summary. Select the text and copy it manually."
 
-#: src/renderer/src/components/SendsPage.tsx:298
+#: src/renderer/src/components/SendsPage.tsx:299
 msgid "Could not copy the sharing link."
 msgstr "Could not copy the sharing link."
 
@@ -2081,7 +2081,7 @@ msgstr "Could not create the backup. Check the master password, save location, a
 msgid "Could not create the CSV. Check the master password and save location, then try again."
 msgstr "Could not create the CSV. Check the master password and save location, then try again."
 
-#: src/renderer/src/components/SendsPage.tsx:268
+#: src/renderer/src/components/SendsPage.tsx:269
 msgid "Could not create the file Send. Confirm that sync is connected."
 msgstr "Could not create the file Send. Confirm that sync is connected."
 
@@ -2089,11 +2089,11 @@ msgstr "Could not create the file Send. Confirm that sync is connected."
 msgid "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 msgstr "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 
-#: src/renderer/src/components/SendsPage.tsx:286
+#: src/renderer/src/components/SendsPage.tsx:287
 msgid "Could not delete the Send."
 msgstr "Could not delete the Send."
 
-#: src/renderer/src/components/SendsPage.tsx:320
+#: src/renderer/src/components/SendsPage.tsx:321
 msgid "Could not download the file Send. Check the password and sync connection."
 msgstr "Could not download the file Send. Check the password and sync connection."
 
@@ -2114,7 +2114,7 @@ msgstr "Could not load Emergency Access"
 msgid "Could not load organization items"
 msgstr "Could not load organization items"
 
-#: src/renderer/src/components/SendsPage.tsx:381
+#: src/renderer/src/components/SendsPage.tsx:383
 msgid "Could not load Sends"
 msgstr "Could not load Sends"
 
@@ -2126,11 +2126,11 @@ msgstr "Could not load shared item"
 msgid "Could not load the account security status."
 msgstr "Could not load the account security status."
 
-#: src/renderer/src/components/SendsPage.tsx:337
+#: src/renderer/src/components/SendsPage.tsx:338
 msgid "Could not remove the Send password."
 msgstr "Could not remove the Send password."
 
-#: src/renderer/src/components/SendsPage.tsx:231
+#: src/renderer/src/components/SendsPage.tsx:232
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Could not save the Send. Confirm that sync is connected."
 
@@ -2183,36 +2183,36 @@ msgstr "Create a plaintext copy of logins and secure notes that can be imported 
 msgid "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 msgstr "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 
-#: src/renderer/src/components/SendsPage.tsx:405
+#: src/renderer/src/components/SendsPage.tsx:407
 msgid "Create a text Send to securely share one-time content."
 msgstr "Create a text Send to securely share one-time content."
 
-#: src/renderer/src/components/AuthScreen.tsx:471
+#: src/renderer/src/components/AuthScreen.tsx:469
 msgid "Create and unlock"
 msgstr "Create and unlock"
 
-#: src/renderer/src/components/SendsPage.tsx:357
-#: src/renderer/src/components/SendsPage.tsx:771
+#: src/renderer/src/components/SendsPage.tsx:359
+#: src/renderer/src/components/SendsPage.tsx:773
 msgid "Create file Send"
 msgstr "Create file Send"
 
-#: src/renderer/src/components/SendsPage.tsx:558
+#: src/renderer/src/components/SendsPage.tsx:560
 msgid "Create Send"
 msgstr "Create Send"
 
-#: src/renderer/src/components/SendsPage.tsx:361
+#: src/renderer/src/components/SendsPage.tsx:363
 msgid "Create text Send"
 msgstr "Create text Send"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1504
+#: src/renderer/src/components/VaultHealthPage.tsx:1488
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "Create unique passwords for the most frequently reused items first."
 
-#: src/renderer/src/components/SendsPage.tsx:411
+#: src/renderer/src/components/SendsPage.tsx:413
 msgid "Create your first Send"
 msgstr "Create your first Send"
 
-#: src/renderer/src/components/AuthScreen.tsx:324
+#: src/renderer/src/components/AuthScreen.tsx:322
 msgid "Create your vault"
 msgstr "Create your vault"
 
@@ -2295,11 +2295,11 @@ msgstr "Current master password"
 msgid "Current version"
 msgstr "Current version"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:213
+#: src/renderer/src/components/EmergencyAccessPage.tsx:214
 msgid "Currently read-only. Inviting, confirming, viewing, and taking over are not available yet."
 msgstr "Currently read-only. Inviting, confirming, viewing, and taking over are not available yet."
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:216
+#: src/renderer/src/components/EmergencyAccessPage.tsx:217
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 
@@ -2376,11 +2376,11 @@ msgstr "Dark"
 msgid "Data portability"
 msgstr "Data portability"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1033
+#: src/renderer/src/components/VaultHealthPage.tsx:1034
 msgid "Data provided by <0/>. Take action based on the affected data and whether the password was reused."
 msgstr "Data provided by <0/>. Take action based on the affected data and whether the password was reused."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1061
+#: src/renderer/src/components/VaultHealthPage.tsx:1062
 msgid "Data source: <0/>"
 msgstr "Data source: <0/>"
 
@@ -2413,7 +2413,7 @@ msgstr "Default sort"
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:99
 #: src/renderer/src/components/Dialogs.tsx:255
 #: src/renderer/src/components/LoginEditor.tsx:2928
-#: src/renderer/src/components/SendsPage.tsx:820
+#: src/renderer/src/components/SendsPage.tsx:822
 #: src/renderer/src/components/VaultItemListPane.tsx:298
 msgid "Delete"
 msgstr "Delete"
@@ -2454,7 +2454,7 @@ msgstr "Delete passkey"
 msgid "Delete permanently"
 msgstr "Delete permanently"
 
-#: src/renderer/src/components/SendsPage.tsx:476
+#: src/renderer/src/components/SendsPage.tsx:478
 msgid "Delete Send"
 msgstr "Delete Send"
 
@@ -2467,7 +2467,7 @@ msgstr "Delete the passkey for {0}"
 msgid "Delete this passkey?"
 msgstr "Delete this passkey?"
 
-#: src/renderer/src/components/SendsPage.tsx:798
+#: src/renderer/src/components/SendsPage.tsx:800
 msgid "Delete this Send?"
 msgstr "Delete this Send?"
 
@@ -2493,7 +2493,7 @@ msgstr "Deleted item"
 msgid "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 msgstr "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 
-#: src/renderer/src/components/SendsPage.tsx:531
+#: src/renderer/src/components/SendsPage.tsx:533
 msgid "Deletes"
 msgstr "Deletes"
 
@@ -2505,7 +2505,7 @@ msgstr "Deleting attachment"
 msgid "Deleting…"
 msgstr "Deleting…"
 
-#: src/renderer/src/components/SendsPage.tsx:693
+#: src/renderer/src/components/SendsPage.tsx:695
 msgid "Deletion date"
 msgstr "Deletion date"
 
@@ -2551,12 +2551,12 @@ msgstr "Disable biometrics"
 msgid "Disable PIN unlock"
 msgstr "Disable PIN unlock"
 
-#: src/renderer/src/components/SendsPage.tsx:728
+#: src/renderer/src/components/SendsPage.tsx:730
 msgid "Disable Send"
 msgstr "Disable Send"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:58
-#: src/renderer/src/components/SendsPage.tsx:113
+#: src/renderer/src/components/SendsPage.tsx:114
 #: src/renderer/src/components/SettingsPage.tsx:608
 #: src/renderer/src/components/SettingsPage.tsx:1046
 #: src/renderer/src/components/SettingsPage.tsx:1192
@@ -2593,7 +2593,7 @@ msgstr "Display name"
 msgid "Display name saved."
 msgstr "Display name saved."
 
-#: src/renderer/src/components/SendsPage.tsx:746
+#: src/renderer/src/components/SendsPage.tsx:748
 msgid "Do not show your account email to recipients."
 msgstr "Do not show your account email to recipients."
 
@@ -2606,7 +2606,7 @@ msgstr "Domain rules cannot be displayed right now."
 msgid "Download {0}"
 msgstr "Download {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:455
+#: src/renderer/src/components/SendsPage.tsx:457
 msgid "Download file Send"
 msgstr "Download file Send"
 
@@ -2614,7 +2614,7 @@ msgstr "Download file Send"
 msgid "Download progress"
 msgstr "Download progress"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:352
+#: src/renderer/src/components/VaultHealthPage.tsx:353
 msgid "Download the service list only when requested"
 msgstr "Download the service list only when requested"
 
@@ -2674,7 +2674,7 @@ msgstr "Each row is a group. Use commas or line breaks to separate domains. URLs
 msgid "Earlier"
 msgstr "Earlier"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1521
+#: src/renderer/src/components/VaultHealthPage.tsx:1501
 msgid "Easy-to-guess passwords"
 msgstr "Easy-to-guess passwords"
 
@@ -2722,12 +2722,12 @@ msgstr "Edit items, hide passwords"
 msgid "Edit profile"
 msgstr "Edit profile"
 
-#: src/renderer/src/components/SendsPage.tsx:466
-#: src/renderer/src/components/SendsPage.tsx:558
+#: src/renderer/src/components/SendsPage.tsx:468
+#: src/renderer/src/components/SendsPage.tsx:560
 msgid "Edit Send"
 msgstr "Edit Send"
 
-#: src/renderer/src/components/SendsPage.tsx:204
+#: src/renderer/src/components/SendsPage.tsx:205
 msgid "Editing file Sends is not available yet."
 msgstr "Editing file Sends is not available yet."
 
@@ -2745,7 +2745,7 @@ msgstr "Editing file Sends is not available yet."
 msgid "Email"
 msgstr ""
 
-#: src/renderer/src/components/VaultHealthPage.tsx:873
+#: src/renderer/src/components/VaultHealthPage.tsx:874
 msgid "Email address"
 msgstr "Email address"
 
@@ -2765,7 +2765,7 @@ msgstr "Email not verified"
 msgid "Email two-factor authentication has been enabled."
 msgstr "Email two-factor authentication has been enabled."
 
-#: src/renderer/src/components/SendsPage.tsx:112
+#: src/renderer/src/components/SendsPage.tsx:113
 msgid "Email verification"
 msgstr "Email verification"
 
@@ -2777,12 +2777,12 @@ msgstr "Email verification code"
 msgid "Email verified"
 msgstr "Email verified"
 
-#: src/renderer/src/components/SendsPage.tsx:487
+#: src/renderer/src/components/SendsPage.tsx:489
 msgid "Email-verified Send"
 msgstr "Email-verified Send"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:211
-#: src/renderer/src/components/VaultShellSidebar.tsx:418
+#: src/renderer/src/components/VaultShellSidebar.tsx:423
 msgid "Emergency Access"
 msgstr "Emergency Access"
 
@@ -2861,11 +2861,11 @@ msgstr "Enter a folder name."
 msgid "Enter a security key name and your master password."
 msgstr "Enter a security key name and your master password."
 
-#: src/renderer/src/components/SendsPage.tsx:200
+#: src/renderer/src/components/SendsPage.tsx:201
 msgid "Enter a Send name and content."
 msgstr "Enter a Send name and content."
 
-#: src/renderer/src/components/SendsPage.tsx:240
+#: src/renderer/src/components/SendsPage.tsx:241
 msgid "Enter a Send name first."
 msgstr "Enter a Send name first."
 
@@ -2877,7 +2877,7 @@ msgstr "Enter a URL to see a matching example"
 #~ msgid "Enter a URL to show a matching example"
 #~ msgstr "Enter a URL to show a matching example"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:893
+#: src/renderer/src/components/VaultHealthPage.tsx:894
 msgid "Enter a valid email address with no more than 254 characters."
 msgstr "Enter a valid email address with no more than 254 characters."
 
@@ -2941,7 +2941,7 @@ msgstr "Enter the 6-digit verification code shown by your authenticator."
 msgid "Enter the backup password again"
 msgstr "Enter the backup password again"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:859
+#: src/renderer/src/components/VaultHealthPage.tsx:860
 msgid "Enter the email address to query through Vaultwarden and HIBP."
 msgstr "Enter the email address to query through Vaultwarden and HIBP."
 
@@ -2953,11 +2953,11 @@ msgstr "Enter the numeric verification code from the email."
 msgid "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 msgstr "Enter the original master password and the new password you set. This only confirms the remote state and completes local recovery; it does not resubmit the master-password change."
 
-#: src/renderer/src/components/AuthScreen.tsx:330
+#: src/renderer/src/components/AuthScreen.tsx:328
 msgid "Enter the PIN set for this session."
 msgstr "Enter the PIN set for this session."
 
-#: src/renderer/src/components/SendsPage.tsx:312
+#: src/renderer/src/components/SendsPage.tsx:313
 msgid "Enter the Send access password"
 msgstr "Enter the Send access password"
 
@@ -2993,7 +2993,7 @@ msgstr "Enter your master password again for every removal."
 msgid "Enter your master password and confirm the impact of rotating your API key."
 msgstr "Enter your master password and confirm the impact of rotating your API key."
 
-#: src/renderer/src/components/VaultShell.tsx:905
+#: src/renderer/src/components/VaultShell.tsx:904
 msgid "Enter your master password before enabling biometrics."
 msgstr "Enter your master password before enabling biometrics."
 
@@ -3009,7 +3009,7 @@ msgstr "Enter your master password to confirm."
 msgid "Enter your master password to continue."
 msgstr "Enter your master password to continue."
 
-#: src/renderer/src/components/AuthScreen.tsx:331
+#: src/renderer/src/components/AuthScreen.tsx:329
 msgid "Enter your master password to unlock items stored on this device."
 msgstr "Enter your master password to unlock items stored on this device."
 
@@ -3019,7 +3019,7 @@ msgstr "Enter your master password to unlock items stored on this device."
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:369
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:484
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
-#: src/renderer/src/components/AuthScreen.tsx:207
+#: src/renderer/src/components/AuthScreen.tsx:206
 #: src/renderer/src/components/Dialogs.tsx:489
 #: src/renderer/src/components/SyncDialog.tsx:780
 #: src/renderer/src/components/SyncDialog.tsx:831
@@ -3069,7 +3069,7 @@ msgstr "Existing sensitive fields could not be loaded. Cancel editing and try ag
 msgid "Expand {0}"
 msgstr "Expand {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:671
+#: src/renderer/src/components/SendsPage.tsx:673
 #: src/renderer/src/components/VaultItemDetailViews.tsx:241
 msgid "Expiration date"
 msgstr "Expiration date"
@@ -3086,11 +3086,11 @@ msgstr "Expiration month"
 msgid "Expiration year"
 msgstr "Expiration year"
 
-#: src/renderer/src/components/SendsPage.tsx:114
+#: src/renderer/src/components/SendsPage.tsx:115
 msgid "Expired"
 msgstr "Expired"
 
-#: src/renderer/src/components/SendsPage.tsx:525
+#: src/renderer/src/components/SendsPage.tsx:527
 msgid "Expires"
 msgstr "Expires"
 
@@ -3117,7 +3117,7 @@ msgstr "Export encrypted backup"
 msgid "Export file saved: {0} items and {1} folders{attachments}{skipped}{unsupported}{passkeys}{lossSummary}{riskyFields}{durability}."
 msgstr "Export file saved: {0} items and {1} folders{attachments}{skipped}{unsupported}{passkeys}{lossSummary}{riskyFields}{durability}."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1434
+#: src/renderer/src/components/VaultHealthPage.tsx:1418
 msgid "Exposed passwords"
 msgstr "Exposed passwords"
 
@@ -3127,8 +3127,8 @@ msgctxt "master-password-strength"
 msgid "Fair"
 msgstr "Fair"
 
-#: src/renderer/src/components/VaultShell.tsx:671
-#: src/renderer/src/components/VaultShellSidebar.tsx:269
+#: src/renderer/src/components/VaultShell.tsx:670
+#: src/renderer/src/components/VaultShellSidebar.tsx:274
 msgid "Favorites"
 msgstr "Favorites"
 
@@ -3167,17 +3167,17 @@ msgstr "File Explorer"
 msgid "file manager"
 msgstr "file manager"
 
-#: src/renderer/src/components/SendsPage.tsx:266
+#: src/renderer/src/components/SendsPage.tsx:267
 msgid "File Send created"
 msgstr "File Send created"
 
-#: src/renderer/src/components/SendsPage.tsx:193
-#: src/renderer/src/components/SendsPage.tsx:226
-#: src/renderer/src/components/SendsPage.tsx:333
+#: src/renderer/src/components/SendsPage.tsx:194
+#: src/renderer/src/components/SendsPage.tsx:227
+#: src/renderer/src/components/SendsPage.tsx:334
 msgid "File Sends are read-only until file transfer support is enabled"
 msgstr "File Sends are read-only until file transfer support is enabled"
 
-#: src/renderer/src/components/SendsPage.tsx:187
+#: src/renderer/src/components/SendsPage.tsx:188
 msgid "File Sends can currently only be viewed and their links copied."
 msgstr "File Sends can currently only be viewed and their links copied."
 
@@ -3227,7 +3227,7 @@ msgstr "First name"
 #: src/renderer/src/components/Dialogs.tsx:367
 #: src/renderer/src/components/LoginEditor.tsx:2603
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:139
-#: src/renderer/src/components/VaultShell.tsx:692
+#: src/renderer/src/components/VaultShell.tsx:691
 msgid "Folder"
 msgstr "Folder"
 
@@ -3245,7 +3245,7 @@ msgid "Folder order updated."
 msgstr "Folder order updated."
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:456
-#: src/renderer/src/components/VaultShellSidebar.tsx:252
+#: src/renderer/src/components/VaultShellSidebar.tsx:257
 msgid "Folders"
 msgstr "Folders"
 
@@ -3359,7 +3359,7 @@ msgid "Generating…"
 msgstr "Generating…"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:431
-#: src/renderer/src/components/VaultShellSidebar.tsx:414
+#: src/renderer/src/components/VaultShellSidebar.tsx:419
 msgid "Generator"
 msgstr "Generator"
 
@@ -3414,15 +3414,15 @@ msgstr "Group {0}"
 msgid "Handle incomplete purge"
 msgstr "Handle incomplete purge"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:810
+#: src/renderer/src/components/VaultHealthPage.tsx:811
 msgid "Have I Been Pwned (HIBP)"
 msgstr "Have I Been Pwned (HIBP)"
 
-#: src/renderer/src/components/VaultShellSidebar.tsx:429
+#: src/renderer/src/components/VaultShellSidebar.tsx:434
 msgid "Health report"
 msgstr "Health report"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1053
+#: src/renderer/src/components/VaultHealthPage.tsx:1054
 msgid "HIBP returned no known breaches for this account. This is only the result of the current query and does not mean the account will always be safe."
 msgstr "HIBP returned no known breaches for this account. This is only the result of the current query and does not mean the account will always be safe."
 
@@ -3456,13 +3456,13 @@ msgstr "Hide custom field contents"
 msgid "Hide master password"
 msgstr "Hide master password"
 
-#: src/renderer/src/components/SendsPage.tsx:118
-#: src/renderer/src/components/SendsPage.tsx:743
+#: src/renderer/src/components/SendsPage.tsx:119
+#: src/renderer/src/components/SendsPage.tsx:745
 msgid "Hide sender email"
 msgstr "Hide sender email"
 
-#: src/renderer/src/components/SendsPage.tsx:117
-#: src/renderer/src/components/SendsPage.tsx:713
+#: src/renderer/src/components/SendsPage.tsx:118
+#: src/renderer/src/components/SendsPage.tsx:715
 msgid "Hide text by default"
 msgstr "Hide text by default"
 
@@ -3508,7 +3508,7 @@ msgstr "I understand the risk. Allow resend"
 msgid "ID / Social Security number"
 msgstr "ID / Social Security number"
 
-#: src/renderer/src/components/VaultShell.tsx:156
+#: src/renderer/src/components/VaultShell.tsx:155
 msgid "Identities"
 msgstr "Identities"
 
@@ -3539,7 +3539,7 @@ msgstr "If you didn't make this request, deny it and check your account security
 msgid "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 msgstr "If you do not want to risk duplicates, disconnect instead. Your local vault data will be kept."
 
-#: src/renderer/src/components/VaultShell.tsx:1436
+#: src/renderer/src/components/VaultShell.tsx:1434
 msgid "Image attachment preview"
 msgstr "Image attachment preview"
 
@@ -3631,7 +3631,7 @@ msgstr "It must match exactly. Spaces and characters will not be corrected autom
 msgid "Item"
 msgstr "Item"
 
-#: src/renderer/src/components/VaultShell.tsx:1203
+#: src/renderer/src/components/VaultShell.tsx:1202
 msgid "Item details"
 msgstr "Item details"
 
@@ -3661,7 +3661,7 @@ msgstr "Items / attachments"
 msgid "Items remain encrypted in Trash and can be restored later."
 msgstr "Items remain encrypted in Trash and can be restored later."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:488
+#: src/renderer/src/components/VaultHealthPage.tsx:489
 msgid "Items that do not apply were skipped"
 msgstr "Items that do not apply were skipped"
 
@@ -3694,7 +3694,7 @@ msgstr "Keep passkey"
 msgid "Keep the backup password safe"
 msgstr "Keep the backup password safe"
 
-#: src/renderer/src/components/SendsPage.tsx:731
+#: src/renderer/src/components/SendsPage.tsx:733
 msgid "Keep the Send but prevent all recipient access."
 msgstr "Keep the Send but prevent all recipient access."
 
@@ -3723,11 +3723,11 @@ msgstr "Key fingerprint"
 msgid "Key material is read-only. Use the show button to view the private key temporarily."
 msgstr "Key material is read-only. Use the show button to view the private key temporarily."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:710
+#: src/renderer/src/components/VaultHealthPage.tsx:711
 msgid "Known breaches found"
 msgstr "Known breaches found"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:612
+#: src/renderer/src/components/VaultHealthPage.tsx:613
 msgid "Known breaches have not been checked yet"
 msgstr "Known breaches have not been checked yet"
 
@@ -3750,7 +3750,7 @@ msgstr "Last edited"
 msgid "Last name"
 msgstr "Last name"
 
-#: src/renderer/src/components/SendsPage.tsx:537
+#: src/renderer/src/components/SendsPage.tsx:539
 msgid "Last revised"
 msgstr "Last revised"
 
@@ -3770,7 +3770,7 @@ msgstr "Launch BearWarden at login"
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "Launch BearWarden automatically after you log in to this computer."
 
-#: src/renderer/src/components/SendsPage.tsx:666
+#: src/renderer/src/components/SendsPage.tsx:668
 msgid "Leave blank for no limit."
 msgstr "Leave blank for no limit."
 
@@ -3848,7 +3848,7 @@ msgstr "Loading Emergency Access…"
 msgid "Loading image preview"
 msgstr "Loading image preview"
 
-#: src/renderer/src/components/VaultShell-primitives.tsx:242
+#: src/renderer/src/components/VaultShell-primitives.tsx:293
 msgid "Loading item details…"
 msgstr "Loading item details…"
 
@@ -3864,7 +3864,7 @@ msgstr "Loading organization items…"
 msgid "Loading password history"
 msgstr "Loading password history"
 
-#: src/renderer/src/components/SendsPage.tsx:375
+#: src/renderer/src/components/SendsPage.tsx:377
 msgid "Loading Sends…"
 msgstr "Loading Sends…"
 
@@ -3876,7 +3876,7 @@ msgstr "Loading settings…"
 msgid "Loading shared item…"
 msgstr "Loading shared item…"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:400
+#: src/renderer/src/components/VaultHealthPage.tsx:401
 msgid "Loading the 2fa.directory service list"
 msgstr "Loading the 2fa.directory service list"
 
@@ -3886,7 +3886,7 @@ msgid "Loading…"
 msgstr "Loading…"
 
 #. Field label for choosing which device-local vault account to unlock; this is not a remote Bitwarden profile.
-#: src/renderer/src/components/AuthScreen.tsx:340
+#: src/renderer/src/components/AuthScreen.tsx:338
 msgctxt "local-account-selector"
 msgid "Local account"
 msgstr "Local account"
@@ -3939,7 +3939,7 @@ msgstr "Local generator"
 msgid "Local sync snapshot limit"
 msgstr "Local sync snapshot limit"
 
-#: src/renderer/src/components/VaultShell.tsx:715
+#: src/renderer/src/components/VaultShell.tsx:714
 msgid "Local vault"
 msgstr "Local vault"
 
@@ -3964,7 +3964,7 @@ msgid "Lock the vault immediately when you lock the screen."
 msgstr "Lock the vault immediately when you lock the screen."
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:48
-#: src/renderer/src/components/VaultShellSidebar.tsx:440
+#: src/renderer/src/components/VaultShellSidebar.tsx:445
 msgid "Lock vault"
 msgstr "Lock vault"
 
@@ -3986,25 +3986,25 @@ msgstr "Locking and unlocking"
 msgid "Login"
 msgstr "Login"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:245
-#: src/renderer/src/components/VaultHealthPage.tsx:267
-#: src/renderer/src/components/VaultHealthPage.tsx:574
+#: src/renderer/src/components/VaultHealthPage.tsx:246
+#: src/renderer/src/components/VaultHealthPage.tsx:268
+#: src/renderer/src/components/VaultHealthPage.tsx:575
 msgid "Login item"
 msgstr "Login item"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:713
+#: src/renderer/src/components/VaultHealthPage.tsx:714
 msgid "Login items whose complete hash matched an HIBP padded range"
 msgstr "Login items whose complete hash matched an HIBP padded range"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1503
+#: src/renderer/src/components/VaultHealthPage.tsx:1487
 msgid "Login items with reused passwords"
 msgstr "Login items with reused passwords"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:373
+#: src/renderer/src/components/VaultHealthPage.tsx:374
 msgid "Login items without two-factor authentication have not been checked yet"
 msgstr "Login items without two-factor authentication have not been checked yet"
 
-#: src/renderer/src/components/VaultShell.tsx:152
+#: src/renderer/src/components/VaultShell.tsx:151
 msgid "Logins"
 msgstr "Logins"
 
@@ -4028,7 +4028,7 @@ msgstr "macOS grants broad Accessibility access to control the computer. BearWar
 msgid "macOS only"
 msgstr "macOS only"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1355
+#: src/renderer/src/components/VaultHealthPage.tsx:1339
 msgid "Make sure the vault is still unlocked, then analyze it again."
 msgstr "Make sure the vault is still unlocked, then analyze it again."
 
@@ -4073,8 +4073,8 @@ msgstr "Manual update"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1091
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1193
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1260
-#: src/renderer/src/components/AuthScreen.tsx:391
-#: src/renderer/src/components/AuthScreen.tsx:396
+#: src/renderer/src/components/AuthScreen.tsx:389
+#: src/renderer/src/components/AuthScreen.tsx:394
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
@@ -4138,7 +4138,7 @@ msgstr "Matching method for website {0}"
 msgid "Maximize / Restore"
 msgstr "Maximize / Restore"
 
-#: src/renderer/src/components/SendsPage.tsx:648
+#: src/renderer/src/components/SendsPage.tsx:650
 msgid "Maximum access count"
 msgstr "Maximum access count"
 
@@ -4206,7 +4206,7 @@ msgid "More actions"
 msgstr "More actions"
 
 #: src/renderer/src/components/SettingsPage.tsx:448
-#: src/renderer/src/components/VaultShell.tsx:179
+#: src/renderer/src/components/VaultShell.tsx:178
 msgid "Most used"
 msgstr "Most used"
 
@@ -4325,10 +4325,10 @@ msgstr "Moving with {0} other items"
 #: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1734
 #: src/renderer/src/components/LoginEditor.tsx:2938
-#: src/renderer/src/components/SendsPage.tsx:570
+#: src/renderer/src/components/SendsPage.tsx:572
 #: src/renderer/src/components/SettingsPage.tsx:449
 #: src/renderer/src/components/VaultItemDetailViews.tsx:242
-#: src/renderer/src/components/VaultShell.tsx:170
+#: src/renderer/src/components/VaultShell.tsx:169
 msgid "Name"
 msgstr "Name"
 
@@ -4337,7 +4337,7 @@ msgstr "Name"
 msgid "National ID / Social Security number"
 msgstr "National ID / Social Security number"
 
-#: src/renderer/src/components/VaultShell.tsx:167
+#: src/renderer/src/components/VaultShell.tsx:166
 msgid "Needs attention"
 msgstr "Needs attention"
 
@@ -4434,12 +4434,12 @@ msgstr "No custom groups yet."
 msgid "No generated entries yet."
 msgstr "No generated entries yet."
 
-#: src/renderer/src/components/VaultShell.tsx:1300
+#: src/renderer/src/components/VaultShell.tsx:1298
 msgid "No item selected"
 msgstr "No item selected"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:757
-#: src/renderer/src/components/VaultHealthPage.tsx:1050
+#: src/renderer/src/components/VaultHealthPage.tsx:758
+#: src/renderer/src/components/VaultHealthPage.tsx:1051
 msgid "No known breaches were found this time"
 msgstr "No known breaches were found this time"
 
@@ -4484,7 +4484,7 @@ msgstr "No preview"
 msgid "No record"
 msgstr "No record"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:159
+#: src/renderer/src/components/VaultHealthPage.tsx:160
 msgid "No reused passwords"
 msgstr "No reused passwords"
 
@@ -4492,7 +4492,7 @@ msgstr "No reused passwords"
 msgid "No security keys are registered yet. You can add your first key."
 msgstr "No security keys are registered yet. You can add your first key."
 
-#: src/renderer/src/components/SendsPage.tsx:402
+#: src/renderer/src/components/SendsPage.tsx:404
 msgid "No Sends yet"
 msgstr "No Sends yet"
 
@@ -4509,7 +4509,7 @@ msgstr "No summary"
 msgid "No summary set"
 msgstr "No summary set"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:522
+#: src/renderer/src/components/VaultHealthPage.tsx:523
 msgid "No supported services without TOTP were found"
 msgstr "No supported services without TOTP were found"
 
@@ -4517,7 +4517,7 @@ msgstr "No supported services without TOTP were found"
 msgid "No two-factor authentication methods are enabled."
 msgstr "No two-factor authentication methods are enabled."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:162
+#: src/renderer/src/components/VaultHealthPage.tsx:163
 msgid "No unsecured websites"
 msgstr "No unsecured websites"
 
@@ -4533,7 +4533,7 @@ msgstr "No username provided"
 msgid "No verification method is available"
 msgstr "No verification method is available"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:161
+#: src/renderer/src/components/VaultHealthPage.tsx:162
 msgid "No weak passwords"
 msgstr "No weak passwords"
 
@@ -4541,15 +4541,15 @@ msgstr "No weak passwords"
 msgid "No websites are set. You can save only a username and password."
 msgstr "No websites are set. You can save only a username and password."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:525
+#: src/renderer/src/components/VaultHealthPage.tsx:526
 msgid "None of the analyzed login items matched a service in the 2fa.directory TOTP list that does not yet have TOTP configured."
 msgstr "None of the analyzed login items matched a service in the 2fa.directory TOTP list that does not yet have TOTP configured."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:159
+#: src/renderer/src/components/VaultHealthPage.tsx:160
 msgid "None of the analyzed login items share the same password."
 msgstr "None of the analyzed login items share the same password."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:162
+#: src/renderer/src/components/VaultHealthPage.tsx:163
 msgid "None of the valid personal login items use an http:// URI."
 msgstr "None of the valid personal login items use an http:// URI."
 
@@ -4566,8 +4566,8 @@ msgid "Not checked"
 msgstr "Not checked"
 
 #: src/renderer/src/components/SettingsPage.tsx:475
-#: src/renderer/src/components/VaultHealthPage.tsx:1472
-#: src/renderer/src/components/VaultShell.tsx:163
+#: src/renderer/src/components/VaultHealthPage.tsx:1456
+#: src/renderer/src/components/VaultShell.tsx:162
 msgid "Not configured"
 msgstr "Not configured"
 
@@ -4598,7 +4598,7 @@ msgstr "Not trusted"
 #: src/renderer/src/components/LoginEditor.tsx:2760
 #: src/renderer/src/components/LoginEditor.tsx:2768
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:89
-#: src/renderer/src/components/VaultShell.tsx:157
+#: src/renderer/src/components/VaultShell.tsx:156
 msgid "Notes"
 msgstr "Notes"
 
@@ -4640,7 +4640,7 @@ msgstr "Only a short-lived import token is used when saving. This field neither 
 msgid "Only approve a request you just made on another device, after verifying the verification phrase."
 msgstr "Only approve a request you just made on another device, after verifying the verification phrase."
 
-#: src/renderer/src/components/SendsPage.tsx:643
+#: src/renderer/src/components/SendsPage.tsx:645
 msgid "Only you can see this. It is not shown to recipients."
 msgstr "Only you can see this. It is not shown to recipients."
 
@@ -4649,11 +4649,11 @@ msgstr "Only you can see this. It is not shown to recipients."
 #~ msgid "Open {0} menu"
 #~ msgstr "Open {0} menu"
 
-#: src/renderer/src/components/VaultShellSidebar.tsx:369
+#: src/renderer/src/components/VaultShellSidebar.tsx:374
 msgid "Open {sidebarAccountName} menu"
 msgstr "Open {sidebarAccountName} menu"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:478
+#: src/renderer/src/components/VaultHealthPage.tsx:479
 msgid "Open an item to edit it, or view the setup instructions provided by the service."
 msgstr "Open an item to edit it, or view the setup instructions provided by the service."
 
@@ -4665,7 +4665,7 @@ msgstr "Open BearWarden"
 msgid "Open sidebar"
 msgstr "Open sidebar"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:332
+#: src/renderer/src/components/VaultHealthPage.tsx:333
 msgid "Open two-factor authentication setup instructions for {findingName}"
 msgstr "Open two-factor authentication setup instructions for {findingName}"
 
@@ -4673,7 +4673,7 @@ msgstr "Open two-factor authentication setup instructions for {findingName}"
 msgid "Open website"
 msgstr "Open website"
 
-#: src/renderer/src/components/AuthScreen.tsx:288
+#: src/renderer/src/components/AuthScreen.tsx:286
 msgid "Opening secure vault"
 msgstr "Opening secure vault"
 
@@ -4692,7 +4692,7 @@ msgstr "Optional; maximum 50 UTF-8 bytes."
 #. Section heading in the login item editor for organizing the item into a folder and configuring item-level options.
 #: src/renderer/src/components/LoginEditor.tsx:2486
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:127
-#: src/renderer/src/components/VaultShell.tsx:677
+#: src/renderer/src/components/VaultShell.tsx:676
 msgid "Organization"
 msgstr "Organization"
 
@@ -4792,8 +4792,8 @@ msgstr "Passkey deleted."
 
 #: src/renderer/src/components/LoginEditor.tsx:1943
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:47
-#: src/renderer/src/components/VaultShell.tsx:153
-#: src/renderer/src/components/VaultShell.tsx:694
+#: src/renderer/src/components/VaultShell.tsx:152
+#: src/renderer/src/components/VaultShell.tsx:693
 msgid "Passkeys"
 msgstr "Passkeys"
 
@@ -4838,7 +4838,7 @@ msgstr "Password history"
 msgid "Password last updated"
 msgstr "Password last updated"
 
-#: src/renderer/src/components/SendsPage.tsx:111
+#: src/renderer/src/components/SendsPage.tsx:112
 msgid "Password required"
 msgstr "Password required"
 
@@ -4858,7 +4858,7 @@ msgstr "Passwords hidden"
 msgid "Passwords in KeePass XML are unencrypted plaintext"
 msgstr "Passwords in KeePass XML are unencrypted plaintext"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:141
+#: src/renderer/src/components/VaultHealthPage.tsx:142
 msgid "Passwords remain in the main process and are never sent to the renderer process or an external service."
 msgstr "Passwords remain in the main process and are never sent to the renderer process or an external service."
 
@@ -4874,7 +4874,7 @@ msgstr "Payment card and security code"
 msgid "Pending confirmation"
 msgstr "Pending confirmation"
 
-#: src/renderer/src/components/SendsPage.tsx:116
+#: src/renderer/src/components/SendsPage.tsx:117
 msgid "Pending deletion"
 msgstr "Pending deletion"
 
@@ -4970,7 +4970,7 @@ msgstr "Picked up local account {0} of {1}."
 msgid "Picked up website {0} of {1}."
 msgstr "Picked up website {0} of {1}."
 
-#: src/renderer/src/components/AuthScreen.tsx:374
+#: src/renderer/src/components/AuthScreen.tsx:372
 #: src/renderer/src/components/SettingsPage.tsx:1098
 msgid "PIN"
 msgstr "PIN"
@@ -4995,7 +4995,7 @@ msgstr "PIN unlock is disabled. Enter your master password instead."
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN unlock is enabled for this session only."
 
-#: src/renderer/src/components/AuthScreen.tsx:196
+#: src/renderer/src/components/AuthScreen.tsx:195
 msgid "PIN unlock is no longer available. Enter your master password."
 msgstr "PIN unlock is no longer available. Enter your master password."
 
@@ -5057,8 +5057,8 @@ msgstr "Private key password"
 msgid "Private key, public key, and fingerprint"
 msgstr "Private key, public key, and fingerprint"
 
-#: src/renderer/src/components/SendsPage.tsx:517
-#: src/renderer/src/components/SendsPage.tsx:632
+#: src/renderer/src/components/SendsPage.tsx:519
+#: src/renderer/src/components/SendsPage.tsx:634
 msgid "Private notes"
 msgstr "Private notes"
 
@@ -5088,15 +5088,15 @@ msgstr "Profile"
 msgid "Project information"
 msgstr "Project information"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:590
+#: src/renderer/src/components/VaultHealthPage.tsx:591
 msgid "Protect queries with k-anonymity"
 msgstr "Protect queries with k-anonymity"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1489
+#: src/renderer/src/components/VaultHealthPage.tsx:1473
 msgid "Protected items were not analyzed"
 msgstr "Protected items were not analyzed"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:734
+#: src/renderer/src/components/VaultHealthPage.tsx:735
 msgid "Protected items were not queried"
 msgstr "Protected items were not queried"
 
@@ -5129,7 +5129,7 @@ msgstr "Purge remaining items again"
 msgid "Purpose"
 msgstr "Purpose"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:639
+#: src/renderer/src/components/VaultHealthPage.tsx:640
 msgid "Querying HIBP padded ranges"
 msgstr "Querying HIBP padded ranges"
 
@@ -5167,7 +5167,7 @@ msgstr "Ready to install"
 msgid "Reauthentication required"
 msgstr "Reauthentication required"
 
-#: src/renderer/src/components/VaultShell.tsx:180
+#: src/renderer/src/components/VaultShell.tsx:179
 msgid "Recently modified"
 msgstr "Recently modified"
 
@@ -5180,12 +5180,12 @@ msgstr "Recently used"
 #. Sort label for vault items that have been used most recently.
 #. Sort label for vault items that have been used most recently.
 #: src/renderer/src/components/SettingsPage.tsx:441
-#: src/renderer/src/components/VaultShell.tsx:172
+#: src/renderer/src/components/VaultShell.tsx:171
 msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "Recently used"
 
-#: src/renderer/src/components/SendsPage.tsx:716
+#: src/renderer/src/components/SendsPage.tsx:718
 msgid "Recipients must actively reveal the text to see it."
 msgstr "Recipients must actively reveal the text to see it."
 
@@ -5306,7 +5306,7 @@ msgstr "Remove {0}?"
 #~ msgid "Remove {label}?"
 #~ msgstr "Remove {label}?"
 
-#: src/renderer/src/components/SendsPage.tsx:626
+#: src/renderer/src/components/SendsPage.tsx:628
 msgid "Remove current password"
 msgstr "Remove current password"
 
@@ -5452,9 +5452,9 @@ msgstr "Restored {restoredItemCount, plural, one {# item} other {# items}} and {
 msgid "Restoring attachments"
 msgstr "Restoring attachments"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:427
-#: src/renderer/src/components/VaultHealthPage.tsx:673
-#: src/renderer/src/components/VaultHealthPage.tsx:1359
+#: src/renderer/src/components/VaultHealthPage.tsx:428
+#: src/renderer/src/components/VaultHealthPage.tsx:674
+#: src/renderer/src/components/VaultHealthPage.tsx:1343
 msgid "Retry"
 msgstr "Retry"
 
@@ -5462,7 +5462,7 @@ msgstr "Retry"
 msgid "Return to BearWarden and click “Check again”."
 msgstr "Return to BearWarden and click “Check again”."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1390
+#: src/renderer/src/components/VaultHealthPage.tsx:1374
 msgid "Reused passwords"
 msgstr "Reused passwords"
 
@@ -5514,7 +5514,7 @@ msgstr "Safely reading the file"
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:3165
-#: src/renderer/src/components/SendsPage.tsx:773
+#: src/renderer/src/components/SendsPage.tsx:775
 msgid "Save"
 msgstr "Save"
 
@@ -5542,7 +5542,7 @@ msgid "Saved “{0}”."
 msgstr "Saved “{0}”."
 
 #. placeholder {0}: result.fileName
-#: src/renderer/src/components/SendsPage.tsx:318
+#: src/renderer/src/components/SendsPage.tsx:319
 msgid "Saved {0}"
 msgstr "Saved {0}"
 
@@ -5554,7 +5554,7 @@ msgstr "Saving"
 msgid "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 msgstr "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 
-#: src/renderer/src/components/SendsPage.tsx:769
+#: src/renderer/src/components/SendsPage.tsx:771
 msgid "Saving…"
 msgstr "Saving…"
 
@@ -5571,8 +5571,8 @@ msgstr "SDK"
 msgid "Search “{query}”"
 msgstr "Search “{query}”"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:856
-#: src/renderer/src/components/VaultHealthPage.tsx:904
+#: src/renderer/src/components/VaultHealthPage.tsx:857
+#: src/renderer/src/components/VaultHealthPage.tsx:905
 msgid "Search account breaches"
 msgstr "Search account breaches"
 
@@ -5632,7 +5632,7 @@ msgstr "Search vault items, currently {query}"
 msgid "Search vault; for example, >name:github"
 msgstr "Search vault; for example, >name:github"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:978
+#: src/renderer/src/components/VaultHealthPage.tsx:979
 msgid "Searching account breaches"
 msgstr "Searching account breaches"
 
@@ -5648,11 +5648,11 @@ msgid "Securely removing local account"
 msgstr "Securely removing local account"
 
 #: src/renderer/src/components/VaultItemDetailViews.tsx:339
-#: src/renderer/src/components/VaultShell-primitives.tsx:236
+#: src/renderer/src/components/VaultShell-primitives.tsx:287
 msgid "Securely stored item"
 msgstr "Securely stored item"
 
-#: src/renderer/src/components/AuthScreen.tsx:456
+#: src/renderer/src/components/AuthScreen.tsx:454
 #: src/renderer/src/hooks/use-vault-accounts.ts:130
 msgid "Securely switching accounts and restarting"
 msgstr "Securely switching accounts and restarting"
@@ -5700,7 +5700,7 @@ msgstr "Select a verification method"
 msgid "Select all"
 msgstr "Select all"
 
-#: src/renderer/src/components/VaultShell.tsx:1303
+#: src/renderer/src/components/VaultShell.tsx:1301
 msgid "Select an item to view and manage its secure data."
 msgstr "Select an item to view and manage its secure data."
 
@@ -5732,7 +5732,7 @@ msgstr "Selected from catalog"
 msgid "Selected items"
 msgstr "Selected items"
 
-#: src/renderer/src/components/SendsPage.tsx:229
+#: src/renderer/src/components/SendsPage.tsx:230
 msgid "Send created"
 msgstr "Send created"
 
@@ -5741,7 +5741,7 @@ msgstr "Send created"
 msgid "Send data"
 msgstr "Send data"
 
-#: src/renderer/src/components/SendsPage.tsx:284
+#: src/renderer/src/components/SendsPage.tsx:285
 msgid "Send deleted"
 msgstr "Send deleted"
 
@@ -5749,11 +5749,11 @@ msgstr "Send deleted"
 msgid "Send email code"
 msgstr "Send email code"
 
-#: src/renderer/src/components/SendsPage.tsx:335
+#: src/renderer/src/components/SendsPage.tsx:336
 msgid "Send password removed"
 msgstr "Send password removed"
 
-#: src/renderer/src/components/SendsPage.tsx:229
+#: src/renderer/src/components/SendsPage.tsx:230
 msgid "Send updated"
 msgstr "Send updated"
 
@@ -5765,8 +5765,8 @@ msgstr "Send verification code"
 #~ msgid "Sender email hidden"
 #~ msgstr "Sender email hidden"
 
-#: src/renderer/src/components/SendsPage.tsx:345
-#: src/renderer/src/components/VaultShellSidebar.tsx:422
+#: src/renderer/src/components/SendsPage.tsx:346
+#: src/renderer/src/components/VaultShellSidebar.tsx:427
 msgid "Sends"
 msgstr "Sends"
 
@@ -5805,7 +5805,7 @@ msgstr "Server sync response"
 msgid "Server URL"
 msgstr "Server URL"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:462
+#: src/renderer/src/components/VaultHealthPage.tsx:463
 msgid "Service domains are compared with the static list only on this device."
 msgstr "Service domains are compared with the static list only on this device."
 
@@ -5818,7 +5818,7 @@ msgstr "Session refresh response"
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 
-#: src/renderer/src/components/AuthScreen.tsx:328
+#: src/renderer/src/components/AuthScreen.tsx:326
 msgid "Set a master password that only you know. BearWarden cannot recover it for you."
 msgstr "Set a master password that only you know. BearWarden cannot recover it for you."
 
@@ -5843,7 +5843,7 @@ msgid "Setting status"
 msgstr "Setting status"
 
 #: src/renderer/src/components/SettingsPage.tsx:731
-#: src/renderer/src/components/VaultShellSidebar.tsx:433
+#: src/renderer/src/components/VaultShellSidebar.tsx:438
 msgid "Settings"
 msgstr "Settings"
 
@@ -5855,7 +5855,7 @@ msgstr "Settings categories"
 msgid "Settings changed on another device. The server version has been reloaded; review it before saving."
 msgstr "Settings changed on another device. The server version has been reloaded; review it before saving."
 
-#: src/renderer/src/components/VaultShell.tsx:895
+#: src/renderer/src/components/VaultShell.tsx:894
 msgid "Settings saved."
 msgstr "Settings saved."
 
@@ -5867,7 +5867,7 @@ msgstr "Settings updated"
 #~ msgid "Settings were changed on another device. The server version has been reloaded; review it before saving."
 #~ msgstr "Settings were changed on another device. The server version has been reloaded; review it before saving."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:338
+#: src/renderer/src/components/VaultHealthPage.tsx:339
 msgid "Setup instructions"
 msgstr "Setup instructions"
 
@@ -5879,11 +5879,11 @@ msgstr "Setup key copied"
 msgid "Shared item"
 msgstr "Shared item"
 
-#: src/renderer/src/components/VaultShell.tsx:673
+#: src/renderer/src/components/VaultShell.tsx:672
 msgid "Shared items"
 msgstr "Shared items"
 
-#: src/renderer/src/components/SendsPage.tsx:444
+#: src/renderer/src/components/SendsPage.tsx:446
 msgid "Sharing link copied"
 msgstr "Sharing link copied"
 
@@ -5999,7 +5999,7 @@ msgstr "SSH authentication"
 msgid "SSH key"
 msgstr "SSH key"
 
-#: src/renderer/src/components/VaultShell.tsx:158
+#: src/renderer/src/components/VaultShell.tsx:157
 msgid "SSH keys"
 msgstr "SSH keys"
 
@@ -6151,7 +6151,7 @@ msgstr "Syncing attachment list"
 
 #: src/renderer/src/components/SettingsPage.tsx:478
 #: src/renderer/src/components/SyncDialog.tsx:937
-#: src/renderer/src/components/VaultShell.tsx:166
+#: src/renderer/src/components/VaultShell.tsx:165
 msgid "Syncing…"
 msgstr "Syncing…"
 
@@ -6173,11 +6173,11 @@ msgstr "Terminal setup"
 msgid "Text"
 msgstr "Text"
 
-#: src/renderer/src/components/SendsPage.tsx:347
+#: src/renderer/src/components/SendsPage.tsx:349
 msgid "Text and file Send metadata is decrypted in the main process first."
 msgstr "Text and file Send metadata is decrypted in the main process first."
 
-#: src/renderer/src/components/SendsPage.tsx:590
+#: src/renderer/src/components/SendsPage.tsx:592
 msgid "Text content is not included in the sharing link."
 msgstr "Text content is not included in the sharing link."
 
@@ -6203,7 +6203,7 @@ msgstr "That shortcut is unavailable. Your previous shortcut remains active."
 msgid "The {0} result is unknown. The status has been refreshed. Verify your current keys before retrying."
 msgstr "The {0} result is unknown. The status has been refreshed. Verify your current keys before retrying."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:420
+#: src/renderer/src/components/VaultHealthPage.tsx:421
 msgid "The 2fa.directory network request, service list, or response validation failed, so this result is unknown. Try again later."
 msgstr "The 2fa.directory network request, service list, or response validation failed, so this result is unknown. Try again later."
 
@@ -6292,7 +6292,7 @@ msgstr "The browser tab or URL has changed. Return to the login field and try ag
 msgid "The card face was uploaded, but the list could not be refreshed. Sync again later."
 msgstr "The card face was uploaded, but the list could not be refreshed. Sync again later."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:760
+#: src/renderer/src/components/VaultHealthPage.tsx:761
 msgid "The checked complete SHA-1 hashes did not appear in the HIBP response. This is only the result of the current query and does not mean the passwords will always be safe."
 msgstr "The checked complete SHA-1 hashes did not appear in the HIBP response. This is only the result of the current query and does not mean the passwords will always be safe."
 
@@ -6308,15 +6308,15 @@ msgstr "The clipboard contents are too large to import safely as an SSH private 
 msgid "The clipboard is empty. Copy an SSH private key and try again."
 msgstr "The clipboard is empty. Copy an SSH private key and try again."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:887
+#: src/renderer/src/components/VaultHealthPage.tsx:888
 msgid "The complete address is sent only after you select “Search account breaches.”"
 msgstr "The complete address is sent only after you select “Search account breaches.”"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:704
+#: src/renderer/src/components/VaultHealthPage.tsx:705
 msgid "The complete SHA-1 is compared only in main-process memory."
 msgstr "The complete SHA-1 is compared only in main-process memory."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:981
+#: src/renderer/src/components/VaultHealthPage.tsx:982
 msgid "The configured Vaultwarden server is forwarding the complete email address to HIBP."
 msgstr "The configured Vaultwarden server is forwarding the complete email address to HIBP."
 
@@ -6381,7 +6381,7 @@ msgstr "The encrypted PIN credential remains in memory only. You must use the ma
 msgid "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 msgstr "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:666
+#: src/renderer/src/components/VaultHealthPage.tsx:667
 msgid "The HIBP network request or response validation failed, so this result is unknown. BearWarden will not mark any login item as safe because of this failure."
 msgstr "The HIBP network request or response validation failed, so this result is unknown. BearWarden will not mark any login item as safe because of this failure."
 
@@ -6413,7 +6413,7 @@ msgstr "The local account and its data on this device were removed."
 msgid "The local account limit has been reached. You can keep up to 5 accounts."
 msgstr "The local account limit has been reached. You can keep up to 5 accounts."
 
-#: src/renderer/src/components/AuthScreen.tsx:123
+#: src/renderer/src/components/AuthScreen.tsx:122
 #: src/renderer/src/hooks/use-vault-accounts.ts:105
 msgid "The local account list could not be loaded. Try again later."
 msgstr "The local account list could not be loaded. Try again later."
@@ -6434,11 +6434,11 @@ msgstr "The local account was removed. Remaining encrypted local data will be se
 msgid "The local data from the last removal has not completed secure cleanup. BearWarden will try again the next time it starts; it will not delete or overwrite unknown data until cleanup is complete."
 msgstr "The local data from the last removal has not completed secure cleanup. BearWarden will try again the next time it starts; it will not delete or overwrite unknown data until cleanup is complete."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:642
+#: src/renderer/src/components/VaultHealthPage.tsx:643
 msgid "The main process is comparing each complete SHA-1. Passwords and complete hashes never leave this device."
 msgstr "The main process is comparing each complete SHA-1. Passwords and complete hashes never leave this device."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:403
+#: src/renderer/src/components/VaultHealthPage.tsx:404
 msgid "The main process is comparing service domains locally without uploading any vault data."
 msgstr "The main process is comparing service domains locally without uploading any vault data."
 
@@ -6456,11 +6456,11 @@ msgstr "The master password is sent only to the local process for verification."
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "The master password is verified again in the main process each time PIN unlock is enabled."
 
-#: src/renderer/src/components/AuthScreen.tsx:211
+#: src/renderer/src/components/AuthScreen.tsx:210
 msgid "The master password must contain at least 12 characters."
 msgstr "The master password must contain at least 12 characters."
 
-#: src/renderer/src/components/AuthScreen.tsx:215
+#: src/renderer/src/components/AuthScreen.tsx:214
 msgid "The master passwords do not match."
 msgstr "The master passwords do not match."
 
@@ -6505,7 +6505,7 @@ msgstr "The PIN and encrypted credential are never written to disk. You can use 
 msgid "The PIN is incorrect."
 msgstr "The PIN is incorrect."
 
-#: src/renderer/src/components/AuthScreen.tsx:166
+#: src/renderer/src/components/AuthScreen.tsx:165
 #: src/renderer/src/components/SettingsPage.tsx:547
 msgid "The PIN must contain at least 4 characters."
 msgstr "The PIN must contain at least 4 characters."
@@ -6672,7 +6672,7 @@ msgstr "The server response was interrupted, so the activation result is unknown
 msgid "The server result for this batch import is unknown"
 msgstr "The server result for this batch import is unknown"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1014
+#: src/renderer/src/components/VaultHealthPage.tsx:1015
 msgid "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 msgstr "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 
@@ -6680,11 +6680,11 @@ msgstr "The server returned a notice that its API key is not configured, not a q
 msgid "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 msgstr "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:376
+#: src/renderer/src/components/VaultHealthPage.tsx:377
 msgid "The service list is loaded only after you press the button. Items in the trash, archived items, and items that already have TOTP are skipped."
 msgstr "The service list is loaded only after you press the button. Items in the trash, archived items, and items that already have TOTP are skipped."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:471
+#: src/renderer/src/components/VaultHealthPage.tsx:472
 msgid "The service supports TOTP, but the login item is not configured"
 msgstr "The service supports TOTP, but the login item is not configured"
 
@@ -6785,11 +6785,11 @@ msgstr "The vault is locked. Unlock it and try again."
 msgid "The vault is locked. Unlock it in BearWarden first."
 msgstr "The vault is locked. Unlock it in BearWarden first."
 
-#: src/renderer/src/components/VaultShell.tsx:734
+#: src/renderer/src/components/VaultShell.tsx:733
 msgid "The vault is not locked yet. Try again."
 msgstr "The vault is not locked yet. Try again."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:997
+#: src/renderer/src/components/VaultHealthPage.tsx:998
 msgid "The Vaultwarden or HIBP network request or response validation failed, so this result is unknown. This does not mean the account is safe."
 msgstr "The Vaultwarden or HIBP network request or response validation failed, so this result is unknown. This does not mean the account is safe."
 
@@ -6909,7 +6909,7 @@ msgstr "This attachment"
 msgid "This change was not applied. Sync again to get the latest version, then retry."
 msgstr "This change was not applied. Sync again to get the latest version, then retry."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:615
+#: src/renderer/src/components/VaultHealthPage.tsx:616
 msgid "This check connects to HIBP only after you press the button. Opening this page does not start a query automatically."
 msgstr "This check connects to HIBP only after you press the button. Opening this page does not start a query automatically."
 
@@ -6946,7 +6946,7 @@ msgstr "This is sent only to the local main process to verify the vault owner."
 msgid "This is your last available personal two-factor authentication method. After disabling it, your account will no longer require a recovery code or another two-factor method. If your organization requires 2FA, the server may also revoke your organization membership. You can still continue."
 msgstr "This is your last available personal two-factor authentication method. After disabling it, your account will no longer require a recovery code or another two-factor method. If your organization requires 2FA, the server may also revoke your organization membership. You can still continue."
 
-#: src/renderer/src/components/VaultShell.tsx:1381
+#: src/renderer/src/components/VaultShell.tsx:1379
 msgid "This item"
 msgstr "This item"
 
@@ -7040,15 +7040,15 @@ msgstr "This request has no passkey that can be approved. Deny it and start agai
 msgid "This rule has no domains"
 msgstr "This rule has no domains"
 
-#: src/renderer/src/components/SendsPage.tsx:306
+#: src/renderer/src/components/SendsPage.tsx:307
 msgid "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 msgstr "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 
-#: src/renderer/src/components/SendsPage.tsx:182
+#: src/renderer/src/components/SendsPage.tsx:183
 msgid "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 msgstr "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 
-#: src/renderer/src/components/SendsPage.tsx:209
+#: src/renderer/src/components/SendsPage.tsx:210
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 
@@ -7173,7 +7173,7 @@ msgstr "Too many SSH private key import sessions are active. Try again later."
 msgid "Tools & data"
 msgstr "Tools & data"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:468
+#: src/renderer/src/components/VaultHealthPage.tsx:469
 msgid "TOTP available"
 msgstr "TOTP available"
 
@@ -7182,8 +7182,8 @@ msgid "Traditional Chinese"
 msgstr "Traditional Chinese"
 
 #: src/renderer/src/components/VaultItemDetailViews.tsx:107
-#: src/renderer/src/components/VaultShell.tsx:690
-#: src/renderer/src/components/VaultShellSidebar.tsx:289
+#: src/renderer/src/components/VaultShell.tsx:689
+#: src/renderer/src/components/VaultShellSidebar.tsx:294
 msgid "Trash"
 msgstr "Trash"
 
@@ -7216,11 +7216,11 @@ msgstr "Trusted-device encryption is not supported"
 msgid "Try a shorter search term or switch to All items."
 msgstr "Try a shorter search term or switch to All items."
 
-#: src/renderer/src/components/AuthScreen.tsx:314
+#: src/renderer/src/components/AuthScreen.tsx:312
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
-#: src/renderer/src/components/SendsPage.tsx:391
+#: src/renderer/src/components/SendsPage.tsx:393
 msgid "Try again"
 msgstr "Try again"
 
@@ -7241,7 +7241,7 @@ msgstr "two-factor authentication"
 msgid "Two-factor authentication"
 msgstr "Two-factor authentication"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1411
+#: src/renderer/src/components/VaultHealthPage.tsx:1395
 msgid "Two-factor authentication not enabled"
 msgstr "Two-factor authentication not enabled"
 
@@ -7318,7 +7318,7 @@ msgstr "Unable to clear generator history."
 msgid "Unable to complete"
 msgstr "Unable to complete"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:417
+#: src/renderer/src/components/VaultHealthPage.tsx:418
 msgid "Unable to complete the two-factor authentication check"
 msgstr "Unable to complete the two-factor authentication check"
 
@@ -7330,7 +7330,7 @@ msgstr "Unable to complete the update action. Please try again later."
 msgid "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 msgstr "Unable to confirm whether all sessions were deauthorized. Check your sign-in status and other devices before retrying."
 
-#: src/renderer/src/components/AuthScreen.tsx:305
+#: src/renderer/src/components/AuthScreen.tsx:303
 msgid "Unable to connect to the security service"
 msgstr "Unable to connect to the security service"
 
@@ -7346,11 +7346,11 @@ msgstr "Unable to copy this history entry. The item may have changed elsewhere."
 msgid "Unable to copy. This history entry may have changed."
 msgstr "Unable to copy. This history entry may have changed."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:663
+#: src/renderer/src/components/VaultHealthPage.tsx:664
 msgid "Unable to determine whether any passwords were exposed"
 msgstr "Unable to determine whether any passwords were exposed"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:994
+#: src/renderer/src/components/VaultHealthPage.tsx:995
 msgid "Unable to determine whether the account appears in a breach"
 msgstr "Unable to determine whether the account appears in a breach"
 
@@ -7386,7 +7386,7 @@ msgstr "Unable to enable the authenticator. Restart setup."
 msgid "Unable to generate authentication code"
 msgstr "Unable to generate authentication code"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1352
+#: src/renderer/src/components/VaultHealthPage.tsx:1336
 msgid "Unable to generate the health report"
 msgstr "Unable to generate the health report"
 
@@ -7398,7 +7398,7 @@ msgstr "Unable to load account devices. Please try again later."
 msgid "Unable to load logins"
 msgstr "Unable to load logins"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:121
+#: src/renderer/src/components/VaultHealthPage.tsx:122
 msgid "Unable to open the two-factor authentication setup instructions"
 msgstr "Unable to open the two-factor authentication setup instructions"
 
@@ -7559,11 +7559,11 @@ msgstr "Under construction"
 msgid "Undo"
 msgstr "Undo"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:292
+#: src/renderer/src/components/VaultHealthPage.tsx:293
 msgid "Unencrypted connection"
 msgstr "Unencrypted connection"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1535
+#: src/renderer/src/components/VaultHealthPage.tsx:1515
 msgid "Unencrypted connections"
 msgstr "Unencrypted connections"
 
@@ -7572,8 +7572,8 @@ msgstr "Unencrypted connections"
 #: src/renderer/src/components/VaultItemDetailViews.tsx:132
 #: src/renderer/src/components/VaultItemDetailViews.tsx:348
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:147
-#: src/renderer/src/components/VaultShell-primitives.tsx:180
-#: src/renderer/src/components/VaultShell.tsx:672
+#: src/renderer/src/components/VaultShell-primitives.tsx:231
+#: src/renderer/src/components/VaultShell.tsx:671
 #: src/renderer/src/hooks/use-vault-item-actions.ts:318
 msgid "Unfiled"
 msgstr "Unfiled"
@@ -7582,9 +7582,9 @@ msgstr "Unfiled"
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:113
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:117
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:121
-#: src/renderer/src/components/VaultHealthPage.tsx:1426
-#: src/renderer/src/components/VaultHealthPage.tsx:1449
-#: src/renderer/src/components/VaultHealthPage.tsx:1476
+#: src/renderer/src/components/VaultHealthPage.tsx:1410
+#: src/renderer/src/components/VaultHealthPage.tsx:1433
+#: src/renderer/src/components/VaultHealthPage.tsx:1460
 #: src/renderer/src/lib/vault-date.ts:16
 msgid "Unknown"
 msgstr "Unknown"
@@ -7638,7 +7638,7 @@ msgid "Unlock quickly with device biometrics. Currently, only macOS Touch ID is 
 msgstr "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 
 #: src/renderer/src/components/SettingsPage.tsx:476
-#: src/renderer/src/components/VaultShell.tsx:164
+#: src/renderer/src/components/VaultShell.tsx:163
 msgid "Unlock required"
 msgstr "Unlock required"
 
@@ -7646,16 +7646,16 @@ msgstr "Unlock required"
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "Unlock the local vault with a temporary PIN."
 
-#: src/renderer/src/components/AuthScreen.tsx:474
+#: src/renderer/src/components/AuthScreen.tsx:472
 msgid "Unlock vault"
 msgstr "Unlock vault"
 
-#: src/renderer/src/components/AuthScreen.tsx:506
+#: src/renderer/src/components/AuthScreen.tsx:504
 msgid "Unlock with biometrics"
 msgstr "Unlock with biometrics"
 
-#: src/renderer/src/components/AuthScreen.tsx:473
-#: src/renderer/src/components/AuthScreen.tsx:490
+#: src/renderer/src/components/AuthScreen.tsx:471
+#: src/renderer/src/components/AuthScreen.tsx:488
 msgid "Unlock with PIN"
 msgstr "Unlock with PIN"
 
@@ -7685,7 +7685,7 @@ msgstr "Unnamed user"
 msgid "Unsaved"
 msgstr "Unsaved"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1404
+#: src/renderer/src/components/VaultHealthPage.tsx:1388
 msgid "Unsecured websites"
 msgstr "Unsecured websites"
 
@@ -7697,7 +7697,7 @@ msgstr "Unsupported key format"
 msgid "Unsupported vault item type"
 msgstr "Unsupported vault item type"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:939
+#: src/renderer/src/components/VaultHealthPage.tsx:940
 msgid "Unverified"
 msgstr "Unverified"
 
@@ -7768,11 +7768,11 @@ msgstr "Use at least 4 characters and avoid numbers that are easy to guess."
 msgid "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 msgstr "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1522
+#: src/renderer/src/components/VaultHealthPage.tsx:1502
 msgid "Use long passwords created by the password generator instead."
 msgstr "Use long passwords created by the password generator instead."
 
-#: src/renderer/src/components/AuthScreen.tsx:490
+#: src/renderer/src/components/AuthScreen.tsx:488
 msgid "Use master password"
 msgstr "Use master password"
 
@@ -7822,11 +7822,11 @@ msgstr "Username, password, and websites"
 msgid "Username: {0}"
 msgstr "Username: {0}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:697
+#: src/renderer/src/components/VaultHealthPage.tsx:698
 msgid "Valid login passwords not protected by master password reprompt"
 msgstr "Valid login passwords not protected by master password reprompt"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:455
+#: src/renderer/src/components/VaultHealthPage.tsx:456
 msgid "Valid personal login items included in this check"
 msgstr "Valid personal login items included in this check"
 
@@ -7835,11 +7835,11 @@ msgstr "Valid personal login items included in this check"
 msgid "Vault"
 msgstr "Vault"
 
-#: src/renderer/src/components/VaultShellSidebar.tsx:220
+#: src/renderer/src/components/VaultShellSidebar.tsx:225
 msgid "Vault categories"
 msgstr "Vault categories"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1325
+#: src/renderer/src/components/VaultHealthPage.tsx:1316
 msgid "Vault health report"
 msgstr "Vault health report"
 
@@ -7852,11 +7852,11 @@ msgstr "Vault item data"
 msgid "Vault locked"
 msgstr "Vault locked"
 
-#: src/renderer/src/components/VaultShellSidebar.tsx:210
+#: src/renderer/src/components/VaultShellSidebar.tsx:215
 msgid "Vault navigation"
 msgstr "Vault navigation"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1011
+#: src/renderer/src/components/VaultHealthPage.tsx:1012
 msgid "Vaultwarden does not have an HIBP API key configured"
 msgstr "Vaultwarden does not have an HIBP API key configured"
 
@@ -7881,7 +7881,7 @@ msgstr "Vaultwarden verifies your master password again during activation."
 msgid "Verification phrase"
 msgstr "Verification phrase"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:939
+#: src/renderer/src/components/VaultHealthPage.tsx:940
 msgid "Verified"
 msgstr "Verified"
 
@@ -7933,7 +7933,7 @@ msgstr "Very weak"
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:154
 #: src/renderer/src/components/EmergencyAccessPage.tsx:136
 #: src/renderer/src/components/OrganizationsPage.tsx:307
-#: src/renderer/src/components/VaultHealthPage.tsx:202
+#: src/renderer/src/components/VaultHealthPage.tsx:203
 msgid "View"
 msgstr "View"
 
@@ -7942,11 +7942,11 @@ msgstr "View"
 msgid "View {0}"
 msgstr "View {0}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:322
+#: src/renderer/src/components/VaultHealthPage.tsx:323
 msgid "View {findingName}"
 msgstr "View {findingName}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:199
+#: src/renderer/src/components/VaultHealthPage.tsx:200
 msgid "View {title}"
 msgstr "View {title}"
 
@@ -7959,7 +7959,7 @@ msgstr "View details"
 msgid "View device activity and trusted status on the server, and deauthorize all sessions. Device identifiers and network information are not shown."
 msgstr "View device activity and trusted status on the server, and deauthorize all sessions. Device identifiers and network information are not shown."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:325
+#: src/renderer/src/components/VaultHealthPage.tsx:326
 msgid "View item"
 msgstr "View item"
 
@@ -8023,7 +8023,7 @@ msgctxt "master-password-strength"
 msgid "Weak"
 msgstr "Weak"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1397
+#: src/renderer/src/components/VaultHealthPage.tsx:1381
 msgid "Weak passwords"
 msgstr "Weak passwords"
 
@@ -8050,7 +8050,7 @@ msgid "Website moved to position {0} of {1}."
 msgstr "Website moved to position {0} of {1}."
 
 #: src/renderer/src/components/VaultItemDetailViews.tsx:338
-#: src/renderer/src/components/VaultShell-primitives.tsx:235
+#: src/renderer/src/components/VaultShell-primitives.tsx:286
 msgid "Website not set"
 msgstr "Website not set"
 
@@ -8075,7 +8075,7 @@ msgstr "Website: {0}"
 msgid "Websites"
 msgstr "Websites"
 
-#: src/renderer/src/components/AuthScreen.tsx:324
+#: src/renderer/src/components/AuthScreen.tsx:322
 msgid "Welcome back"
 msgstr "Welcome back"
 
@@ -8170,7 +8170,7 @@ msgstr "Your Bitwarden account needs to sign in again or unlock."
 msgid "Your Bitwarden sign-in has expired, so this request can't be handled."
 msgstr "Your Bitwarden sign-in has expired, so this request can't be handled."
 
-#: src/renderer/src/components/VaultHealthPage.tsx:820
+#: src/renderer/src/components/VaultHealthPage.tsx:821
 msgid "Your complete email address will leave this device"
 msgstr "Your complete email address will leave this device"
 
@@ -8190,7 +8190,7 @@ msgstr "Your current master password must be {MIN_PASSWORD_LENGTH} to {MAX_PASSW
 msgid "Your current session has expired. Please sign in again."
 msgstr "Your current session has expired. Please sign in again."
 
-#: src/renderer/src/components/AuthScreen.tsx:514
+#: src/renderer/src/components/AuthScreen.tsx:512
 msgid "Your master password and decrypted data never leave this device."
 msgstr "Your master password and decrypted data never leave this device."
 

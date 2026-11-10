@@ -40,7 +40,10 @@ function Card({
         className={cn(
           'group/card bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-3xl bg-(image:--surface-sheen) py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-3xl *:[img:last-child]:rounded-b-3xl',
           variant === 'default' && 'overflow-hidden',
-          variant === 'folder' && ['relative mt-8 rounded-2xl', folderToneClasses[tone]],
+          variant === 'folder' && [
+            'relative mt-12 rounded-2xl shadow-(--card-shadow)',
+            folderToneClasses[tone]
+          ],
           className
         )}
         {...props}
@@ -74,7 +77,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
       className={cn(
         'text-base leading-snug font-medium group-data-[size=sm]/card:text-sm',
         folder &&
-          "text-foreground absolute bottom-full left-1 flex h-8 max-w-[calc(100%-0.5rem)] items-center gap-2 truncate text-[0.8125rem] font-semibold whitespace-nowrap [&_svg]:shrink-0 [&_svg]:text-(--tab-icon) [&_svg:not([class*='size-'])]:size-4",
+          "text-foreground absolute bottom-[calc(100%+0.5rem)] left-1 flex h-6 max-w-[calc(100%-0.5rem)] items-center gap-2 truncate text-[0.8125rem] font-semibold whitespace-nowrap [&_svg]:shrink-0 [&_svg]:text-(--tab-icon) [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

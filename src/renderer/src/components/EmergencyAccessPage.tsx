@@ -209,6 +209,7 @@ function EmergencyAccessPage(): React.JSX.Element {
   return (
     <AuxiliaryPageLayout
       title={t`Emergency Access`}
+      headerIcon={<ShieldAlert />}
       titleId="emergency-access-title"
       subtitle={t`Currently read-only. Inviting, confirming, viewing, and taking over are not available yet.`}
     >

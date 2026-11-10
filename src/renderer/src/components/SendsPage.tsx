@@ -7,6 +7,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send as SendIcon,
   Trash2
 } from 'lucide-react'
 import type { MessageDescriptor } from '@lingui/core'
@@ -343,6 +344,7 @@ function SendsPage(): React.JSX.Element {
   return (
     <AuxiliaryPageLayout
       title={t`Sends`}
+      headerIcon={<SendIcon />}
       titleId="sends-title"
       subtitle={t`Text and file Send metadata is decrypted in the main process first.`}
       headerActions={

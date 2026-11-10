@@ -82,7 +82,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 import { activateLanguagePreference } from '@renderer/i18n'
 import { useVaultRouteState } from '@renderer/lib/vault-route-state'
@@ -1195,14 +1194,13 @@ function VaultShellContent({
 
             <section
               className={cn(
-                'relative isolate flex min-h-0 min-w-0 overflow-hidden bg-transparent max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex',
+                'relative isolate flex min-h-0 min-w-0 overflow-hidden bg-(--canvas) max-[680px]:hidden max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:flex',
                 (isMac || isWindows) &&
                   'rounded-[1.75rem] shadow-(--surface-shadow) ring-1 ring-(--surface-ring)'
               )}
               data-vault-detail-pane=""
               aria-label={t`Item details`}
             >
-              <DotGridBackdrop />
               {editorMode ? (
                 <LoginEditor
                   key={`${editorSessionId}:${editorMode}:${selectedLogin?.id ?? 'new'}`}

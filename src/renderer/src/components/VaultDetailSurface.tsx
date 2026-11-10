@@ -16,7 +16,7 @@ export function DetailCard({
     <Card
       variant="folder"
       className={cn(
-        'mx-auto mb-2 w-full max-w-[720px] [--card-spacing:--spacing(2.5)]',
+        'mx-auto w-full max-w-[720px] [--card-spacing:--spacing(2.5)]',
         '[&_[data-slot=card-description]]:ml-auto',
         variant === 'attachment' &&
           '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',

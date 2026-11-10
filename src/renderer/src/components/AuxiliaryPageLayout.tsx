@@ -1,11 +1,10 @@
 import type { ReactNode, RefObject } from 'react'
-import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 
 interface AuxiliaryPageLayoutProps {
   title: string
   titleId: string
-  subtitle: string
+  subtitle?: string
   children: ReactNode
   headerActions?: ReactNode
   headerNavigation?: ReactNode
@@ -47,8 +46,10 @@ function AuxiliaryPageLayout({
   scrollClassName
 }: AuxiliaryPageLayoutProps): React.JSX.Element {
   return (
-    <div className="relative isolate flex min-h-0 flex-1 flex-col" aria-labelledby={titleId}>
-      <DotGridBackdrop />
+    <div
+      className="relative isolate flex min-h-0 flex-1 flex-col bg-(--canvas)"
+      aria-labelledby={titleId}
+    >
       <header
         className={cn(
           'min-h-24 border-b border-(--surface-ring) bg-(--glass-surface) px-[clamp(1.25rem,3vw,2.5rem)] py-4 backdrop-blur-xl backdrop-saturate-150 max-[680px]:min-h-0'
@@ -59,7 +60,7 @@ function AuxiliaryPageLayout({
             <div className="flex min-w-0 items-center gap-3">
               {headerIcon && (
                 <span
-                  className="text-brand bg-card grid size-12 shrink-0 place-items-center rounded-2xl shadow-(--surface-shadow) [&>svg]:size-5"
+                  className="text-brand bg-card grid size-12 shrink-0 place-items-center rounded-2xl shadow-(--keycap-shadow) [&>svg]:size-5"
                   aria-hidden="true"
                 >
                   {headerIcon}
@@ -69,7 +70,9 @@ function AuxiliaryPageLayout({
                 <h1 id={titleId} className="m-0 text-2xl leading-tight font-bold tracking-tight">
                   {title}
                 </h1>
-                <p className="text-muted-foreground mt-1 text-xs leading-[1.45]">{subtitle}</p>
+                {subtitle && (
+                  <p className="text-muted-foreground mt-1 text-xs leading-[1.45]">{subtitle}</p>
+                )}
               </div>
             </div>
             {headerActions}

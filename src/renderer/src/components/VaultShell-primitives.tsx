@@ -75,21 +75,76 @@ interface SidebarLinkProps {
   label: string
   count: number
   active: boolean
-  tone?: SidebarTone
   dropTargetId?: string
   onClick: () => void
 }
 
-// Pastel icon chips, one hue per vault category.
+// One saturated hue per vault category, read by the tile as `--tile`.
 const sidebarToneClasses: Record<SidebarTone, string> = {
-  blue: 'bg-sky-100 text-sky-700 dark:bg-sky-400/15 dark:text-sky-300',
-  indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-400/15 dark:text-indigo-300',
-  green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300',
-  yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300',
-  cyan: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-300',
-  red: 'bg-rose-100 text-rose-700 dark:bg-rose-400/15 dark:text-rose-300',
-  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-400/15 dark:text-orange-300',
-  gray: 'bg-slate-200/70 text-slate-700 dark:bg-slate-400/15 dark:text-slate-300'
+  blue: '[--tile:var(--color-blue-500)]',
+  indigo: '[--tile:var(--color-indigo-500)]',
+  green: '[--tile:var(--color-green-500)]',
+  yellow: '[--tile:var(--color-amber-400)]',
+  cyan: '[--tile:var(--color-cyan-500)]',
+  red: '[--tile:var(--color-red-500)]',
+  orange: '[--tile:var(--color-orange-500)]',
+  gray: '[--tile:var(--color-slate-500)]'
+}
+
+interface SidebarCategoryTileProps {
+  icon: ReactNode
+  label: string
+  count: number
+  active: boolean
+  tone: SidebarTone
+  onClick: () => void
+}
+
+/** A category card: the selected card fills with its category colour. */
+export function SidebarCategoryTile({
+  icon,
+  label,
+  count,
+  active,
+  tone,
+  onClick
+}: SidebarCategoryTileProps): JSX.Element {
+  return (
+    <Button
+      variant="sidebar"
+      className={cn(
+        sidebarToneClasses[tone],
+        'grid h-auto min-h-[4.5rem] grid-cols-[auto_1fr] grid-rows-[auto_auto] items-center gap-x-2 gap-y-2 rounded-[1.125rem] p-2.5 text-left whitespace-normal',
+        active
+          ? 'bg-(--tile) text-white hover:bg-(--tile) hover:text-white aria-expanded:bg-(--tile)'
+          : 'bg-sidebar-overlay hover:bg-sidebar-overlay-hover'
+      )}
+      type="button"
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+    >
+      <span
+        className={cn(
+          'grid size-7 place-items-center rounded-full [&>svg]:size-4',
+          active ? 'bg-white text-(--tile)' : 'bg-(--tile) text-white'
+        )}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <small
+        className={cn(
+          'self-start justify-self-end pt-0.5 text-[0.8125rem] font-semibold tabular-nums',
+          active ? 'text-white/85' : 'text-muted-foreground'
+        )}
+      >
+        {count}
+      </small>
+      <span className="col-span-2 truncate text-[0.9375rem] leading-tight font-semibold">
+        {label}
+      </span>
+    </Button>
+  )
 }
 
 /** Sidebar rows sit on the window canvas, so the selected row lifts into a white keycap. */
@@ -100,14 +155,13 @@ export const sidebarRowSelectedClassName =
 export const sidebarRowDropClassName =
   'bg-sidebar-overlay-active shadow-[inset_0_0_0_1.5px_color-mix(in_oklch,var(--brand)_60%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
 export const sidebarCountClassName =
-  'text-muted-foreground grid h-5 min-w-6 place-items-center rounded-md border border-(--surface-ring) bg-(--segment-track) px-1.5 text-[0.6875rem] font-medium tabular-nums'
+  'text-muted-foreground min-w-6 text-right text-[0.8125rem] font-medium tabular-nums'
 
 export function SidebarLink({
   icon,
   label,
   count,
   active,
-  tone,
   dropTargetId,
   onClick
 }: SidebarLinkProps): JSX.Element {
@@ -131,10 +185,7 @@ export function SidebarLink({
       onClick={onClick}
     >
       <span
-        className={cn(
-          'grid size-6 place-items-center rounded-lg [&>svg]:size-3.5',
-          tone ? sidebarToneClasses[tone] : 'text-muted-foreground [&>svg]:size-4'
-        )}
+        className="text-muted-foreground grid size-6 place-items-center [&>svg]:size-4"
         aria-hidden="true"
       >
         {icon}

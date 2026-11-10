@@ -14,7 +14,7 @@ function FeatureUnderConstructionNotice({
 
   return (
     <AuxiliaryPageContent className="mb-4">
-      <Alert className="col-span-full">
+      <Alert variant="warning" className="col-span-full">
         <Construction aria-hidden="true" />
         <AlertTitle>{t`Under construction`}</AlertTitle>
         <AlertDescription>{children}</AlertDescription>

@@ -20,7 +20,6 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { DotGridBackdrop } from '@renderer/components/ui/surface'
 import { cn } from '@renderer/lib/utils'
 import { isMac, isWindows, usesWindowControlsOverlay } from '../lib/platform'
 import { useSettingsStore } from '../stores/settings-runtime'
@@ -265,7 +264,6 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
         (isMac || isWindows) && 'bg-transparent'
       )}
     >
-      <DotGridBackdrop className="fixed" translucent={isMac || isWindows} />
       <div
         className="pointer-events-auto absolute inset-x-0 top-0 z-10 h-12 [-webkit-app-region:drag]"
         aria-hidden="true"

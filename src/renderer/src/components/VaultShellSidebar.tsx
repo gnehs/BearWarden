@@ -29,7 +29,12 @@ import type { VaultCategoryFilter } from '../lib/vault-category'
 import { useVaultSessionStore } from '../stores/vault-session-store'
 import type { Scope } from './VaultShell-model'
 import { folderRootDropId, quickAccessDropIds } from './VaultShell-dnd'
-import { SidebarLink, UnfiledRow, type SidebarTone } from './VaultShell-primitives'
+import {
+  SidebarCategoryTile,
+  SidebarLink,
+  UnfiledRow,
+  type SidebarTone
+} from './VaultShell-primitives'
 import { FolderRow } from './DndRows'
 import { VaultOrganizationSidebarSection } from './VaultOrganizationSidebarSection'
 import { Button } from '@renderer/components/ui/button'
@@ -217,13 +222,13 @@ export function VaultShellSidebar({
           <h2 className="hidden" id="categories-title">
             <Trans>Categories</Trans>
           </h2>
-          <nav className="grid gap-0.5 p-0 pt-px" aria-label={t`Vault categories`}>
+          <nav className="grid grid-cols-2 gap-2 p-0 pt-px" aria-label={t`Vault categories`}>
             {navigation.categories.map((category) => {
               const Icon = category.icon
               return (
-                <SidebarLink
+                <SidebarCategoryTile
                   key={category.id}
-                  icon={<Icon className="size-3.5" />}
+                  icon={<Icon />}
                   label={category.label}
                   count={navigation.categoryCounts.get(category.id) ?? 0}
                   active={scope.kind === 'all' && typeFilter === category.id}
