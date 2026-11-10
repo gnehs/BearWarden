@@ -369,7 +369,7 @@ export function VaultShellSidebar({
               <Button
                 ref={accountMenuTriggerRef}
                 variant="sidebar"
-                className="bg-card hover:bg-card data-popup-open:bg-card h-auto min-h-11 w-full justify-start gap-2.5 rounded-2xl px-2 py-1.5 shadow-(--keycap-shadow) dark:bg-(--segment-thumb) dark:hover:bg-(--segment-thumb)"
+                className="h-auto min-h-11 w-full justify-start gap-2.5 rounded-2xl px-2 py-1.5"
                 type="button"
                 aria-label={t`Open ${sidebarAccountName} menu`}
               />
