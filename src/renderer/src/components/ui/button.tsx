@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground bg-(image:--primary-sheen) shadow-(--primary-shadow) hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_14%)]',
+          'bg-primary text-primary-foreground shadow-(--primary-shadow) hover:bg-[color-mix(in_oklch,var(--primary),var(--background)_14%)]',
         outline:
           'bg-card text-foreground shadow-(--keycap-shadow) hover:bg-[color-mix(in_oklch,var(--card),var(--foreground)_3%)] aria-expanded:bg-[color-mix(in_oklch,var(--card),var(--foreground)_4%)] data-popup-open:bg-[color-mix(in_oklch,var(--card),var(--foreground)_4%)]',
         secondary:

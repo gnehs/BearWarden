@@ -1099,7 +1099,7 @@ function VaultShellContent({
               className={cn(
                 'border-border relative flex min-h-0 min-w-0 flex-col border-r bg-transparent max-[680px]:size-full [[data-has-detail=true]_&]:max-[680px]:hidden',
                 (isMac || isWindows) &&
-                  'overflow-hidden rounded-[1.75rem] border-0 bg-(--glass-surface) bg-(image:--surface-sheen) shadow-(--surface-shadow) ring-1 ring-(--surface-ring) backdrop-blur-2xl backdrop-saturate-150'
+                  'overflow-hidden rounded-[1.75rem] border-0 bg-(--glass-surface) shadow-(--surface-shadow) ring-1 ring-(--surface-ring) backdrop-blur-2xl backdrop-saturate-150'
               )}
               data-vault-list-pane=""
               aria-labelledby={
