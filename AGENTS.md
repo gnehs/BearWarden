@@ -18,6 +18,10 @@
 - shadcn/ui 的共用視覺調整應修改 component variant 或共用元件，讓檢視、新增、編輯等介面一致套用；不要在各頁散落互相衝突的 one-off class。
 - 頁面標題上方不要放置 eyebrow、headline 或其他裝飾性前導文字；直接顯示語意化的主要標題。
 
+## 瀏覽器支援
+
+- **Browser Support:** Renderer 只在 `package.json` 釘選的 Electron 版本內建的 Chromium 上執行，不以其他瀏覽器或 Baseline 狀態為目標。該 Chromium 版本已支援的 HTML/CSS/JS 功能可直接使用，不要為其他瀏覽器撰寫 fallback、polyfill 或 feature detection；功能需要較新版本時，應升級 Electron，而不是加入相容層。
+
 ## 國際化與翻譯
 
 - 本專案使用 Lingui，套件管理器為 pnpm；修改翻譯後使用 `pnpm run i18n:extract` 更新 catalog，再使用 `pnpm run i18n:compile` 驗證。
