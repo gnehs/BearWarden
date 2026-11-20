@@ -1,7 +1,6 @@
 import {
   constants,
   createHash,
-  createHmac,
   createPublicKey,
   publicEncrypt,
   randomBytes,
@@ -57,7 +56,7 @@ import {
   type JsonObject,
   type JsonValue
 } from './bitwarden-http'
-import { loadEffLongWordlist } from './eff-wordlist'
+import { authRequestFingerprint } from './bitwarden-device-login'
 import type {
   SyncInvalidResponseReason,
   SyncInvalidResponseStage,
@@ -1177,28 +1176,10 @@ function cloneBitwardenAccountKey(key: BitwardenSymmetricKey): BitwardenSymmetri
 
 function loginRequestFingerprint(email: string, request: BitwardenAuthRequest): string {
   const publicKey = Buffer.from(request.publicKey, 'base64')
-  const prk = createHash('sha256').update(publicKey).digest()
-  const info = Buffer.from(email.toLocaleLowerCase('en-US'), 'utf8')
-  const expanded = createHmac('sha256', prk)
-    .update(info)
-    .update(Buffer.from([1]))
-    .digest()
   try {
-    const words = loadEffLongWordlist()
-    let value = BigInt(`0x${expanded.toString('hex')}`)
-    const radix = BigInt(words.length)
-    const phrase: string[] = []
-    // Six EFF-long words exceed the required 64-bit minimum and match this feature's UX contract.
-    for (let index = 0; index < 6; index += 1) {
-      phrase.push(words[Number(value % radix)]!)
-      value /= radix
-    }
-    return phrase.join('-')
+    return authRequestFingerprint(email, publicKey)
   } finally {
     publicKey.fill(0)
-    prk.fill(0)
-    info.fill(0)
-    expanded.fill(0)
   }
 }
 
