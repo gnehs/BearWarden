@@ -192,6 +192,12 @@ export class VaultSendService {
         if (error instanceof BitwardenDirectError && error.code === 'NOT_FOUND') {
           throw new VaultError('NOT_FOUND')
         }
+        if (
+          error instanceof BitwardenDirectError &&
+          (error.code === 'SEND_PASSWORD_REQUIRED' || error.code === 'SEND_PASSWORD_INVALID')
+        ) {
+          throw new VaultError(error.code)
+        }
         throw this.dependencies.mapSyncError(error)
       } finally {
         clearText?.fill(0)

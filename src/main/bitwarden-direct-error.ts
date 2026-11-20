@@ -14,6 +14,8 @@ export type BitwardenDirectErrorCode =
   | 'ABORTED'
   | 'NOT_FOUND'
   | 'FORBIDDEN'
+  | 'SEND_PASSWORD_REQUIRED'
+  | 'SEND_PASSWORD_INVALID'
   | 'TOO_LARGE'
   | 'STORAGE_LIMIT'
   | 'ATTACHMENT_REJECTED'

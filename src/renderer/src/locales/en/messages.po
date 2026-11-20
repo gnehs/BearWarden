@@ -22,7 +22,7 @@ msgid " · Legacy unauthenticated encryption"
 msgstr " · Legacy unauthenticated encryption"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)
-#: src/renderer/src/components/SendsPage.tsx:436
+#: src/renderer/src/components/SendsPage.tsx:427
 msgid " / maximum {0}"
 msgstr " / maximum {0}"
 
@@ -108,7 +108,7 @@ msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You 
 msgstr "{0, plural, one {{base} You have # attempt remaining.} other {{base} You have # attempts remaining.}}"
 
 #. placeholder {0}: send.accessCount
-#: src/renderer/src/components/SendsPage.tsx:432
+#: src/renderer/src/components/SendsPage.tsx:423
 msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# access} other {# accesses}}"
 
@@ -167,7 +167,7 @@ msgid "{0} autofill settings"
 msgstr "{0} autofill settings"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.file.size)
-#: src/renderer/src/components/SendsPage.tsx:505
+#: src/renderer/src/components/SendsPage.tsx:496
 msgid "{0} bytes"
 msgstr "{0} bytes"
 
@@ -569,15 +569,20 @@ msgstr "Accepted"
 msgid "Access approved"
 msgstr "Access approved"
 
-#: src/renderer/src/components/SendsPage.tsx:116
+#: src/renderer/src/components/SendsPage.tsx:118
 msgid "Access limit reached"
 msgstr "Access limit reached"
 
-#: src/renderer/src/components/SendsPage.tsx:599
+#. Label of the password field in the file Send download dialog; the password recipients need to open the Send.
+#: src/renderer/src/components/SendPasswordDialog.tsx:71
+msgid "Access password"
+msgstr "Access password"
+
+#: src/renderer/src/components/SendsPage.tsx:590
 msgid "Access password (leave blank to keep the current password)"
 msgstr "Access password (leave blank to keep the current password)"
 
-#: src/renderer/src/components/SendsPage.tsx:601
+#: src/renderer/src/components/SendsPage.tsx:592
 msgid "Access password (optional)"
 msgstr "Access password (optional)"
 
@@ -865,11 +870,11 @@ msgstr "After Bitwarden sync completes, shared items that you have permission to
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
 msgstr "After previewing, new local owner verification is required before syncing and restoring begin."
 
-#: src/renderer/src/components/SendsPage.tsx:687
+#: src/renderer/src/components/SendsPage.tsx:678
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
 msgstr "After this date, the link stops accepting access, but the Send is not immediately deleted."
 
-#: src/renderer/src/components/SendsPage.tsx:709
+#: src/renderer/src/components/SendsPage.tsx:700
 msgid "After this time, the server permanently removes the Send."
 msgstr "After this time, the server permanently removes the Send."
 
@@ -1229,7 +1234,7 @@ msgstr "BearWarden could not load the vault service. Your data has not been chan
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
-#: src/renderer/src/components/SendsPage.tsx:492
+#: src/renderer/src/components/SendsPage.tsx:483
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 
@@ -1383,7 +1388,8 @@ msgstr "Can restore"
 #: src/renderer/src/components/LoginEditor.tsx:2750
 #: src/renderer/src/components/LoginEditor.tsx:3143
 #: src/renderer/src/components/LoginEditor.tsx:3377
-#: src/renderer/src/components/SendsPage.tsx:784
+#: src/renderer/src/components/SendPasswordDialog.tsx:101
+#: src/renderer/src/components/SendsPage.tsx:775
 #: src/renderer/src/components/SendsPage.tsx:811
 #: src/renderer/src/components/SyncDialog.tsx:1258
 #: src/renderer/src/components/VaultItemAccessCards.tsx:94
@@ -1866,7 +1872,7 @@ msgstr "Confirm remote outcome"
 msgid "Confirm removing security key"
 msgstr "Confirm removing security key"
 
-#: src/renderer/src/components/SendsPage.tsx:386
+#: src/renderer/src/components/SendsPage.tsx:377
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "Confirm that sync is connected and try again. Existing data has not been changed."
 
@@ -1931,11 +1937,11 @@ msgstr "Connected, vault unlocked"
 #: src/renderer/src/components/LoginEditor.tsx:2329
 #: src/renderer/src/components/LoginEditor.tsx:2994
 #: src/renderer/src/components/LoginEditor.tsx:3014
-#: src/renderer/src/components/SendsPage.tsx:583
+#: src/renderer/src/components/SendsPage.tsx:574
 msgid "Content"
 msgstr "Content"
 
-#: src/renderer/src/components/SendsPage.tsx:563
+#: src/renderer/src/components/SendsPage.tsx:554
 msgid "Content is encrypted in the main process before it is sent to the server."
 msgstr "Content is encrypted in the main process before it is sent to the server."
 
@@ -2017,7 +2023,7 @@ msgstr "Copy recovery code"
 msgid "Copy setup key"
 msgstr "Copy setup key"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Copy sharing link"
 msgstr "Copy sharing link"
 
@@ -2049,7 +2055,7 @@ msgstr "Copy verification code"
 msgid "Copy website"
 msgstr "Copy website"
 
-#: src/renderer/src/components/SendsPage.tsx:369
+#: src/renderer/src/components/SendsPage.tsx:360
 msgid "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 msgstr "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 
@@ -2069,7 +2075,7 @@ msgstr "Could not connect to the sync server. Check your network, server URL, an
 msgid "Could not copy the diagnostic summary. Select the text and copy it manually."
 msgstr "Could not copy the diagnostic summary. Select the text and copy it manually."
 
-#: src/renderer/src/components/SendsPage.tsx:299
+#: src/renderer/src/components/SendsPage.tsx:303
 msgid "Could not copy the sharing link."
 msgstr "Could not copy the sharing link."
 
@@ -2081,7 +2087,7 @@ msgstr "Could not create the backup. Check the master password, save location, a
 msgid "Could not create the CSV. Check the master password and save location, then try again."
 msgstr "Could not create the CSV. Check the master password and save location, then try again."
 
-#: src/renderer/src/components/SendsPage.tsx:269
+#: src/renderer/src/components/SendsPage.tsx:273
 msgid "Could not create the file Send. Confirm that sync is connected."
 msgstr "Could not create the file Send. Confirm that sync is connected."
 
@@ -2089,13 +2095,18 @@ msgstr "Could not create the file Send. Confirm that sync is connected."
 msgid "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 msgstr "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 
-#: src/renderer/src/components/SendsPage.tsx:287
+#: src/renderer/src/components/SendsPage.tsx:291
 msgid "Could not delete the Send."
 msgstr "Could not delete the Send."
 
 #: src/renderer/src/components/SendsPage.tsx:321
-msgid "Could not download the file Send. Check the password and sync connection."
-msgstr "Could not download the file Send. Check the password and sync connection."
+#~ msgid "Could not download the file Send. Check the password and sync connection."
+#~ msgstr "Could not download the file Send. Check the password and sync connection."
+
+#. Error toast when downloading a file Send fails for a reason other than its password.
+#: src/renderer/src/hooks/use-file-send-download.ts:39
+msgid "Could not download the file Send. Check the sync connection."
+msgstr "Could not download the file Send. Check the sync connection."
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:242
 msgid "Could not import the file. Check the master password, file format, and backup password, then try again."
@@ -2114,7 +2125,7 @@ msgstr "Could not load Emergency Access"
 msgid "Could not load organization items"
 msgstr "Could not load organization items"
 
-#: src/renderer/src/components/SendsPage.tsx:383
+#: src/renderer/src/components/SendsPage.tsx:374
 msgid "Could not load Sends"
 msgstr "Could not load Sends"
 
@@ -2126,11 +2137,11 @@ msgstr "Could not load shared item"
 msgid "Could not load the account security status."
 msgstr "Could not load the account security status."
 
-#: src/renderer/src/components/SendsPage.tsx:338
+#: src/renderer/src/components/SendsPage.tsx:329
 msgid "Could not remove the Send password."
 msgstr "Could not remove the Send password."
 
-#: src/renderer/src/components/SendsPage.tsx:232
+#: src/renderer/src/components/SendsPage.tsx:236
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Could not save the Send. Confirm that sync is connected."
 
@@ -2183,7 +2194,7 @@ msgstr "Create a plaintext copy of logins and secure notes that can be imported 
 msgid "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 msgstr "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 
-#: src/renderer/src/components/SendsPage.tsx:407
+#: src/renderer/src/components/SendsPage.tsx:398
 msgid "Create a text Send to securely share one-time content."
 msgstr "Create a text Send to securely share one-time content."
 
@@ -2191,16 +2202,16 @@ msgstr "Create a text Send to securely share one-time content."
 msgid "Create and unlock"
 msgstr "Create and unlock"
 
-#: src/renderer/src/components/SendsPage.tsx:359
-#: src/renderer/src/components/SendsPage.tsx:773
+#: src/renderer/src/components/SendsPage.tsx:350
+#: src/renderer/src/components/SendsPage.tsx:764
 msgid "Create file Send"
 msgstr "Create file Send"
 
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Create Send"
 msgstr "Create Send"
 
-#: src/renderer/src/components/SendsPage.tsx:363
+#: src/renderer/src/components/SendsPage.tsx:354
 msgid "Create text Send"
 msgstr "Create text Send"
 
@@ -2208,7 +2219,7 @@ msgstr "Create text Send"
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "Create unique passwords for the most frequently reused items first."
 
-#: src/renderer/src/components/SendsPage.tsx:413
+#: src/renderer/src/components/SendsPage.tsx:404
 msgid "Create your first Send"
 msgstr "Create your first Send"
 
@@ -2454,7 +2465,7 @@ msgstr "Delete passkey"
 msgid "Delete permanently"
 msgstr "Delete permanently"
 
-#: src/renderer/src/components/SendsPage.tsx:478
+#: src/renderer/src/components/SendsPage.tsx:469
 msgid "Delete Send"
 msgstr "Delete Send"
 
@@ -2493,7 +2504,7 @@ msgstr "Deleted item"
 msgid "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 msgstr "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 
-#: src/renderer/src/components/SendsPage.tsx:533
+#: src/renderer/src/components/SendsPage.tsx:524
 msgid "Deletes"
 msgstr "Deletes"
 
@@ -2505,7 +2516,7 @@ msgstr "Deleting attachment"
 msgid "Deleting…"
 msgstr "Deleting…"
 
-#: src/renderer/src/components/SendsPage.tsx:695
+#: src/renderer/src/components/SendsPage.tsx:686
 msgid "Deletion date"
 msgstr "Deletion date"
 
@@ -2551,12 +2562,12 @@ msgstr "Disable biometrics"
 msgid "Disable PIN unlock"
 msgstr "Disable PIN unlock"
 
-#: src/renderer/src/components/SendsPage.tsx:730
+#: src/renderer/src/components/SendsPage.tsx:721
 msgid "Disable Send"
 msgstr "Disable Send"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:58
-#: src/renderer/src/components/SendsPage.tsx:114
+#: src/renderer/src/components/SendsPage.tsx:116
 #: src/renderer/src/components/SettingsPage.tsx:608
 #: src/renderer/src/components/SettingsPage.tsx:1046
 #: src/renderer/src/components/SettingsPage.tsx:1192
@@ -2598,7 +2609,7 @@ msgstr "Display name"
 msgid "Display name saved."
 msgstr "Display name saved."
 
-#: src/renderer/src/components/SendsPage.tsx:748
+#: src/renderer/src/components/SendsPage.tsx:739
 msgid "Do not show your account email to recipients."
 msgstr "Do not show your account email to recipients."
 
@@ -2606,12 +2617,17 @@ msgstr "Do not show your account email to recipients."
 msgid "Domain rules cannot be displayed right now."
 msgstr "Domain rules cannot be displayed right now."
 
+#. Submit button in the file Send download password dialog; saves the Send's file to disk.
+#: src/renderer/src/components/SendPasswordDialog.tsx:96
+msgid "Download"
+msgstr "Download"
+
 #. placeholder {0}: attachment.fileName
 #: src/renderer/src/components/VaultItemAccessCards.tsx:150
 msgid "Download {0}"
 msgstr "Download {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:457
+#: src/renderer/src/components/SendsPage.tsx:448
 msgid "Download file Send"
 msgstr "Download file Send"
 
@@ -2727,12 +2743,12 @@ msgstr "Edit items, hide passwords"
 msgid "Edit profile"
 msgstr "Edit profile"
 
-#: src/renderer/src/components/SendsPage.tsx:468
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:459
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Edit Send"
 msgstr "Edit Send"
 
-#: src/renderer/src/components/SendsPage.tsx:205
+#: src/renderer/src/components/SendsPage.tsx:209
 msgid "Editing file Sends is not available yet."
 msgstr "Editing file Sends is not available yet."
 
@@ -2770,7 +2786,7 @@ msgstr "Email not verified"
 msgid "Email two-factor authentication has been enabled."
 msgstr "Email two-factor authentication has been enabled."
 
-#: src/renderer/src/components/SendsPage.tsx:113
+#: src/renderer/src/components/SendsPage.tsx:115
 msgid "Email verification"
 msgstr "Email verification"
 
@@ -2782,7 +2798,7 @@ msgstr "Email verification code"
 msgid "Email verified"
 msgstr "Email verified"
 
-#: src/renderer/src/components/SendsPage.tsx:489
+#: src/renderer/src/components/SendsPage.tsx:480
 msgid "Email-verified Send"
 msgstr "Email-verified Send"
 
@@ -2866,11 +2882,11 @@ msgstr "Enter a folder name."
 msgid "Enter a security key name and your master password."
 msgstr "Enter a security key name and your master password."
 
-#: src/renderer/src/components/SendsPage.tsx:201
+#: src/renderer/src/components/SendsPage.tsx:205
 msgid "Enter a Send name and content."
 msgstr "Enter a Send name and content."
 
-#: src/renderer/src/components/SendsPage.tsx:241
+#: src/renderer/src/components/SendsPage.tsx:245
 msgid "Enter a Send name first."
 msgstr "Enter a Send name first."
 
@@ -2942,6 +2958,11 @@ msgstr "Enter PURGE to confirm"
 msgid "Enter the 6-digit verification code shown by your authenticator."
 msgstr "Enter the 6-digit verification code shown by your authenticator."
 
+#. Description in the file Send download password dialog. {sendName} is the user's own Send name.
+#: src/renderer/src/components/SendPasswordDialog.tsx:62
+msgid "Enter the access password to download “{sendName}”."
+msgstr "Enter the access password to download “{sendName}”."
+
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:557
 msgid "Enter the backup password again"
 msgstr "Enter the backup password again"
@@ -2963,8 +2984,8 @@ msgid "Enter the PIN set for this session."
 msgstr "Enter the PIN set for this session."
 
 #: src/renderer/src/components/SendsPage.tsx:313
-msgid "Enter the Send access password"
-msgstr "Enter the Send access password"
+#~ msgid "Enter the Send access password"
+#~ msgstr "Enter the Send access password"
 
 #: src/renderer/src/components/LoginEditor.tsx:3339
 msgid "Enter the SSH private key password"
@@ -3074,7 +3095,7 @@ msgstr "Existing sensitive fields could not be loaded. Cancel editing and try ag
 msgid "Expand {0}"
 msgstr "Expand {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:673
+#: src/renderer/src/components/SendsPage.tsx:664
 #: src/renderer/src/components/VaultItemDetailViews.tsx:241
 msgid "Expiration date"
 msgstr "Expiration date"
@@ -3091,11 +3112,11 @@ msgstr "Expiration month"
 msgid "Expiration year"
 msgstr "Expiration year"
 
-#: src/renderer/src/components/SendsPage.tsx:115
+#: src/renderer/src/components/SendsPage.tsx:117
 msgid "Expired"
 msgstr "Expired"
 
-#: src/renderer/src/components/SendsPage.tsx:527
+#: src/renderer/src/components/SendsPage.tsx:518
 msgid "Expires"
 msgstr "Expires"
 
@@ -3172,17 +3193,17 @@ msgstr "File Explorer"
 msgid "file manager"
 msgstr "file manager"
 
-#: src/renderer/src/components/SendsPage.tsx:267
+#: src/renderer/src/components/SendsPage.tsx:271
 msgid "File Send created"
 msgstr "File Send created"
 
-#: src/renderer/src/components/SendsPage.tsx:194
-#: src/renderer/src/components/SendsPage.tsx:227
-#: src/renderer/src/components/SendsPage.tsx:334
+#: src/renderer/src/components/SendsPage.tsx:198
+#: src/renderer/src/components/SendsPage.tsx:231
+#: src/renderer/src/components/SendsPage.tsx:325
 msgid "File Sends are read-only until file transfer support is enabled"
 msgstr "File Sends are read-only until file transfer support is enabled"
 
-#: src/renderer/src/components/SendsPage.tsx:188
+#: src/renderer/src/components/SendsPage.tsx:192
 msgid "File Sends can currently only be viewed and their links copied."
 msgstr "File Sends can currently only be viewed and their links copied."
 
@@ -3461,13 +3482,13 @@ msgstr "Hide custom field contents"
 msgid "Hide master password"
 msgstr "Hide master password"
 
-#: src/renderer/src/components/SendsPage.tsx:119
-#: src/renderer/src/components/SendsPage.tsx:745
+#: src/renderer/src/components/SendsPage.tsx:121
+#: src/renderer/src/components/SendsPage.tsx:736
 msgid "Hide sender email"
 msgstr "Hide sender email"
 
-#: src/renderer/src/components/SendsPage.tsx:118
-#: src/renderer/src/components/SendsPage.tsx:715
+#: src/renderer/src/components/SendsPage.tsx:120
+#: src/renderer/src/components/SendsPage.tsx:706
 msgid "Hide text by default"
 msgstr "Hide text by default"
 
@@ -3699,7 +3720,7 @@ msgstr "Keep passkey"
 msgid "Keep the backup password safe"
 msgstr "Keep the backup password safe"
 
-#: src/renderer/src/components/SendsPage.tsx:733
+#: src/renderer/src/components/SendsPage.tsx:724
 msgid "Keep the Send but prevent all recipient access."
 msgstr "Keep the Send but prevent all recipient access."
 
@@ -3755,7 +3776,7 @@ msgstr "Last edited"
 msgid "Last name"
 msgstr "Last name"
 
-#: src/renderer/src/components/SendsPage.tsx:539
+#: src/renderer/src/components/SendsPage.tsx:530
 msgid "Last revised"
 msgstr "Last revised"
 
@@ -3775,7 +3796,7 @@ msgstr "Launch BearWarden at login"
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "Launch BearWarden automatically after you log in to this computer."
 
-#: src/renderer/src/components/SendsPage.tsx:668
+#: src/renderer/src/components/SendsPage.tsx:659
 msgid "Leave blank for no limit."
 msgstr "Leave blank for no limit."
 
@@ -3869,7 +3890,7 @@ msgstr "Loading organization items…"
 msgid "Loading password history"
 msgstr "Loading password history"
 
-#: src/renderer/src/components/SendsPage.tsx:377
+#: src/renderer/src/components/SendsPage.tsx:368
 msgid "Loading Sends…"
 msgstr "Loading Sends…"
 
@@ -4143,7 +4164,7 @@ msgstr "Matching method for website {0}"
 msgid "Maximize / Restore"
 msgstr "Maximize / Restore"
 
-#: src/renderer/src/components/SendsPage.tsx:650
+#: src/renderer/src/components/SendsPage.tsx:641
 msgid "Maximum access count"
 msgstr "Maximum access count"
 
@@ -4330,7 +4351,7 @@ msgstr "Moving with {0} other items"
 #: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1734
 #: src/renderer/src/components/LoginEditor.tsx:2938
-#: src/renderer/src/components/SendsPage.tsx:572
+#: src/renderer/src/components/SendsPage.tsx:563
 #: src/renderer/src/components/SettingsPage.tsx:449
 #: src/renderer/src/components/VaultItemDetailViews.tsx:242
 #: src/renderer/src/components/VaultShell.tsx:170
@@ -4497,7 +4518,7 @@ msgstr "No reused passwords"
 msgid "No security keys are registered yet. You can add your first key."
 msgstr "No security keys are registered yet. You can add your first key."
 
-#: src/renderer/src/components/SendsPage.tsx:404
+#: src/renderer/src/components/SendsPage.tsx:395
 msgid "No Sends yet"
 msgstr "No Sends yet"
 
@@ -4645,7 +4666,7 @@ msgstr "Only a short-lived import token is used when saving. This field neither 
 msgid "Only approve a request you just made on another device, after verifying the verification phrase."
 msgstr "Only approve a request you just made on another device, after verifying the verification phrase."
 
-#: src/renderer/src/components/SendsPage.tsx:645
+#: src/renderer/src/components/SendsPage.tsx:636
 msgid "Only you can see this. It is not shown to recipients."
 msgstr "Only you can see this. It is not shown to recipients."
 
@@ -4843,7 +4864,7 @@ msgstr "Password history"
 msgid "Password last updated"
 msgstr "Password last updated"
 
-#: src/renderer/src/components/SendsPage.tsx:112
+#: src/renderer/src/components/SendsPage.tsx:114
 msgid "Password required"
 msgstr "Password required"
 
@@ -4879,7 +4900,7 @@ msgstr "Payment card and security code"
 msgid "Pending confirmation"
 msgstr "Pending confirmation"
 
-#: src/renderer/src/components/SendsPage.tsx:117
+#: src/renderer/src/components/SendsPage.tsx:119
 msgid "Pending deletion"
 msgstr "Pending deletion"
 
@@ -5062,8 +5083,8 @@ msgstr "Private key password"
 msgid "Private key, public key, and fingerprint"
 msgstr "Private key, public key, and fingerprint"
 
-#: src/renderer/src/components/SendsPage.tsx:519
-#: src/renderer/src/components/SendsPage.tsx:634
+#: src/renderer/src/components/SendsPage.tsx:510
+#: src/renderer/src/components/SendsPage.tsx:625
 msgid "Private notes"
 msgstr "Private notes"
 
@@ -5190,7 +5211,7 @@ msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "Recently used"
 
-#: src/renderer/src/components/SendsPage.tsx:718
+#: src/renderer/src/components/SendsPage.tsx:709
 msgid "Recipients must actively reveal the text to see it."
 msgstr "Recipients must actively reveal the text to see it."
 
@@ -5311,7 +5332,7 @@ msgstr "Remove {0}?"
 #~ msgid "Remove {label}?"
 #~ msgstr "Remove {label}?"
 
-#: src/renderer/src/components/SendsPage.tsx:628
+#: src/renderer/src/components/SendsPage.tsx:619
 msgid "Remove current password"
 msgstr "Remove current password"
 
@@ -5519,7 +5540,7 @@ msgstr "Safely reading the file"
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:3165
-#: src/renderer/src/components/SendsPage.tsx:775
+#: src/renderer/src/components/SendsPage.tsx:766
 msgid "Save"
 msgstr "Save"
 
@@ -5547,7 +5568,7 @@ msgid "Saved “{0}”."
 msgstr "Saved “{0}”."
 
 #. placeholder {0}: result.fileName
-#: src/renderer/src/components/SendsPage.tsx:319
+#: src/renderer/src/hooks/use-file-send-download.ts:33
 msgid "Saved {0}"
 msgstr "Saved {0}"
 
@@ -5559,7 +5580,7 @@ msgstr "Saving"
 msgid "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 msgstr "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 
-#: src/renderer/src/components/SendsPage.tsx:771
+#: src/renderer/src/components/SendsPage.tsx:762
 msgid "Saving…"
 msgstr "Saving…"
 
@@ -5737,7 +5758,7 @@ msgstr "Selected from catalog"
 msgid "Selected items"
 msgstr "Selected items"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send created"
 msgstr "Send created"
 
@@ -5746,7 +5767,7 @@ msgstr "Send created"
 msgid "Send data"
 msgstr "Send data"
 
-#: src/renderer/src/components/SendsPage.tsx:285
+#: src/renderer/src/components/SendsPage.tsx:289
 msgid "Send deleted"
 msgstr "Send deleted"
 
@@ -5754,11 +5775,16 @@ msgstr "Send deleted"
 msgid "Send email code"
 msgstr "Send email code"
 
-#: src/renderer/src/components/SendsPage.tsx:336
+#: src/renderer/src/components/SendsPage.tsx:327
 msgid "Send password removed"
 msgstr "Send password removed"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#. Title of the dialog that asks for the access password of a password-protected file Send before downloading it.
+#: src/renderer/src/components/SendPasswordDialog.tsx:57
+msgid "Send password required"
+msgstr "Send password required"
+
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send updated"
 msgstr "Send updated"
 
@@ -5770,7 +5796,7 @@ msgstr "Send verification code"
 #~ msgid "Sender email hidden"
 #~ msgstr "Sender email hidden"
 
-#: src/renderer/src/components/SendsPage.tsx:346
+#: src/renderer/src/components/SendsPage.tsx:337
 #: src/renderer/src/components/VaultShellSidebar.tsx:427
 msgid "Sends"
 msgstr "Sends"
@@ -5888,7 +5914,7 @@ msgstr "Shared item"
 msgid "Shared items"
 msgstr "Shared items"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Sharing link copied"
 msgstr "Sharing link copied"
 
@@ -6178,11 +6204,11 @@ msgstr "Terminal setup"
 msgid "Text"
 msgstr "Text"
 
-#: src/renderer/src/components/SendsPage.tsx:349
+#: src/renderer/src/components/SendsPage.tsx:340
 msgid "Text and file Send metadata is decrypted in the main process first."
 msgstr "Text and file Send metadata is decrypted in the main process first."
 
-#: src/renderer/src/components/SendsPage.tsx:592
+#: src/renderer/src/components/SendsPage.tsx:583
 msgid "Text content is not included in the sharing link."
 msgstr "Text content is not included in the sharing link."
 
@@ -6198,6 +6224,11 @@ msgstr "That folder can't be moved there."
 #: src/renderer/src/hooks/use-describe-vault-error.ts:14
 msgid "That name is already in use. Choose another name."
 msgstr "That name is already in use. Choose another name."
+
+#. Inline error in the file Send download dialog shown when the server rejected the entered Send access password.
+#: src/renderer/src/components/SendPasswordDialog.tsx:86
+msgid "That password is incorrect. Check it and try again."
+msgstr "That password is incorrect. Check it and try again."
 
 #: src/renderer/src/components/SettingsPage.tsx:679
 msgid "That shortcut is unavailable. Your previous shortcut remains active."
@@ -7045,15 +7076,15 @@ msgstr "This request has no passkey that can be approved. Deny it and start agai
 msgid "This rule has no domains"
 msgstr "This rule has no domains"
 
-#: src/renderer/src/components/SendsPage.tsx:307
+#: src/renderer/src/components/SendsPage.tsx:311
 msgid "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 msgstr "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 
-#: src/renderer/src/components/SendsPage.tsx:183
+#: src/renderer/src/components/SendsPage.tsx:187
 msgid "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 msgstr "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 
-#: src/renderer/src/components/SendsPage.tsx:210
+#: src/renderer/src/components/SendsPage.tsx:214
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 
@@ -7225,7 +7256,7 @@ msgstr "Try a shorter search term or switch to All items."
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
-#: src/renderer/src/components/SendsPage.tsx:393
+#: src/renderer/src/components/SendsPage.tsx:384
 msgid "Try again"
 msgstr "Try again"
 

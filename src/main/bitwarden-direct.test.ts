@@ -3363,7 +3363,7 @@ describe('BitwardenDirectClient', () => {
     expect(grant?.has('password_hash_b64')).toBe(false)
   })
 
-  it('reports a missing Send password as FORBIDDEN, not as an expired account session', async () => {
+  it('reports a missing Send password as SEND_PASSWORD_REQUIRED, not as an expired account session', async () => {
     const { client, fetch } = await sendDownloadFixture(({ url, init }) => {
       if (url.endsWith('/identity/connect/token')) {
         const form = new URLSearchParams(String(init?.body))
@@ -3376,12 +3376,12 @@ describe('BitwardenDirectClient', () => {
       return undefined
     })
     await expect(client.downloadFileSend(SEND_ID, null)).rejects.toMatchObject({
-      code: 'FORBIDDEN'
+      code: 'SEND_PASSWORD_REQUIRED'
     })
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/api/sends/access'))).toBe(false)
   })
 
-  it('reports a wrong Send password as NOT_FOUND and never downloads', async () => {
+  it('reports a wrong Send password as SEND_PASSWORD_INVALID and never downloads', async () => {
     const { client, fetch } = await sendDownloadFixture(({ url, init }) => {
       if (url.endsWith('/identity/connect/token')) {
         const form = new URLSearchParams(String(init?.body))
@@ -3394,9 +3394,26 @@ describe('BitwardenDirectClient', () => {
       return undefined
     })
     await expect(client.downloadFileSend(SEND_ID, 'wrong')).rejects.toMatchObject({
-      code: 'NOT_FOUND'
+      code: 'SEND_PASSWORD_INVALID'
     })
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/api/sends/access'))).toBe(false)
+  })
+
+  it('keeps an unknown Send (send_id_invalid) as NOT_FOUND', async () => {
+    const { client } = await sendDownloadFixture(({ url, init }) => {
+      if (url.endsWith('/identity/connect/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        if (form.get('grant_type') !== 'send_access') return undefined
+        return jsonResponse(
+          { error: 'invalid_grant', send_access_error_type: 'send_id_invalid' },
+          404
+        )
+      }
+      return undefined
+    })
+    await expect(client.downloadFileSend(SEND_ID, null)).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
   })
 
   it('rejects a Send access response whose id is not the cached access id', async () => {

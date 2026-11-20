@@ -3792,6 +3792,57 @@ describe('VaultService encrypted local data', () => {
     expect(Array.from(saved).every((byte) => byte === 0)).toBe(true)
   })
 
+  it('surfaces file Send password failures as dedicated errors without recording a sync error', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const fileService = {
+      chooseSavePath: async () => '/tmp/report.txt',
+      write: async () => undefined
+    } as unknown as VaultAttachmentFileService
+    const { service } = await createHarness({
+      attachmentFiles: fileService,
+      createSyncClient: (sync) => {
+        fake = createSyncFake(sync.state)
+        return fake
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    const remote: BitwardenSendItem = {
+      id: '50000000-0000-4000-8000-000000000003',
+      accessId: 'UAAAAAAAQABAAAAAAAAAAQ',
+      type: 'file',
+      name: 'Protected Send',
+      notes: null,
+      text: '',
+      file: { id: '0123456789abcdef0123456789abcdef', fileName: 'a.txt', size: 5, sizeName: '5 B' },
+      hidden: false,
+      maxAccessCount: null,
+      accessCount: 0,
+      revisionDate: '2026-07-16T00:00:00.000Z',
+      expirationDate: null,
+      deletionDate: new Date(Date.now() + 86_400_000).toISOString(),
+      disabled: false,
+      hideEmail: true,
+      authType: 1,
+      passwordProtected: true
+    }
+    fake!.listSends = async () => [{ ...remote, file: { ...remote.file! } }]
+    await service.syncNow()
+    for (const code of ['SEND_PASSWORD_REQUIRED', 'SEND_PASSWORD_INVALID'] as const) {
+      fake!.downloadFileSend = async () => {
+        throw new BitwardenDirectError(code)
+      }
+      await expect(
+        service.downloadFileSend({ id: remote.id, password: 'secret' })
+      ).rejects.toMatchObject({ code })
+      expect(await service.syncStatus()).not.toHaveProperty('lastError')
+    }
+  })
+
   it('reopens the vault after persisting a file Send', async () => {
     const { filePath, service } = await createHarness({
       createSyncClient: (sync) => {

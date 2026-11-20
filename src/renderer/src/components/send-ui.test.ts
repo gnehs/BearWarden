@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SendView } from '../../../shared/vault-contract'
 import {
+  classifySendDownloadFailure,
   dateTimeLocalToIso,
   dateTimeLocalValue,
   formatSendDate,
@@ -96,5 +97,21 @@ describe('maximum access count', () => {
 
   it.each([0, -1, 1.5, 2_147_483_648, Number.NaN])('rejects an unsafe limit (%s)', (value) => {
     expect(maxAccessCountValidationMessage(value)).toMatch(/1\D+2,147,483,647/)
+  })
+})
+
+describe('classifySendDownloadFailure', () => {
+  it('recognises the dedicated Send password error codes from IPC errors', () => {
+    expect(classifySendDownloadFailure(new Error('BEARWARDEN:SEND_PASSWORD_REQUIRED'))).toBe(
+      'password-required'
+    )
+    expect(classifySendDownloadFailure(new Error('BEARWARDEN:SEND_PASSWORD_INVALID'))).toBe(
+      'password-invalid'
+    )
+  })
+
+  it('treats every other failure as a generic download failure', () => {
+    expect(classifySendDownloadFailure(new Error('BEARWARDEN:SYNC_NETWORK'))).toBe('failed')
+    expect(classifySendDownloadFailure('nope')).toBe('failed')
   })
 })

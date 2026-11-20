@@ -386,6 +386,8 @@ export type BitwardenHttpErrorCode =
   | 'ABORTED'
   | 'NOT_FOUND'
   | 'FORBIDDEN'
+  | 'SEND_PASSWORD_REQUIRED'
+  | 'SEND_PASSWORD_INVALID'
   | 'TOO_LARGE'
   | 'STORAGE_LIMIT'
   | 'ATTACHMENT_REJECTED'
@@ -4061,18 +4063,19 @@ function parseSendAccessToken(value: JsonValue): string {
 
 /**
  * A Send token rejection says nothing about the account session, so it must never surface as
- * `AUTH` (which the sync layer treats as a signed-out account). A missing or stale Send
- * credential becomes `FORBIDDEN`; an unknown or wrong Send credential stays `NOT_FOUND`.
+ * `AUTH` (which the sync layer treats as a signed-out account). A missing or wrong Send password
+ * gets its own code so callers can prompt again; any other unknown Send credential stays
+ * `NOT_FOUND`.
  */
 function asSendAccessError(error: unknown): unknown {
   if (!(error instanceof BitwardenHttpError)) return error
   if (error.code === 'AUTH') return new BitwardenHttpError('FORBIDDEN', error.status)
-  if (
-    error.code === 'NETWORK' &&
-    error.status === 400 &&
-    readField(error.details ?? {}, 'send_access_error_type') === 'password_hash_b64_required'
-  ) {
-    return new BitwardenHttpError('FORBIDDEN', error.status)
+  const errorType = readField(error.details ?? {}, 'send_access_error_type')
+  if (error.status === 400 && errorType === 'password_hash_b64_required') {
+    return new BitwardenHttpError('SEND_PASSWORD_REQUIRED', error.status)
+  }
+  if (error.status === 404 && errorType === 'password_hash_b64_invalid') {
+    return new BitwardenHttpError('SEND_PASSWORD_INVALID', error.status)
   }
   return error
 }

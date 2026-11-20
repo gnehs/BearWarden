@@ -22,7 +22,7 @@ msgid " · Legacy unauthenticated encryption"
 msgstr " ・旧式の認証なし暗号化"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)
-#: src/renderer/src/components/SendsPage.tsx:436
+#: src/renderer/src/components/SendsPage.tsx:427
 msgid " / maximum {0}"
 msgstr " / 最大 {0}"
 
@@ -108,7 +108,7 @@ msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You 
 msgstr "{0, plural, one {{base} 残りの試行回数は # 回です。} other {{base} 残りの試行回数は # 回です。}}"
 
 #. placeholder {0}: send.accessCount
-#: src/renderer/src/components/SendsPage.tsx:432
+#: src/renderer/src/components/SendsPage.tsx:423
 msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# 回のアクセス} other {# 回のアクセス}}"
 
@@ -167,7 +167,7 @@ msgid "{0} autofill settings"
 msgstr "自動入力設定 {0} 件"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.file.size)
-#: src/renderer/src/components/SendsPage.tsx:505
+#: src/renderer/src/components/SendsPage.tsx:496
 msgid "{0} bytes"
 msgstr "{0} バイト"
 
@@ -569,15 +569,20 @@ msgstr "承諾済み"
 msgid "Access approved"
 msgstr "アクセスが承認されました"
 
-#: src/renderer/src/components/SendsPage.tsx:116
+#: src/renderer/src/components/SendsPage.tsx:118
 msgid "Access limit reached"
 msgstr "アクセス上限に達しました"
 
-#: src/renderer/src/components/SendsPage.tsx:599
+#. Label of the password field in the file Send download dialog; the password recipients need to open the Send.
+#: src/renderer/src/components/SendPasswordDialog.tsx:71
+msgid "Access password"
+msgstr "アクセスパスワード"
+
+#: src/renderer/src/components/SendsPage.tsx:590
 msgid "Access password (leave blank to keep the current password)"
 msgstr "アクセスパスワード（現在のパスワードを維持する場合は空欄）"
 
-#: src/renderer/src/components/SendsPage.tsx:601
+#: src/renderer/src/components/SendsPage.tsx:592
 msgid "Access password (optional)"
 msgstr "アクセスパスワード（任意）"
 
@@ -865,11 +870,11 @@ msgstr "Bitwarden の同期が完了すると、アクセス権のある共有�
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
 msgstr "プレビュー後、同期と復元を開始するには新たにローカル所有者の確認が必要です。"
 
-#: src/renderer/src/components/SendsPage.tsx:687
+#: src/renderer/src/components/SendsPage.tsx:678
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
 msgstr "この日付以降、リンクではアクセスできなくなりますが、Send は直ちには削除されません。"
 
-#: src/renderer/src/components/SendsPage.tsx:709
+#: src/renderer/src/components/SendsPage.tsx:700
 msgid "After this time, the server permanently removes the Send."
 msgstr "この時刻以降、サーバーは Send を完全に削除します。"
 
@@ -1229,7 +1234,7 @@ msgstr "BearWarden は保管庫サービスを読み込めませんでした。�
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
-#: src/renderer/src/components/SendsPage.tsx:492
+#: src/renderer/src/components/SendsPage.tsx:483
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden は受信者 OTP にまだ対応していません。確認要件が失われることを避けるため、この Send は編集またはダウンロードできません。"
 
@@ -1383,7 +1388,8 @@ msgstr "復元可能"
 #: src/renderer/src/components/LoginEditor.tsx:2750
 #: src/renderer/src/components/LoginEditor.tsx:3143
 #: src/renderer/src/components/LoginEditor.tsx:3377
-#: src/renderer/src/components/SendsPage.tsx:784
+#: src/renderer/src/components/SendPasswordDialog.tsx:101
+#: src/renderer/src/components/SendsPage.tsx:775
 #: src/renderer/src/components/SendsPage.tsx:811
 #: src/renderer/src/components/SyncDialog.tsx:1258
 #: src/renderer/src/components/VaultItemAccessCards.tsx:94
@@ -1866,7 +1872,7 @@ msgstr "リモートの結果を確認"
 msgid "Confirm removing security key"
 msgstr "セキュリティキーの削除を確認"
 
-#: src/renderer/src/components/SendsPage.tsx:386
+#: src/renderer/src/components/SendsPage.tsx:377
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "同期が接続されていることを確認して、もう一度お試しください。既存のデータは変更されていません。"
 
@@ -1931,11 +1937,11 @@ msgstr "接続済み、保管庫はロック解除済み"
 #: src/renderer/src/components/LoginEditor.tsx:2329
 #: src/renderer/src/components/LoginEditor.tsx:2994
 #: src/renderer/src/components/LoginEditor.tsx:3014
-#: src/renderer/src/components/SendsPage.tsx:583
+#: src/renderer/src/components/SendsPage.tsx:574
 msgid "Content"
 msgstr "内容"
 
-#: src/renderer/src/components/SendsPage.tsx:563
+#: src/renderer/src/components/SendsPage.tsx:554
 msgid "Content is encrypted in the main process before it is sent to the server."
 msgstr "内容はサーバーに送信される前にメインプロセスで暗号化されます。"
 
@@ -2017,7 +2023,7 @@ msgstr "リカバリーコードをコピー"
 msgid "Copy setup key"
 msgstr "セットアップキーをコピー"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Copy sharing link"
 msgstr "共有リンクをコピー"
 
@@ -2049,7 +2055,7 @@ msgstr "認証コードをコピー"
 msgid "Copy website"
 msgstr "ウェブサイトをコピー"
 
-#: src/renderer/src/components/SendsPage.tsx:369
+#: src/renderer/src/components/SendsPage.tsx:360
 msgid "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 msgstr "基本的なテキストおよびファイル Send のワークフローを利用できます。ファイルの編集、高度な検証、完全な公開受信フローは現在開発中です。"
 
@@ -2069,7 +2075,7 @@ msgstr "同期サーバーに接続できませんでした。ネットワーク
 msgid "Could not copy the diagnostic summary. Select the text and copy it manually."
 msgstr "診断概要をコピーできませんでした。テキストを選択して手動でコピーしてください。"
 
-#: src/renderer/src/components/SendsPage.tsx:299
+#: src/renderer/src/components/SendsPage.tsx:303
 msgid "Could not copy the sharing link."
 msgstr "共有リンクをコピーできませんでした。"
 
@@ -2081,7 +2087,7 @@ msgstr "バックアップを作成できませんでした。マスターパス
 msgid "Could not create the CSV. Check the master password and save location, then try again."
 msgstr "CSV を作成できませんでした。マスターパスワードと保存場所を確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/SendsPage.tsx:269
+#: src/renderer/src/components/SendsPage.tsx:273
 msgid "Could not create the file Send. Confirm that sync is connected."
 msgstr "ファイル Send を作成できませんでした。同期が接続されていることを確認してください。"
 
@@ -2089,13 +2095,18 @@ msgstr "ファイル Send を作成できませんでした。同期が接続さ
 msgid "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 msgstr "ZIP を作成できませんでした。マスターパスワード、保存場所、添付ファイルの状態を確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/SendsPage.tsx:287
+#: src/renderer/src/components/SendsPage.tsx:291
 msgid "Could not delete the Send."
 msgstr "Send を削除できませんでした。"
 
 #: src/renderer/src/components/SendsPage.tsx:321
-msgid "Could not download the file Send. Check the password and sync connection."
-msgstr "ファイル Send をダウンロードできませんでした。パスワードと同期接続を確認してください。"
+#~ msgid "Could not download the file Send. Check the password and sync connection."
+#~ msgstr "ファイル Send をダウンロードできませんでした。パスワードと同期接続を確認してください。"
+
+#. Error toast when downloading a file Send fails for a reason other than its password.
+#: src/renderer/src/hooks/use-file-send-download.ts:39
+msgid "Could not download the file Send. Check the sync connection."
+msgstr "ファイルSendをダウンロードできませんでした。同期の接続を確認してください。"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:242
 msgid "Could not import the file. Check the master password, file format, and backup password, then try again."
@@ -2114,7 +2125,7 @@ msgstr "緊急アクセスを読み込めませんでした"
 msgid "Could not load organization items"
 msgstr "組織のアイテムを読み込めませんでした"
 
-#: src/renderer/src/components/SendsPage.tsx:383
+#: src/renderer/src/components/SendsPage.tsx:374
 msgid "Could not load Sends"
 msgstr "Send を読み込めませんでした"
 
@@ -2126,11 +2137,11 @@ msgstr "共有アイテムを読み込めませんでした"
 msgid "Could not load the account security status."
 msgstr "アカウントのセキュリティ状態を読み込めませんでした。"
 
-#: src/renderer/src/components/SendsPage.tsx:338
+#: src/renderer/src/components/SendsPage.tsx:329
 msgid "Could not remove the Send password."
 msgstr "Send のパスワードを削除できませんでした。"
 
-#: src/renderer/src/components/SendsPage.tsx:232
+#: src/renderer/src/components/SendsPage.tsx:236
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Send を保存できませんでした。同期が接続されていることを確認してください。"
 
@@ -2183,7 +2194,7 @@ msgstr "Bitwarden にインポートできるログインとセキュアノー�
 msgid "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 msgstr "Bitwarden 互換ツールで抽出できる、個人用保管庫と添付ファイルのプレーンテキストコピーを作成します。"
 
-#: src/renderer/src/components/SendsPage.tsx:407
+#: src/renderer/src/components/SendsPage.tsx:398
 msgid "Create a text Send to securely share one-time content."
 msgstr "一度限りの内容を安全に共有するテキスト Send を作成します。"
 
@@ -2191,16 +2202,16 @@ msgstr "一度限りの内容を安全に共有するテキスト Send を作成
 msgid "Create and unlock"
 msgstr "作成してロックを解除"
 
-#: src/renderer/src/components/SendsPage.tsx:359
-#: src/renderer/src/components/SendsPage.tsx:773
+#: src/renderer/src/components/SendsPage.tsx:350
+#: src/renderer/src/components/SendsPage.tsx:764
 msgid "Create file Send"
 msgstr "ファイル Send を作成"
 
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Create Send"
 msgstr "Send を作成"
 
-#: src/renderer/src/components/SendsPage.tsx:363
+#: src/renderer/src/components/SendsPage.tsx:354
 msgid "Create text Send"
 msgstr "テキストSendを作成"
 
@@ -2208,7 +2219,7 @@ msgstr "テキストSendを作成"
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "最も頻繁に再利用されている項目から、一意のパスワードを作成してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:413
+#: src/renderer/src/components/SendsPage.tsx:404
 msgid "Create your first Send"
 msgstr "最初のSendを作成"
 
@@ -2454,7 +2465,7 @@ msgstr "パスキーを削除"
 msgid "Delete permanently"
 msgstr "完全に削除"
 
-#: src/renderer/src/components/SendsPage.tsx:478
+#: src/renderer/src/components/SendsPage.tsx:469
 msgid "Delete Send"
 msgstr "Sendを削除"
 
@@ -2493,7 +2504,7 @@ msgstr "削除済みの項目"
 msgid "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 msgstr "削除済みの項目は、復元するか完全に削除するまで、またはサーバーが保持ポリシーに従って削除するまでここに残ります。"
 
-#: src/renderer/src/components/SendsPage.tsx:533
+#: src/renderer/src/components/SendsPage.tsx:524
 msgid "Deletes"
 msgstr "削除"
 
@@ -2505,7 +2516,7 @@ msgstr "添付ファイルを削除中"
 msgid "Deleting…"
 msgstr "削除中…"
 
-#: src/renderer/src/components/SendsPage.tsx:695
+#: src/renderer/src/components/SendsPage.tsx:686
 msgid "Deletion date"
 msgstr "削除日"
 
@@ -2551,12 +2562,12 @@ msgstr "生体認証を無効にする"
 msgid "Disable PIN unlock"
 msgstr "PINによるロック解除を無効にする"
 
-#: src/renderer/src/components/SendsPage.tsx:730
+#: src/renderer/src/components/SendsPage.tsx:721
 msgid "Disable Send"
 msgstr "Sendを無効にする"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:58
-#: src/renderer/src/components/SendsPage.tsx:114
+#: src/renderer/src/components/SendsPage.tsx:116
 #: src/renderer/src/components/SettingsPage.tsx:608
 #: src/renderer/src/components/SettingsPage.tsx:1046
 #: src/renderer/src/components/SettingsPage.tsx:1192
@@ -2598,7 +2609,7 @@ msgstr "表示名"
 msgid "Display name saved."
 msgstr "表示名を保存しました。"
 
-#: src/renderer/src/components/SendsPage.tsx:748
+#: src/renderer/src/components/SendsPage.tsx:739
 msgid "Do not show your account email to recipients."
 msgstr "受信者にアカウントのメールアドレスを表示しません。"
 
@@ -2606,12 +2617,17 @@ msgstr "受信者にアカウントのメールアドレスを表示しません
 msgid "Domain rules cannot be displayed right now."
 msgstr "現在、ドメインルールを表示できません。"
 
+#. Submit button in the file Send download password dialog; saves the Send's file to disk.
+#: src/renderer/src/components/SendPasswordDialog.tsx:96
+msgid "Download"
+msgstr "ダウンロード"
+
 #. placeholder {0}: attachment.fileName
 #: src/renderer/src/components/VaultItemAccessCards.tsx:150
 msgid "Download {0}"
 msgstr "{0}をダウンロード"
 
-#: src/renderer/src/components/SendsPage.tsx:457
+#: src/renderer/src/components/SendsPage.tsx:448
 msgid "Download file Send"
 msgstr "ファイルSendをダウンロード"
 
@@ -2727,12 +2743,12 @@ msgstr "項目を編集、パスワードを非表示"
 msgid "Edit profile"
 msgstr "プロフィールを編集"
 
-#: src/renderer/src/components/SendsPage.tsx:468
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:459
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Edit Send"
 msgstr "Sendを編集"
 
-#: src/renderer/src/components/SendsPage.tsx:205
+#: src/renderer/src/components/SendsPage.tsx:209
 msgid "Editing file Sends is not available yet."
 msgstr "ファイルSendの編集はまだ利用できません。"
 
@@ -2770,7 +2786,7 @@ msgstr "メールアドレス未確認"
 msgid "Email two-factor authentication has been enabled."
 msgstr "メールによる2要素認証を有効にしました。"
 
-#: src/renderer/src/components/SendsPage.tsx:113
+#: src/renderer/src/components/SendsPage.tsx:115
 msgid "Email verification"
 msgstr "メールアドレスの確認"
 
@@ -2782,7 +2798,7 @@ msgstr "メール確認コード"
 msgid "Email verified"
 msgstr "メールアドレス確認済み"
 
-#: src/renderer/src/components/SendsPage.tsx:489
+#: src/renderer/src/components/SendsPage.tsx:480
 msgid "Email-verified Send"
 msgstr "メール確認済みのSend"
 
@@ -2866,11 +2882,11 @@ msgstr "フォルダー名を入力してください。"
 msgid "Enter a security key name and your master password."
 msgstr "セキュリティキー名とマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:201
+#: src/renderer/src/components/SendsPage.tsx:205
 msgid "Enter a Send name and content."
 msgstr "Send名と内容を入力してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:241
+#: src/renderer/src/components/SendsPage.tsx:245
 msgid "Enter a Send name first."
 msgstr "先にSend名を入力してください。"
 
@@ -2942,6 +2958,11 @@ msgstr "確認するには「PURGE」と入力"
 msgid "Enter the 6-digit verification code shown by your authenticator."
 msgstr "認証アプリに表示される 6 桁の確認コードを入力してください。"
 
+#. Description in the file Send download password dialog. {sendName} is the user's own Send name.
+#: src/renderer/src/components/SendPasswordDialog.tsx:62
+msgid "Enter the access password to download “{sendName}”."
+msgstr "「{sendName}」をダウンロードするには、アクセスパスワードを入力してください。"
+
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:557
 msgid "Enter the backup password again"
 msgstr "バックアップパスワードをもう一度入力"
@@ -2963,8 +2984,8 @@ msgid "Enter the PIN set for this session."
 msgstr "このセッションに設定した PIN を入力してください。"
 
 #: src/renderer/src/components/SendsPage.tsx:313
-msgid "Enter the Send access password"
-msgstr "Send のアクセスパスワードを入力"
+#~ msgid "Enter the Send access password"
+#~ msgstr "Send のアクセスパスワードを入力"
 
 #: src/renderer/src/components/LoginEditor.tsx:3339
 msgid "Enter the SSH private key password"
@@ -3074,7 +3095,7 @@ msgstr "既存の機密フィールドを読み込めませんでした。編集
 msgid "Expand {0}"
 msgstr "{0}を展開"
 
-#: src/renderer/src/components/SendsPage.tsx:673
+#: src/renderer/src/components/SendsPage.tsx:664
 #: src/renderer/src/components/VaultItemDetailViews.tsx:241
 msgid "Expiration date"
 msgstr "有効期限"
@@ -3091,11 +3112,11 @@ msgstr "有効期限（月）"
 msgid "Expiration year"
 msgstr "有効期限（年）"
 
-#: src/renderer/src/components/SendsPage.tsx:115
+#: src/renderer/src/components/SendsPage.tsx:117
 msgid "Expired"
 msgstr "期限切れ"
 
-#: src/renderer/src/components/SendsPage.tsx:527
+#: src/renderer/src/components/SendsPage.tsx:518
 msgid "Expires"
 msgstr "有効期限"
 
@@ -3172,17 +3193,17 @@ msgstr "ファイル エクスプローラー"
 msgid "file manager"
 msgstr "ファイル マネージャー"
 
-#: src/renderer/src/components/SendsPage.tsx:267
+#: src/renderer/src/components/SendsPage.tsx:271
 msgid "File Send created"
 msgstr "ファイル Send を作成しました"
 
-#: src/renderer/src/components/SendsPage.tsx:194
-#: src/renderer/src/components/SendsPage.tsx:227
-#: src/renderer/src/components/SendsPage.tsx:334
+#: src/renderer/src/components/SendsPage.tsx:198
+#: src/renderer/src/components/SendsPage.tsx:231
+#: src/renderer/src/components/SendsPage.tsx:325
 msgid "File Sends are read-only until file transfer support is enabled"
 msgstr "ファイル転送のサポートが有効になるまで、ファイル Send は読み取り専用です"
 
-#: src/renderer/src/components/SendsPage.tsx:188
+#: src/renderer/src/components/SendsPage.tsx:192
 msgid "File Sends can currently only be viewed and their links copied."
 msgstr "現在、ファイル Send は表示とリンクのコピーのみ可能です。"
 
@@ -3461,13 +3482,13 @@ msgstr "カスタムフィールドの内容を非表示"
 msgid "Hide master password"
 msgstr "マスターパスワードを非表示"
 
-#: src/renderer/src/components/SendsPage.tsx:119
-#: src/renderer/src/components/SendsPage.tsx:745
+#: src/renderer/src/components/SendsPage.tsx:121
+#: src/renderer/src/components/SendsPage.tsx:736
 msgid "Hide sender email"
 msgstr "送信者のメールアドレスを非表示"
 
-#: src/renderer/src/components/SendsPage.tsx:118
-#: src/renderer/src/components/SendsPage.tsx:715
+#: src/renderer/src/components/SendsPage.tsx:120
+#: src/renderer/src/components/SendsPage.tsx:706
 msgid "Hide text by default"
 msgstr "テキストをデフォルトで非表示"
 
@@ -3699,7 +3720,7 @@ msgstr "パスキーを保持"
 msgid "Keep the backup password safe"
 msgstr "バックアップパスワードを安全に保管"
 
-#: src/renderer/src/components/SendsPage.tsx:733
+#: src/renderer/src/components/SendsPage.tsx:724
 msgid "Keep the Send but prevent all recipient access."
 msgstr "Send を保持し、すべての受信者のアクセスを防止します。"
 
@@ -3755,7 +3776,7 @@ msgstr "最終編集"
 msgid "Last name"
 msgstr "姓"
 
-#: src/renderer/src/components/SendsPage.tsx:539
+#: src/renderer/src/components/SendsPage.tsx:530
 msgid "Last revised"
 msgstr "最終更新"
 
@@ -3775,7 +3796,7 @@ msgstr "ログイン時に BearWarden を起動"
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "このコンピューターにログイン後、BearWarden を自動的に起動します。"
 
-#: src/renderer/src/components/SendsPage.tsx:668
+#: src/renderer/src/components/SendsPage.tsx:659
 msgid "Leave blank for no limit."
 msgstr "無制限にするには空白のままにしてください。"
 
@@ -3869,7 +3890,7 @@ msgstr "組織のアイテムを読み込み中…"
 msgid "Loading password history"
 msgstr "パスワード履歴を読み込み中"
 
-#: src/renderer/src/components/SendsPage.tsx:377
+#: src/renderer/src/components/SendsPage.tsx:368
 msgid "Loading Sends…"
 msgstr "Send を読み込み中…"
 
@@ -4143,7 +4164,7 @@ msgstr "ウェブサイト {0} の照合方法"
 msgid "Maximize / Restore"
 msgstr "最大化 / 元に戻す"
 
-#: src/renderer/src/components/SendsPage.tsx:650
+#: src/renderer/src/components/SendsPage.tsx:641
 msgid "Maximum access count"
 msgstr "最大アクセス回数"
 
@@ -4330,7 +4351,7 @@ msgstr "ほか {0} 件のアイテムとともに移動"
 #: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1734
 #: src/renderer/src/components/LoginEditor.tsx:2938
-#: src/renderer/src/components/SendsPage.tsx:572
+#: src/renderer/src/components/SendsPage.tsx:563
 #: src/renderer/src/components/SettingsPage.tsx:449
 #: src/renderer/src/components/VaultItemDetailViews.tsx:242
 #: src/renderer/src/components/VaultShell.tsx:170
@@ -4497,7 +4518,7 @@ msgstr "再利用されているパスワードはありません"
 msgid "No security keys are registered yet. You can add your first key."
 msgstr "セキュリティキーはまだ登録されていません。最初のキーを追加できます。"
 
-#: src/renderer/src/components/SendsPage.tsx:404
+#: src/renderer/src/components/SendsPage.tsx:395
 msgid "No Sends yet"
 msgstr "Send はまだありません"
 
@@ -4645,7 +4666,7 @@ msgstr "保存時に使用するのは短期間のみ有効なインポートト
 msgid "Only approve a request you just made on another device, after verifying the verification phrase."
 msgstr "検証フレーズを確認したうえで、別のデバイスで自分が今行ったリクエストのみを承認してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:645
+#: src/renderer/src/components/SendsPage.tsx:636
 msgid "Only you can see this. It is not shown to recipients."
 msgstr "これはあなただけが確認できます。受信者には表示されません。"
 
@@ -4843,7 +4864,7 @@ msgstr "パスワード履歴"
 msgid "Password last updated"
 msgstr "パスワードの最終更新"
 
-#: src/renderer/src/components/SendsPage.tsx:112
+#: src/renderer/src/components/SendsPage.tsx:114
 msgid "Password required"
 msgstr "パスワードが必要です"
 
@@ -4879,7 +4900,7 @@ msgstr "支払いカードとセキュリティコード"
 msgid "Pending confirmation"
 msgstr "確認待ち"
 
-#: src/renderer/src/components/SendsPage.tsx:117
+#: src/renderer/src/components/SendsPage.tsx:119
 msgid "Pending deletion"
 msgstr "削除待ち"
 
@@ -5062,8 +5083,8 @@ msgstr "秘密鍵のパスワード"
 msgid "Private key, public key, and fingerprint"
 msgstr "秘密鍵、公開鍵、およびフィンガープリント"
 
-#: src/renderer/src/components/SendsPage.tsx:519
-#: src/renderer/src/components/SendsPage.tsx:634
+#: src/renderer/src/components/SendsPage.tsx:510
+#: src/renderer/src/components/SendsPage.tsx:625
 msgid "Private notes"
 msgstr "プライベートメモ"
 
@@ -5190,7 +5211,7 @@ msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "最近使用した項目"
 
-#: src/renderer/src/components/SendsPage.tsx:718
+#: src/renderer/src/components/SendsPage.tsx:709
 msgid "Recipients must actively reveal the text to see it."
 msgstr "受信者がテキストを表示する操作を行うまで、内容は表示されません。"
 
@@ -5311,7 +5332,7 @@ msgstr "{0}を削除しますか？"
 #~ msgid "Remove {label}?"
 #~ msgstr ""
 
-#: src/renderer/src/components/SendsPage.tsx:628
+#: src/renderer/src/components/SendsPage.tsx:619
 msgid "Remove current password"
 msgstr "現在のパスワードを削除"
 
@@ -5519,7 +5540,7 @@ msgstr "ファイルを安全に読み取っています"
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:3165
-#: src/renderer/src/components/SendsPage.tsx:775
+#: src/renderer/src/components/SendsPage.tsx:766
 msgid "Save"
 msgstr "保存"
 
@@ -5547,7 +5568,7 @@ msgid "Saved “{0}”."
 msgstr "「{0}」を保存しました。"
 
 #. placeholder {0}: result.fileName
-#: src/renderer/src/components/SendsPage.tsx:319
+#: src/renderer/src/hooks/use-file-send-download.ts:33
 msgid "Saved {0}"
 msgstr "{0}を保存しました"
 
@@ -5559,7 +5580,7 @@ msgstr "保存中"
 msgid "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 msgstr "保存すると、サーバー上のすべての同等ドメインが置き換えられ、他の Bitwarden クライアントに同期されます。"
 
-#: src/renderer/src/components/SendsPage.tsx:771
+#: src/renderer/src/components/SendsPage.tsx:762
 msgid "Saving…"
 msgstr "保存しています…"
 
@@ -5737,7 +5758,7 @@ msgstr "カタログから選択済み"
 msgid "Selected items"
 msgstr "選択した項目"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send created"
 msgstr "Send を作成しました"
 
@@ -5746,7 +5767,7 @@ msgstr "Send を作成しました"
 msgid "Send data"
 msgstr "Send データ"
 
-#: src/renderer/src/components/SendsPage.tsx:285
+#: src/renderer/src/components/SendsPage.tsx:289
 msgid "Send deleted"
 msgstr "Send を削除しました"
 
@@ -5754,11 +5775,16 @@ msgstr "Send を削除しました"
 msgid "Send email code"
 msgstr "メールコードを送信"
 
-#: src/renderer/src/components/SendsPage.tsx:336
+#: src/renderer/src/components/SendsPage.tsx:327
 msgid "Send password removed"
 msgstr "Send のパスワードを削除しました"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#. Title of the dialog that asks for the access password of a password-protected file Send before downloading it.
+#: src/renderer/src/components/SendPasswordDialog.tsx:57
+msgid "Send password required"
+msgstr "Sendのパスワードが必要です"
+
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send updated"
 msgstr "Send を更新しました"
 
@@ -5770,7 +5796,7 @@ msgstr "確認コードを送信"
 #~ msgid "Sender email hidden"
 #~ msgstr "送信者のメールアドレスは非表示です"
 
-#: src/renderer/src/components/SendsPage.tsx:346
+#: src/renderer/src/components/SendsPage.tsx:337
 #: src/renderer/src/components/VaultShellSidebar.tsx:427
 msgid "Sends"
 msgstr "Sends"
@@ -5888,7 +5914,7 @@ msgstr "共有アイテム"
 msgid "Shared items"
 msgstr "共有アイテム"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Sharing link copied"
 msgstr "共有リンクをコピーしました"
 
@@ -6178,11 +6204,11 @@ msgstr "ターミナル設定"
 msgid "Text"
 msgstr "テキスト"
 
-#: src/renderer/src/components/SendsPage.tsx:349
+#: src/renderer/src/components/SendsPage.tsx:340
 msgid "Text and file Send metadata is decrypted in the main process first."
 msgstr "テキストおよびファイル Send のメタデータは、最初にメインプロセスで復号されます。"
 
-#: src/renderer/src/components/SendsPage.tsx:592
+#: src/renderer/src/components/SendsPage.tsx:583
 msgid "Text content is not included in the sharing link."
 msgstr "テキストの内容は共有リンクに含まれません。"
 
@@ -6198,6 +6224,11 @@ msgstr "そのフォルダーはここに移動できません。"
 #: src/renderer/src/hooks/use-describe-vault-error.ts:14
 msgid "That name is already in use. Choose another name."
 msgstr "その名前はすでに使用されています。別の名前を選択してください。"
+
+#. Inline error in the file Send download dialog shown when the server rejected the entered Send access password.
+#: src/renderer/src/components/SendPasswordDialog.tsx:86
+msgid "That password is incorrect. Check it and try again."
+msgstr "パスワードが正しくありません。確認してもう一度お試しください。"
 
 #: src/renderer/src/components/SettingsPage.tsx:679
 msgid "That shortcut is unavailable. Your previous shortcut remains active."
@@ -7045,15 +7076,15 @@ msgstr "このリクエストには承認できるパスキーがありません
 msgid "This rule has no domains"
 msgstr "このルールにはドメインがありません"
 
-#: src/renderer/src/components/SendsPage.tsx:307
+#: src/renderer/src/components/SendsPage.tsx:311
 msgid "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 msgstr "この Send にはメール OTP 検証が必要です。BearWarden はまだそのダウンロードをサポートしていません。"
 
-#: src/renderer/src/components/SendsPage.tsx:183
+#: src/renderer/src/components/SendsPage.tsx:187
 msgid "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 msgstr "この Send はメール検証を使用しています。BearWarden はまだ OTP をサポートしていないため、安全に編集できません。"
 
-#: src/renderer/src/components/SendsPage.tsx:210
+#: src/renderer/src/components/SendsPage.tsx:214
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "この Send はメール検証を使用しています。セキュリティ要件を維持するため、OTP がまだサポートされていない間は編集できません。"
 
@@ -7225,7 +7256,7 @@ msgstr "検索語を短くするか、「すべてのアイテム」に切り替
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
-#: src/renderer/src/components/SendsPage.tsx:393
+#: src/renderer/src/components/SendsPage.tsx:384
 msgid "Try again"
 msgstr "もう一度試す"
 

@@ -79,3 +79,14 @@ export function maxAccessCountValidationMessage(value: number | null | undefined
     ? null
     : i18n._(msg`Maximum access count must be an integer between 1 and 2,147,483,647.`)
 }
+
+export type SendDownloadFailure = 'password-required' | 'password-invalid' | 'failed'
+
+/** Classifies a file Send download IPC error so the UI can re-prompt for the password. */
+export function classifySendDownloadFailure(error: unknown): SendDownloadFailure {
+  if (error instanceof Error) {
+    if (error.message.includes('SEND_PASSWORD_REQUIRED')) return 'password-required'
+    if (error.message.includes('SEND_PASSWORD_INVALID')) return 'password-invalid'
+  }
+  return 'failed'
+}

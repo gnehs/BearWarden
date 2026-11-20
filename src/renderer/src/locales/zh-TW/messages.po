@@ -22,7 +22,7 @@ msgid " · Legacy unauthenticated encryption"
 msgstr " · 舊版未驗證加密"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)
-#: src/renderer/src/components/SendsPage.tsx:436
+#: src/renderer/src/components/SendsPage.tsx:427
 msgid " / maximum {0}"
 msgstr " / 上限 {0}"
 
@@ -108,7 +108,7 @@ msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You 
 msgstr "{0, plural, one {{base} 您還有 # 次嘗試機會。} other {{base} 您還有 # 次嘗試機會。}}"
 
 #. placeholder {0}: send.accessCount
-#: src/renderer/src/components/SendsPage.tsx:432
+#: src/renderer/src/components/SendsPage.tsx:423
 msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# 次存取} other {# 次存取}}"
 
@@ -167,7 +167,7 @@ msgid "{0} autofill settings"
 msgstr "{0} 項自動填寫設定"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.file.size)
-#: src/renderer/src/components/SendsPage.tsx:505
+#: src/renderer/src/components/SendsPage.tsx:496
 msgid "{0} bytes"
 msgstr "{0} 位元組"
 
@@ -569,15 +569,20 @@ msgstr "已接受"
 msgid "Access approved"
 msgstr "已核准存取"
 
-#: src/renderer/src/components/SendsPage.tsx:116
+#: src/renderer/src/components/SendsPage.tsx:118
 msgid "Access limit reached"
 msgstr "已達存取上限"
 
-#: src/renderer/src/components/SendsPage.tsx:599
+#. Label of the password field in the file Send download dialog; the password recipients need to open the Send.
+#: src/renderer/src/components/SendPasswordDialog.tsx:71
+msgid "Access password"
+msgstr "存取密碼"
+
+#: src/renderer/src/components/SendsPage.tsx:590
 msgid "Access password (leave blank to keep the current password)"
 msgstr "存取密碼（留白以保留目前的密碼）"
 
-#: src/renderer/src/components/SendsPage.tsx:601
+#: src/renderer/src/components/SendsPage.tsx:592
 msgid "Access password (optional)"
 msgstr "存取密碼（選填）"
 
@@ -865,11 +870,11 @@ msgstr "Bitwarden 同步完成後，您有權存取的共用項目會顯示在�
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
 msgstr "預覽後，必須重新進行本機擁有者驗證，才能開始同步與還原。"
 
-#: src/renderer/src/components/SendsPage.tsx:687
+#: src/renderer/src/components/SendsPage.tsx:678
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
 msgstr "此日期過後，連結將不再接受存取，但 Send 不會立即刪除。"
 
-#: src/renderer/src/components/SendsPage.tsx:709
+#: src/renderer/src/components/SendsPage.tsx:700
 msgid "After this time, the server permanently removes the Send."
 msgstr "此時間過後，伺服器會永久刪除 Send。"
 
@@ -1229,7 +1234,7 @@ msgstr "BearWarden 無法載入保管庫服務。您的資料尚未變更。"
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
-#: src/renderer/src/components/SendsPage.tsx:492
+#: src/renderer/src/components/SendsPage.tsx:483
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden 尚未支援收件者 OTP。為避免移除驗證要求，無法編輯或下載此 Send。"
 
@@ -1383,7 +1388,8 @@ msgstr "可還原"
 #: src/renderer/src/components/LoginEditor.tsx:2750
 #: src/renderer/src/components/LoginEditor.tsx:3143
 #: src/renderer/src/components/LoginEditor.tsx:3377
-#: src/renderer/src/components/SendsPage.tsx:784
+#: src/renderer/src/components/SendPasswordDialog.tsx:101
+#: src/renderer/src/components/SendsPage.tsx:775
 #: src/renderer/src/components/SendsPage.tsx:811
 #: src/renderer/src/components/SyncDialog.tsx:1258
 #: src/renderer/src/components/VaultItemAccessCards.tsx:94
@@ -1866,7 +1872,7 @@ msgstr "確認遠端結果"
 msgid "Confirm removing security key"
 msgstr "確認移除安全金鑰"
 
-#: src/renderer/src/components/SendsPage.tsx:386
+#: src/renderer/src/components/SendsPage.tsx:377
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "請確認同步已連線後再試一次。現有資料尚未變更。"
 
@@ -1931,11 +1937,11 @@ msgstr "已連線，保管庫已解鎖"
 #: src/renderer/src/components/LoginEditor.tsx:2329
 #: src/renderer/src/components/LoginEditor.tsx:2994
 #: src/renderer/src/components/LoginEditor.tsx:3014
-#: src/renderer/src/components/SendsPage.tsx:583
+#: src/renderer/src/components/SendsPage.tsx:574
 msgid "Content"
 msgstr "內容"
 
-#: src/renderer/src/components/SendsPage.tsx:563
+#: src/renderer/src/components/SendsPage.tsx:554
 msgid "Content is encrypted in the main process before it is sent to the server."
 msgstr "內容會先在主程式中加密，再傳送至伺服器。"
 
@@ -2017,7 +2023,7 @@ msgstr "複製復原碼"
 msgid "Copy setup key"
 msgstr "複製設定金鑰"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Copy sharing link"
 msgstr "複製分享連結"
 
@@ -2049,7 +2055,7 @@ msgstr "複製驗證碼"
 msgid "Copy website"
 msgstr "複製網站"
 
-#: src/renderer/src/components/SendsPage.tsx:369
+#: src/renderer/src/components/SendsPage.tsx:360
 msgid "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 msgstr "核心文字與檔案 Send 流程已可使用。檔案編輯、進階驗證和完整的公開接收流程仍在開發中。"
 
@@ -2069,7 +2075,7 @@ msgstr "無法連線至同步伺服器。請檢查您的網路、伺服器 URL �
 msgid "Could not copy the diagnostic summary. Select the text and copy it manually."
 msgstr "無法複製診斷摘要。請選取文字並手動複製。"
 
-#: src/renderer/src/components/SendsPage.tsx:299
+#: src/renderer/src/components/SendsPage.tsx:303
 msgid "Could not copy the sharing link."
 msgstr "無法複製分享連結。"
 
@@ -2081,7 +2087,7 @@ msgstr "無法建立備份。請檢查主密碼、儲存位置與備份密碼，
 msgid "Could not create the CSV. Check the master password and save location, then try again."
 msgstr "無法建立 CSV。請檢查主密碼與儲存位置，然後再試一次。"
 
-#: src/renderer/src/components/SendsPage.tsx:269
+#: src/renderer/src/components/SendsPage.tsx:273
 msgid "Could not create the file Send. Confirm that sync is connected."
 msgstr "無法建立檔案 Send。請確認同步已連線。"
 
@@ -2089,13 +2095,18 @@ msgstr "無法建立檔案 Send。請確認同步已連線。"
 msgid "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 msgstr "無法建立 ZIP。請檢查主密碼、儲存位置與附件狀態，然後再試一次。"
 
-#: src/renderer/src/components/SendsPage.tsx:287
+#: src/renderer/src/components/SendsPage.tsx:291
 msgid "Could not delete the Send."
 msgstr "無法刪除 Send。"
 
 #: src/renderer/src/components/SendsPage.tsx:321
-msgid "Could not download the file Send. Check the password and sync connection."
-msgstr "無法下載檔案 Send。請檢查密碼與同步連線。"
+#~ msgid "Could not download the file Send. Check the password and sync connection."
+#~ msgstr "無法下載檔案 Send。請檢查密碼與同步連線。"
+
+#. Error toast when downloading a file Send fails for a reason other than its password.
+#: src/renderer/src/hooks/use-file-send-download.ts:39
+msgid "Could not download the file Send. Check the sync connection."
+msgstr "無法下載檔案 Send，請檢查同步連線。"
 
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:242
 msgid "Could not import the file. Check the master password, file format, and backup password, then try again."
@@ -2114,7 +2125,7 @@ msgstr "無法載入緊急存取"
 msgid "Could not load organization items"
 msgstr "無法載入組織項目"
 
-#: src/renderer/src/components/SendsPage.tsx:383
+#: src/renderer/src/components/SendsPage.tsx:374
 msgid "Could not load Sends"
 msgstr "無法載入 Sends"
 
@@ -2126,11 +2137,11 @@ msgstr "無法載入共享項目"
 msgid "Could not load the account security status."
 msgstr "無法載入帳戶安全狀態。"
 
-#: src/renderer/src/components/SendsPage.tsx:338
+#: src/renderer/src/components/SendsPage.tsx:329
 msgid "Could not remove the Send password."
 msgstr "無法移除 Send 密碼。"
 
-#: src/renderer/src/components/SendsPage.tsx:232
+#: src/renderer/src/components/SendsPage.tsx:236
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "無法儲存 Send。請確認同步已連線。"
 
@@ -2183,7 +2194,7 @@ msgstr "建立可匯入 Bitwarden 的登入資料和安全筆記純文字副本�
 msgid "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 msgstr "建立您的個人保管庫及附件的純文字副本，供 Bitwarden 相容工具擷取。"
 
-#: src/renderer/src/components/SendsPage.tsx:407
+#: src/renderer/src/components/SendsPage.tsx:398
 msgid "Create a text Send to securely share one-time content."
 msgstr "建立文字 Send，以安全分享一次性內容。"
 
@@ -2191,16 +2202,16 @@ msgstr "建立文字 Send，以安全分享一次性內容。"
 msgid "Create and unlock"
 msgstr "建立並解鎖"
 
-#: src/renderer/src/components/SendsPage.tsx:359
-#: src/renderer/src/components/SendsPage.tsx:773
+#: src/renderer/src/components/SendsPage.tsx:350
+#: src/renderer/src/components/SendsPage.tsx:764
 msgid "Create file Send"
 msgstr "建立檔案 Send"
 
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Create Send"
 msgstr "建立 Send"
 
-#: src/renderer/src/components/SendsPage.tsx:363
+#: src/renderer/src/components/SendsPage.tsx:354
 msgid "Create text Send"
 msgstr "建立文字 Send"
 
@@ -2208,7 +2219,7 @@ msgstr "建立文字 Send"
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "請先為重複使用最頻繁的項目建立唯一的密碼。"
 
-#: src/renderer/src/components/SendsPage.tsx:413
+#: src/renderer/src/components/SendsPage.tsx:404
 msgid "Create your first Send"
 msgstr "建立您的第一個 Send"
 
@@ -2454,7 +2465,7 @@ msgstr "刪除通行密鑰"
 msgid "Delete permanently"
 msgstr "永久刪除"
 
-#: src/renderer/src/components/SendsPage.tsx:478
+#: src/renderer/src/components/SendsPage.tsx:469
 msgid "Delete Send"
 msgstr "刪除 Send"
 
@@ -2493,7 +2504,7 @@ msgstr "已刪除的項目"
 msgid "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 msgstr "已刪除的項目會保留在此處，直到您還原或永久刪除它們，或伺服器依其保留政策移除它們為止。"
 
-#: src/renderer/src/components/SendsPage.tsx:533
+#: src/renderer/src/components/SendsPage.tsx:524
 msgid "Deletes"
 msgstr "刪除次數"
 
@@ -2505,7 +2516,7 @@ msgstr "正在刪除附件"
 msgid "Deleting…"
 msgstr "正在刪除…"
 
-#: src/renderer/src/components/SendsPage.tsx:695
+#: src/renderer/src/components/SendsPage.tsx:686
 msgid "Deletion date"
 msgstr "刪除日期"
 
@@ -2551,12 +2562,12 @@ msgstr "停用生物辨識"
 msgid "Disable PIN unlock"
 msgstr "停用 PIN 解鎖"
 
-#: src/renderer/src/components/SendsPage.tsx:730
+#: src/renderer/src/components/SendsPage.tsx:721
 msgid "Disable Send"
 msgstr "停用 Send"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:58
-#: src/renderer/src/components/SendsPage.tsx:114
+#: src/renderer/src/components/SendsPage.tsx:116
 #: src/renderer/src/components/SettingsPage.tsx:608
 #: src/renderer/src/components/SettingsPage.tsx:1046
 #: src/renderer/src/components/SettingsPage.tsx:1192
@@ -2598,7 +2609,7 @@ msgstr "顯示名稱"
 msgid "Display name saved."
 msgstr "已儲存顯示名稱。"
 
-#: src/renderer/src/components/SendsPage.tsx:748
+#: src/renderer/src/components/SendsPage.tsx:739
 msgid "Do not show your account email to recipients."
 msgstr "不要向收件者顯示您的帳戶電子郵件地址。"
 
@@ -2606,12 +2617,17 @@ msgstr "不要向收件者顯示您的帳戶電子郵件地址。"
 msgid "Domain rules cannot be displayed right now."
 msgstr "目前無法顯示網域規則。"
 
+#. Submit button in the file Send download password dialog; saves the Send's file to disk.
+#: src/renderer/src/components/SendPasswordDialog.tsx:96
+msgid "Download"
+msgstr "下載"
+
 #. placeholder {0}: attachment.fileName
 #: src/renderer/src/components/VaultItemAccessCards.tsx:150
 msgid "Download {0}"
 msgstr "下載 {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:457
+#: src/renderer/src/components/SendsPage.tsx:448
 msgid "Download file Send"
 msgstr "下載檔案 Send"
 
@@ -2727,12 +2743,12 @@ msgstr "編輯項目並隱藏密碼"
 msgid "Edit profile"
 msgstr "編輯個人資料"
 
-#: src/renderer/src/components/SendsPage.tsx:468
-#: src/renderer/src/components/SendsPage.tsx:560
+#: src/renderer/src/components/SendsPage.tsx:459
+#: src/renderer/src/components/SendsPage.tsx:551
 msgid "Edit Send"
 msgstr "編輯 Send"
 
-#: src/renderer/src/components/SendsPage.tsx:205
+#: src/renderer/src/components/SendsPage.tsx:209
 msgid "Editing file Sends is not available yet."
 msgstr "尚無法編輯檔案 Send。"
 
@@ -2770,7 +2786,7 @@ msgstr "電子郵件尚未驗證"
 msgid "Email two-factor authentication has been enabled."
 msgstr "已啟用電子郵件雙因素驗證。"
 
-#: src/renderer/src/components/SendsPage.tsx:113
+#: src/renderer/src/components/SendsPage.tsx:115
 msgid "Email verification"
 msgstr "電子郵件驗證"
 
@@ -2782,7 +2798,7 @@ msgstr "電子郵件驗證碼"
 msgid "Email verified"
 msgstr "電子郵件已驗證"
 
-#: src/renderer/src/components/SendsPage.tsx:489
+#: src/renderer/src/components/SendsPage.tsx:480
 msgid "Email-verified Send"
 msgstr "經電子郵件驗證的 Send"
 
@@ -2866,11 +2882,11 @@ msgstr "輸入資料夾名稱。"
 msgid "Enter a security key name and your master password."
 msgstr "輸入安全金鑰名稱與您的主密碼。"
 
-#: src/renderer/src/components/SendsPage.tsx:201
+#: src/renderer/src/components/SendsPage.tsx:205
 msgid "Enter a Send name and content."
 msgstr "輸入 Send 名稱和內容。"
 
-#: src/renderer/src/components/SendsPage.tsx:241
+#: src/renderer/src/components/SendsPage.tsx:245
 msgid "Enter a Send name first."
 msgstr "請先輸入 Send 名稱。"
 
@@ -2942,6 +2958,11 @@ msgstr "輸入 PURGE 以確認"
 msgid "Enter the 6-digit verification code shown by your authenticator."
 msgstr "輸入驗證器顯示的 6 位數驗證碼。"
 
+#. Description in the file Send download password dialog. {sendName} is the user's own Send name.
+#: src/renderer/src/components/SendPasswordDialog.tsx:62
+msgid "Enter the access password to download “{sendName}”."
+msgstr "請輸入存取密碼以下載「{sendName}」。"
+
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:557
 msgid "Enter the backup password again"
 msgstr "再次輸入備份密碼"
@@ -2963,8 +2984,8 @@ msgid "Enter the PIN set for this session."
 msgstr "輸入為此工作階段設定的 PIN。"
 
 #: src/renderer/src/components/SendsPage.tsx:313
-msgid "Enter the Send access password"
-msgstr "輸入 Send 的存取密碼"
+#~ msgid "Enter the Send access password"
+#~ msgstr "輸入 Send 的存取密碼"
 
 #: src/renderer/src/components/LoginEditor.tsx:3339
 msgid "Enter the SSH private key password"
@@ -3074,7 +3095,7 @@ msgstr "無法載入現有的敏感欄位。請取消編輯後再試一次。"
 msgid "Expand {0}"
 msgstr "展開 {0}"
 
-#: src/renderer/src/components/SendsPage.tsx:673
+#: src/renderer/src/components/SendsPage.tsx:664
 #: src/renderer/src/components/VaultItemDetailViews.tsx:241
 msgid "Expiration date"
 msgstr "到期日"
@@ -3091,11 +3112,11 @@ msgstr "到期月份"
 msgid "Expiration year"
 msgstr "到期年份"
 
-#: src/renderer/src/components/SendsPage.tsx:115
+#: src/renderer/src/components/SendsPage.tsx:117
 msgid "Expired"
 msgstr "已到期"
 
-#: src/renderer/src/components/SendsPage.tsx:527
+#: src/renderer/src/components/SendsPage.tsx:518
 msgid "Expires"
 msgstr "到期"
 
@@ -3172,17 +3193,17 @@ msgstr "檔案總管"
 msgid "file manager"
 msgstr "檔案管理器"
 
-#: src/renderer/src/components/SendsPage.tsx:267
+#: src/renderer/src/components/SendsPage.tsx:271
 msgid "File Send created"
 msgstr "檔案 Send 已建立"
 
-#: src/renderer/src/components/SendsPage.tsx:194
-#: src/renderer/src/components/SendsPage.tsx:227
-#: src/renderer/src/components/SendsPage.tsx:334
+#: src/renderer/src/components/SendsPage.tsx:198
+#: src/renderer/src/components/SendsPage.tsx:231
+#: src/renderer/src/components/SendsPage.tsx:325
 msgid "File Sends are read-only until file transfer support is enabled"
 msgstr "啟用檔案傳輸支援前，檔案 Send 僅供檢視"
 
-#: src/renderer/src/components/SendsPage.tsx:188
+#: src/renderer/src/components/SendsPage.tsx:192
 msgid "File Sends can currently only be viewed and their links copied."
 msgstr "目前檔案 Send 僅能檢視及複製其連結。"
 
@@ -3461,13 +3482,13 @@ msgstr "隱藏自訂欄位內容"
 msgid "Hide master password"
 msgstr "隱藏主密碼"
 
-#: src/renderer/src/components/SendsPage.tsx:119
-#: src/renderer/src/components/SendsPage.tsx:745
+#: src/renderer/src/components/SendsPage.tsx:121
+#: src/renderer/src/components/SendsPage.tsx:736
 msgid "Hide sender email"
 msgstr "隱藏寄件者電子郵件"
 
-#: src/renderer/src/components/SendsPage.tsx:118
-#: src/renderer/src/components/SendsPage.tsx:715
+#: src/renderer/src/components/SendsPage.tsx:120
+#: src/renderer/src/components/SendsPage.tsx:706
 msgid "Hide text by default"
 msgstr "預設隱藏文字"
 
@@ -3699,7 +3720,7 @@ msgstr "保留通行密鑰"
 msgid "Keep the backup password safe"
 msgstr "妥善保管備份密碼"
 
-#: src/renderer/src/components/SendsPage.tsx:733
+#: src/renderer/src/components/SendsPage.tsx:724
 msgid "Keep the Send but prevent all recipient access."
 msgstr "保留 Send，但禁止所有收件者存取。"
 
@@ -3755,7 +3776,7 @@ msgstr "上次編輯"
 msgid "Last name"
 msgstr "姓氏"
 
-#: src/renderer/src/components/SendsPage.tsx:539
+#: src/renderer/src/components/SendsPage.tsx:530
 msgid "Last revised"
 msgstr "上次修訂"
 
@@ -3775,7 +3796,7 @@ msgstr "登入時啟動 BearWarden"
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "登入此電腦後自動啟動 BearWarden。"
 
-#: src/renderer/src/components/SendsPage.tsx:668
+#: src/renderer/src/components/SendsPage.tsx:659
 msgid "Leave blank for no limit."
 msgstr "留空表示不設上限。"
 
@@ -3869,7 +3890,7 @@ msgstr "正在載入組織項目…"
 msgid "Loading password history"
 msgstr "正在載入密碼歷程記錄"
 
-#: src/renderer/src/components/SendsPage.tsx:377
+#: src/renderer/src/components/SendsPage.tsx:368
 msgid "Loading Sends…"
 msgstr "正在載入 Sends…"
 
@@ -4143,7 +4164,7 @@ msgstr "網站 {0} 的比對方式"
 msgid "Maximize / Restore"
 msgstr "最大化 / 還原"
 
-#: src/renderer/src/components/SendsPage.tsx:650
+#: src/renderer/src/components/SendsPage.tsx:641
 msgid "Maximum access count"
 msgstr "最大存取次數"
 
@@ -4330,7 +4351,7 @@ msgstr "正與其他 {0} 個項目一起移動"
 #: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1734
 #: src/renderer/src/components/LoginEditor.tsx:2938
-#: src/renderer/src/components/SendsPage.tsx:572
+#: src/renderer/src/components/SendsPage.tsx:563
 #: src/renderer/src/components/SettingsPage.tsx:449
 #: src/renderer/src/components/VaultItemDetailViews.tsx:242
 #: src/renderer/src/components/VaultShell.tsx:170
@@ -4497,7 +4518,7 @@ msgstr "沒有重複使用的密碼"
 msgid "No security keys are registered yet. You can add your first key."
 msgstr "尚未註冊任何安全金鑰。您可以新增第一把金鑰。"
 
-#: src/renderer/src/components/SendsPage.tsx:404
+#: src/renderer/src/components/SendsPage.tsx:395
 msgid "No Sends yet"
 msgstr "尚無 Send"
 
@@ -4645,7 +4666,7 @@ msgstr "儲存時只會使用短期有效的匯入權杖。此欄位不會包含
 msgid "Only approve a request you just made on another device, after verifying the verification phrase."
 msgstr "僅在確認驗證片語後，才核准您剛才在另一部裝置提出的請求。"
 
-#: src/renderer/src/components/SendsPage.tsx:645
+#: src/renderer/src/components/SendsPage.tsx:636
 msgid "Only you can see this. It is not shown to recipients."
 msgstr "只有您能看見此內容，不會向收件者顯示。"
 
@@ -4843,7 +4864,7 @@ msgstr "密碼歷程"
 msgid "Password last updated"
 msgstr "密碼上次更新時間"
 
-#: src/renderer/src/components/SendsPage.tsx:112
+#: src/renderer/src/components/SendsPage.tsx:114
 msgid "Password required"
 msgstr "需要密碼"
 
@@ -4879,7 +4900,7 @@ msgstr "付款卡片與安全碼"
 msgid "Pending confirmation"
 msgstr "等待確認"
 
-#: src/renderer/src/components/SendsPage.tsx:117
+#: src/renderer/src/components/SendsPage.tsx:119
 msgid "Pending deletion"
 msgstr "等待刪除"
 
@@ -5062,8 +5083,8 @@ msgstr "私密金鑰密碼"
 msgid "Private key, public key, and fingerprint"
 msgstr "私密金鑰、公開金鑰與指紋"
 
-#: src/renderer/src/components/SendsPage.tsx:519
-#: src/renderer/src/components/SendsPage.tsx:634
+#: src/renderer/src/components/SendsPage.tsx:510
+#: src/renderer/src/components/SendsPage.tsx:625
 msgid "Private notes"
 msgstr "私密備註"
 
@@ -5190,7 +5211,7 @@ msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "最近使用"
 
-#: src/renderer/src/components/SendsPage.tsx:718
+#: src/renderer/src/components/SendsPage.tsx:709
 msgid "Recipients must actively reveal the text to see it."
 msgstr "收件者必須主動揭露文字才能查看。"
 
@@ -5311,7 +5332,7 @@ msgstr "要移除 {0} 嗎？"
 #~ msgid "Remove {label}?"
 #~ msgstr ""
 
-#: src/renderer/src/components/SendsPage.tsx:628
+#: src/renderer/src/components/SendsPage.tsx:619
 msgid "Remove current password"
 msgstr "移除目前密碼"
 
@@ -5519,7 +5540,7 @@ msgstr "正在安全讀取檔案"
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:3165
-#: src/renderer/src/components/SendsPage.tsx:775
+#: src/renderer/src/components/SendsPage.tsx:766
 msgid "Save"
 msgstr "儲存"
 
@@ -5547,7 +5568,7 @@ msgid "Saved “{0}”."
 msgstr "已儲存「{0}」。"
 
 #. placeholder {0}: result.fileName
-#: src/renderer/src/components/SendsPage.tsx:319
+#: src/renderer/src/hooks/use-file-send-download.ts:33
 msgid "Saved {0}"
 msgstr "已儲存 {0}"
 
@@ -5559,7 +5580,7 @@ msgstr "正在儲存"
 msgid "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 msgstr "儲存會取代伺服器上的所有等效網域，並將它們同步到其他 Bitwarden 用戶端。"
 
-#: src/renderer/src/components/SendsPage.tsx:771
+#: src/renderer/src/components/SendsPage.tsx:762
 msgid "Saving…"
 msgstr "正在儲存…"
 
@@ -5737,7 +5758,7 @@ msgstr "已從目錄選擇"
 msgid "Selected items"
 msgstr "已選取的項目"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send created"
 msgstr "傳送項目已建立"
 
@@ -5746,7 +5767,7 @@ msgstr "傳送項目已建立"
 msgid "Send data"
 msgstr "傳送資料"
 
-#: src/renderer/src/components/SendsPage.tsx:285
+#: src/renderer/src/components/SendsPage.tsx:289
 msgid "Send deleted"
 msgstr "傳送項目已刪除"
 
@@ -5754,11 +5775,16 @@ msgstr "傳送項目已刪除"
 msgid "Send email code"
 msgstr "寄送電子郵件驗證碼"
 
-#: src/renderer/src/components/SendsPage.tsx:336
+#: src/renderer/src/components/SendsPage.tsx:327
 msgid "Send password removed"
 msgstr "傳送項目密碼已移除"
 
-#: src/renderer/src/components/SendsPage.tsx:230
+#. Title of the dialog that asks for the access password of a password-protected file Send before downloading it.
+#: src/renderer/src/components/SendPasswordDialog.tsx:57
+msgid "Send password required"
+msgstr "需要 Send 密碼"
+
+#: src/renderer/src/components/SendsPage.tsx:234
 msgid "Send updated"
 msgstr "傳送項目已更新"
 
@@ -5770,7 +5796,7 @@ msgstr "傳送驗證碼"
 #~ msgid "Sender email hidden"
 #~ msgstr "寄件者電子郵件已隱藏"
 
-#: src/renderer/src/components/SendsPage.tsx:346
+#: src/renderer/src/components/SendsPage.tsx:337
 #: src/renderer/src/components/VaultShellSidebar.tsx:427
 msgid "Sends"
 msgstr "傳送項目"
@@ -5888,7 +5914,7 @@ msgstr "已分享的項目"
 msgid "Shared items"
 msgstr "共用項目"
 
-#: src/renderer/src/components/SendsPage.tsx:446
+#: src/renderer/src/components/SendsPage.tsx:437
 msgid "Sharing link copied"
 msgstr "分享連結已複製"
 
@@ -6178,11 +6204,11 @@ msgstr "終端機設定"
 msgid "Text"
 msgstr "文字"
 
-#: src/renderer/src/components/SendsPage.tsx:349
+#: src/renderer/src/components/SendsPage.tsx:340
 msgid "Text and file Send metadata is decrypted in the main process first."
 msgstr "文字與檔案 Send 的中繼資料會先在主程式中解密。"
 
-#: src/renderer/src/components/SendsPage.tsx:592
+#: src/renderer/src/components/SendsPage.tsx:583
 msgid "Text content is not included in the sharing link."
 msgstr "分享連結不包含文字內容。"
 
@@ -6198,6 +6224,11 @@ msgstr "無法將該資料夾移至此處。"
 #: src/renderer/src/hooks/use-describe-vault-error.ts:14
 msgid "That name is already in use. Choose another name."
 msgstr "該名稱已在使用中。請選擇其他名稱。"
+
+#. Inline error in the file Send download dialog shown when the server rejected the entered Send access password.
+#: src/renderer/src/components/SendPasswordDialog.tsx:86
+msgid "That password is incorrect. Check it and try again."
+msgstr "密碼不正確，請檢查後再試一次。"
 
 #: src/renderer/src/components/SettingsPage.tsx:679
 msgid "That shortcut is unavailable. Your previous shortcut remains active."
@@ -7045,15 +7076,15 @@ msgstr "此請求沒有可核准的通行密鑰。請拒絕它並重新開始。
 msgid "This rule has no domains"
 msgstr "此規則沒有網域"
 
-#: src/renderer/src/components/SendsPage.tsx:307
+#: src/renderer/src/components/SendsPage.tsx:311
 msgid "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 msgstr "此 Send 需要電子郵件 OTP 驗證。BearWarden 尚未支援下載它。"
 
-#: src/renderer/src/components/SendsPage.tsx:183
+#: src/renderer/src/components/SendsPage.tsx:187
 msgid "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 msgstr "此 Send 使用電子郵件驗證。BearWarden 尚未支援 OTP，因此無法安全地編輯。"
 
-#: src/renderer/src/components/SendsPage.tsx:210
+#: src/renderer/src/components/SendsPage.tsx:214
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "此 Send 使用電子郵件驗證。由於尚未支援 OTP，編輯功能已停用，以保留其安全要求。"
 
@@ -7225,7 +7256,7 @@ msgstr "請嘗試較短的搜尋詞，或切換至「所有項目」。"
 #: src/renderer/src/components/EmergencyAccessPage.tsx:69
 #: src/renderer/src/components/OrganizationsPage.tsx:192
 #: src/renderer/src/components/OrganizationsPage.tsx:352
-#: src/renderer/src/components/SendsPage.tsx:393
+#: src/renderer/src/components/SendsPage.tsx:384
 msgid "Try again"
 msgstr "再試一次"
 

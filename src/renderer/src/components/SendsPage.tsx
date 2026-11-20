@@ -16,6 +16,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useCopyFeedback } from '@renderer/hooks/use-copy-feedback'
+import { useFileSendDownload } from '@renderer/hooks/use-file-send-download'
 import type { SendCreateRequest, SendView } from '../../../shared/vault-contract'
 import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
@@ -66,6 +67,7 @@ import {
 } from '@renderer/components/ui/dialog'
 import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
+import { SendPasswordDialog } from './SendPasswordDialog'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 import {
   dateTimeLocalToIso,
@@ -136,6 +138,8 @@ function SendsPage(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<SendView | null>(null)
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [createMode, setCreateMode] = useState<'text' | 'file'>('text')
+
+  const fileDownload = useFileSendDownload(setBusy)
 
   const selected = sends.find((send) => send.id === selectedId) ?? null
 
@@ -300,7 +304,7 @@ function SendsPage(): React.JSX.Element {
     }
   }
 
-  async function downloadFile(send: SendView): Promise<void> {
+  function downloadFile(send: SendView): void {
     if (send.type !== 'file') return
     if (usesEmailVerification(send)) {
       toast.error(
@@ -308,20 +312,7 @@ function SendsPage(): React.JSX.Element {
       )
       return
     }
-    let password: string | null = null
-    if (send.passwordProtected) {
-      password = window.prompt(t`Enter the Send access password`)
-      if (password === null) return
-    }
-    setBusy(true)
-    try {
-      const result = await window.bearwarden.sends.downloadFile({ id: send.id, password })
-      if (!result.canceled) toast.success(t`Saved ${result.fileName}`)
-    } catch {
-      toast.error(t`Could not download the file Send. Check the password and sync connection.`)
-    } finally {
-      setBusy(false)
-    }
+    fileDownload.start(send)
   }
 
   async function removePassword(): Promise<void> {
@@ -453,7 +444,7 @@ function SendsPage(): React.JSX.Element {
                           variant="ghost"
                           size="icon"
                           type="button"
-                          onClick={() => void downloadFile(send)}
+                          onClick={() => downloadFile(send)}
                           aria-label={t`Download file Send`}
                           disabled={busy || usesEmailVerification(send)}
                         >
@@ -787,6 +778,15 @@ function SendsPage(): React.JSX.Element {
             </DialogContent>
           </Dialog>
         </AuxiliaryPageContent>
+      )}
+      {fileDownload.prompt && (
+        <SendPasswordDialog
+          sendName={fileDownload.prompt.send.name}
+          reason={fileDownload.prompt.reason}
+          busy={busy}
+          onSubmit={fileDownload.submitPassword}
+          onCancel={fileDownload.cancel}
+        />
       )}
       <AlertDialog
         open={deleteTarget !== null}

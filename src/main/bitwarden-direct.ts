@@ -4159,6 +4159,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       if (error.code === 'ABORTED') return new BitwardenDirectError('ABORTED')
       if (error.code === 'NOT_FOUND') return new BitwardenDirectError('NOT_FOUND')
       if (error.code === 'FORBIDDEN') return new BitwardenDirectError('FORBIDDEN')
+      if (error.code === 'SEND_PASSWORD_REQUIRED') {
+        return new BitwardenDirectError('SEND_PASSWORD_REQUIRED')
+      }
+      if (error.code === 'SEND_PASSWORD_INVALID') {
+        return new BitwardenDirectError('SEND_PASSWORD_INVALID')
+      }
       if (error.code === 'TOO_LARGE') return new BitwardenDirectError('TOO_LARGE')
       if (error.code === 'STORAGE_LIMIT') return new BitwardenDirectError('STORAGE_LIMIT')
       if (error.code === 'ATTACHMENT_REJECTED') {
