@@ -35,6 +35,7 @@ import { precisePointerCollisionDetection } from './VaultShell-dnd'
 import SettingsPage from './SettingsPage'
 import SendsPage from './SendsPage'
 import OrganizationsPage from './OrganizationsPage'
+import PolicyBanner from './PolicyBanner'
 import EmergencyAccessPage from './EmergencyAccessPage'
 import VaultHealthPage from './VaultHealthPage'
 import { type VaultPortabilityMode } from './VaultPortabilityDialog'
@@ -1032,6 +1033,8 @@ function VaultShellContent({
             }
           }}
         />
+
+        <PolicyBanner className={cn('mx-3 mb-3 w-auto', !isMac && !isWindows && 'mt-3')} />
 
         <div
           className={cn(

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BITWARDEN_POLICY_TYPE,
   BitwardenPolicyParseError,
+  type BitwardenPolicyMetadata,
   parseBitwardenPolicySync,
   policyEnforcementDecision
 } from './bitwarden-policy'
@@ -121,7 +122,7 @@ describe('Bitwarden organization policy parser', () => {
   it('retains only safe identity metadata for known unsupported and future policy types', () => {
     const result = parseBitwardenPolicySync({
       Policies: [
-        policy(BITWARDEN_POLICY_TYPE.OrganizationUserNotification, {
+        policy(BITWARDEN_POLICY_TYPE.SendOptions, {
           message: 'private organization announcement'
         }),
         {
@@ -132,7 +133,7 @@ describe('Bitwarden organization policy parser', () => {
     })
     expect(result.policies).toMatchObject([
       {
-        typeName: 'OrganizationUserNotification',
+        typeName: 'SendOptions',
         execution: 'unsupported',
         data: null
       },
@@ -140,9 +141,10 @@ describe('Bitwarden organization policy parser', () => {
     ])
     expect(JSON.stringify(result)).not.toContain('private organization announcement')
     expect(JSON.stringify(result)).not.toContain('future secret data')
-    expect(
-      policyEnforcementDecision(result, BITWARDEN_POLICY_TYPE.OrganizationUserNotification)
-    ).toMatchObject({ state: 'fail-closed', reason: 'unsupported-policy' })
+    expect(policyEnforcementDecision(result, BITWARDEN_POLICY_TYPE.SendOptions)).toMatchObject({
+      state: 'fail-closed',
+      reason: 'unsupported-policy'
+    })
     expect(policyEnforcementDecision(result, 42_000)).toMatchObject({
       state: 'fail-closed',
       reason: 'unknown-policy'
@@ -259,5 +261,81 @@ describe('policy field spellings', () => {
     { label: 'another casing only', response: { POLICIES: [row] }, source: 'policies' }
   ])('reads $label', ({ response, source }) => {
     expect(sourceFor(response)).toBe(source)
+  })
+
+  describe('organization vault banner policy', () => {
+    const banner = (
+      data: unknown,
+      overrides: Record<string, unknown> = {}
+    ): BitwardenPolicyMetadata | undefined =>
+      parseBitwardenPolicySync({
+        Policies: [
+          { ...policy(BITWARDEN_POLICY_TYPE.OrganizationUserNotification, data), ...overrides }
+        ]
+      }).policies[0]
+
+    it('parses the official header, description, button and every-login fields', () => {
+      expect(
+        banner({
+          header: '  Heads up  ',
+          description: 'Please rotate your credentials',
+          buttonText: 'Got it',
+          showAfterEveryLogin: true,
+          ignored: 'dropped'
+        })
+      ).toMatchObject({
+        execution: 'actionable',
+        revisionDate: '2026-07-23T00:00:00.1234567Z',
+        data: {
+          kind: 'organizationUserNotification',
+          header: 'Heads up',
+          description: 'Please rotate your credentials',
+          buttonText: 'Got it',
+          showAfterEveryLogin: true
+        }
+      })
+    })
+
+    it('treats omitted optional fields as absent and an empty object as an empty banner', () => {
+      expect(banner({ description: 'Only text' })?.data).toEqual({
+        kind: 'organizationUserNotification',
+        header: null,
+        description: 'Only text',
+        buttonText: null,
+        showAfterEveryLogin: false
+      })
+      expect(banner({})?.data).toMatchObject({ description: '' })
+      expect(banner(undefined)?.execution).toBe('actionable')
+    })
+
+    it('keeps a missing revision date null for servers that predate it', () => {
+      expect(banner({ description: 'x' }, { RevisionDate: null })?.revisionDate).toBeNull()
+      expect(banner({ description: 'x' }, { RevisionDate: undefined })?.revisionDate).toBeNull()
+    })
+
+    it('replaces control and bidirectional override characters with spaces', () => {
+      expect(banner({ description: 'a\u202eb\nc\u0000d' })?.data).toMatchObject({
+        description: 'a b c d'
+      })
+    })
+
+    it.each([
+      ['non-object data', 'text'],
+      ['array data', ['x']],
+      ['numeric description', { description: 5 }],
+      ['non-string header', { description: 'x', header: {} }],
+      ['non-boolean every-login flag', { description: 'x', showAfterEveryLogin: 'yes' }],
+      ['oversized description', { description: 'x'.repeat(1_025) }],
+      ['oversized header', { description: 'x', header: 'h'.repeat(129) }],
+      ['oversized button', { description: 'x', buttonText: 'b'.repeat(65) }]
+    ])('marks %s malformed without retaining it', (_name, data) => {
+      expect(banner(data)).toMatchObject({ execution: 'malformed', data: null })
+    })
+
+    it('rejects a malformed policy revision date at the response boundary', () => {
+      expect(() => banner({ description: 'x' }, { RevisionDate: 'yesterday' })).toThrow(
+        BitwardenPolicyParseError
+      )
+    })
   })
 })

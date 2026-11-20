@@ -6070,7 +6070,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const verified = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(verified.data).toMatchObject({
-      version: 23,
+      version: 24,
       sync: { pendingLoginImport: null }
     })
     verified.key.fill(0)
@@ -11642,7 +11642,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(23)
+      expect((unlocked.data as { version: number }).version).toBe(24)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -11852,7 +11852,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
     })
     migrated.key.fill(0)
@@ -11884,7 +11884,7 @@ describe('VaultService encrypted local data', () => {
 
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       logins: [expect.objectContaining({ usageCount: 0 })]
     })
     migrated.key.fill(0)
@@ -11948,7 +11948,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       sync: { pendingLoginImport: null }
     })
     migrated.key.fill(0)
@@ -11983,7 +11983,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       sync: { pendingPersonalVaultPurge: null }
     })
     migrated.key.fill(0)
@@ -12147,7 +12147,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -12185,7 +12185,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -12224,7 +12224,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 23,
+      version: 24,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

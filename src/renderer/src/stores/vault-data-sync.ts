@@ -14,6 +14,7 @@ export interface VaultDataApi {
   folders: Pick<BearWardenAPI['folders'], 'list'>
   logins: Pick<BearWardenAPI['logins'], 'list'>
   organizations: Pick<BearWardenAPI['organizations'], 'list'>
+  policyBanner: Pick<BearWardenAPI['policyBanner'], 'get'>
   collections: Pick<BearWardenAPI['collections'], 'list'>
   sharedLogins: Pick<BearWardenAPI['sharedLogins'], 'list'>
 }
@@ -92,13 +93,16 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
     detailCache.clear()
     try {
       events?.loadStarted()
-      const [folders, items, organizations, collections, sharedItems] = await Promise.all([
-        api.folders.list(),
-        listLoginsInAllStates(api.logins),
-        api.organizations.list(),
-        api.collections.list(),
-        api.sharedLogins.list({ sort: 'name' })
-      ])
+      const [folders, items, organizations, collections, sharedItems, policyBanner] =
+        await Promise.all([
+          api.folders.list(),
+          listLoginsInAllStates(api.logins),
+          api.organizations.list(),
+          api.collections.list(),
+          api.sharedLogins.list({ sort: 'name' }),
+          // The banner is informational, so a failure to read it must not fail the vault load.
+          api.policyBanner.get().catch(() => null)
+        ])
       if (!isCurrentVaultLoad(requestId, latestLoad)) return
       const itemsCurrent = isCurrentVaultLoad(itemsRequestId, latestItemsRequest)
       if (itemsCurrent) invalidateProtectedDetails(items)
@@ -109,6 +113,7 @@ export function createVaultDataSync(options: VaultDataSyncOptions): VaultDataSyn
       state.setFolders(sortFoldersByPosition(folders))
       if (itemsCurrent) state.setItems(items)
       state.setOrganizations(organizations)
+      state.setPolicyBanner(policyBanner)
       state.setCollections(collections)
       state.setSharedItems(sharedItems)
       state.setScope((current) =>

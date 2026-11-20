@@ -67,6 +67,7 @@ describe('registerVaultIpc no-input boundary', () => {
     ['vault:lock', 'lock'],
     ['folder:list', 'listFolders'],
     ['organization:list', 'listOrganizations'],
+    ['policy-banner:get', 'policyBanner'],
     ['emergency-access:list', 'listEmergencyAccess'],
     ['sync:status', 'syncStatus'],
     ['sync:now', 'syncNow'],

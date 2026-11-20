@@ -81,7 +81,7 @@ import {
   serializeAccountWebAuthnAssertion,
   type AccountWebAuthnAssertion
 } from './account-webauthn-codec'
-import type { BitwardenPolicySet } from './bitwarden-policy'
+import { isStoredOrganizationUserNotification, type BitwardenPolicySet } from './bitwarden-policy'
 import type {
   AccountWebAuthnAttestation,
   AccountWebAuthnRegistrationChallenge
@@ -656,6 +656,17 @@ function isSafePersistedPolicyData(value: JsonObject): boolean {
     kind === 'removeUnlockWithPin'
   ) {
     return hasOnlyPolicyKeys(value, ['kind'])
+  }
+  if (kind === 'organizationUserNotification') {
+    return (
+      hasOnlyPolicyKeys(value, [
+        'kind',
+        'header',
+        'description',
+        'buttonText',
+        'showAfterEveryLogin'
+      ]) && isStoredOrganizationUserNotification(value)
+    )
   }
   if (kind === 'sendControls') {
     return (

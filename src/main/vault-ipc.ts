@@ -58,6 +58,7 @@ import {
   type LoginContextMenuRequest,
   type LoginFavoriteRequest,
   type LoginIdRequest,
+  type PolicyBannerDismissRequest,
   type LoginListRequest,
   type SharedLoginListRequest,
   type SharedLoginUpdateRequest,
@@ -131,6 +132,7 @@ import {
   MAX_EQUIVALENT_DOMAIN_TOTAL,
   MAX_EQUIVALENT_DOMAINS_PER_GROUP,
   MAX_LOGIN_URIS,
+  MAX_POLICY_BANNER_KEY_LENGTH,
   MAX_REMOTE_ENTITIES,
   MAX_SYNC_SECRET_LENGTH,
   MAX_URI_LENGTH
@@ -1285,6 +1287,14 @@ function parseSharedLoginId(value: unknown): LoginIdRequest {
   const { id } = exactDataRecord(value, ['id'])
   if (typeof id !== 'string' || !UUID_PATTERN.test(id)) throw new VaultError('INVALID_INPUT')
   return { id }
+}
+
+function parsePolicyBannerDismiss(value: unknown): PolicyBannerDismissRequest {
+  const { key } = exactDataRecord(value, ['key'])
+  if (typeof key !== 'string' || key.length === 0 || key.length > MAX_POLICY_BANNER_KEY_LENGTH) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { key }
 }
 
 function parseCollectionOrganizationId(value: unknown): string | undefined {
@@ -2502,6 +2512,10 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
   ipc.handle('organization:list', parseNoInput, async () => {
     return vault.listOrganizations()
   })
+  ipc.handle('policy-banner:get', parseNoInput, () => vault.policyBanner())
+  ipc.handle('policy-banner:dismiss', parsePolicyBannerDismiss, (request) =>
+    vault.dismissPolicyBanner(request.key)
+  )
   ipc.handle('collection:list', parseCollectionOrganizationId, (organizationId) =>
     organizationId === undefined ? vault.listCollections() : vault.listCollections(organizationId)
   )

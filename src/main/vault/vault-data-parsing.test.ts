@@ -134,6 +134,67 @@ describe('stored Bitwarden policy parsing', () => {
   })
 })
 
+describe('stored organization vault banner state', () => {
+  const bannerSet = (data: Record<string, unknown>): BitwardenPolicySet => ({
+    source: 'policiesNew',
+    applicableOrganizationIds: [ORGANIZATION_ID],
+    policies: [
+      {
+        ...policySet().policies[0]!,
+        type: BITWARDEN_POLICY_TYPE.OrganizationUserNotification,
+        typeName: 'OrganizationUserNotification',
+        data: data as never
+      }
+    ]
+  })
+  const validBanner = {
+    kind: 'organizationUserNotification',
+    header: 'Heads up',
+    description: 'Rotate your credentials',
+    buttonText: null,
+    showAfterEveryLogin: false
+  }
+
+  it('round-trips banner policy metadata and rejects out-of-bounds or unnormalized text', () => {
+    expect(parseStoredBitwardenPolicySet(bannerSet(validBanner))).toEqual(bannerSet(validBanner))
+    for (const data of [
+      { ...validBanner, description: 'x'.repeat(1_025) },
+      { ...validBanner, header: '' },
+      { ...validBanner, description: 'line\nbreak' },
+      { ...validBanner, extra: true },
+      { ...validBanner, showAfterEveryLogin: 'no' }
+    ]) {
+      expect(() => parseStoredBitwardenPolicySet(bannerSet(data))).toThrowError(VaultError)
+    }
+  })
+
+  it('migrates a version 23 vault to no dismissals and clones the list independently', () => {
+    const migrated = parseVaultData(vaultData({}))
+    expect(migrated.policyBannerDismissals).toEqual([])
+
+    const current = parseVaultData({
+      ...vaultData({}),
+      version: 24,
+      policyBannerDismissals: ['org:policy:rev']
+    })
+    const cloned = cloneData(current)
+    expect(cloned.policyBannerDismissals).toEqual(['org:policy:rev'])
+    expect(cloned.policyBannerDismissals).not.toBe(current.policyBannerDismissals)
+  })
+
+  it.each([
+    ['a non-array', 'key'],
+    ['duplicates', ['a', 'a']],
+    ['an empty key', ['']],
+    ['an oversized key', ['k'.repeat(129)]],
+    ['too many keys', Array.from({ length: 17 }, (_, index) => `key-${index}`)]
+  ])('rejects %s in the stored dismissals', (_name, dismissals) => {
+    expect(() =>
+      parseVaultData({ ...vaultData({}), version: 24, policyBannerDismissals: dismissals })
+    ).toThrowError(VaultError)
+  })
+})
+
 describe('stored sync unlock material parsing', () => {
   it('migrates missing material and accepts bounded canonical account keys', () => {
     expect(parseVaultData(vaultData({})).sync?.unlockMaterial).toBeNull()

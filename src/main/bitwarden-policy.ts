@@ -65,6 +65,18 @@ export interface RestrictedItemTypesPolicyMetadata {
   cipherTypes: number[]
 }
 
+/**
+ * Organization-authored vault banner. The text is untrusted server content: it is bounded,
+ * stripped of control characters, and must be rendered as plain text only.
+ */
+export interface OrganizationUserNotificationPolicyMetadata {
+  kind: 'organizationUserNotification'
+  header: string | null
+  description: string
+  buttonText: string | null
+  showAfterEveryLogin: boolean
+}
+
 export interface BooleanPolicyMetadata {
   kind:
     | 'organizationDataOwnership'
@@ -82,10 +94,11 @@ export type ActionablePolicyMetadata =
   | PasswordGeneratorPolicyMetadata
   | MaximumVaultTimeoutPolicyMetadata
   | RestrictedItemTypesPolicyMetadata
+  | OrganizationUserNotificationPolicyMetadata
   | BooleanPolicyMetadata
   | SendControlsPolicyMetadata
 
-/** Safe to persist: it contains no server policy payload, banner text, domains, or secrets. */
+/** Safe to persist: it contains no raw server policy payload, domains, or secrets. */
 export interface BitwardenPolicyMetadata {
   id: string
   organizationId: string
@@ -133,6 +146,13 @@ const MAX_TIMEOUT_MINUTES = 366 * 24 * 60
 const MAX_GENERATOR_LENGTH = 4_096
 const MAX_GENERATOR_COUNT = 1_024
 const MAX_RESTRICTED_TYPES = 16
+/** The official clients cap header/description/button at 40/250/20; allow headroom for servers. */
+export const MAX_BANNER_HEADER_LENGTH = 128
+export const MAX_BANNER_DESCRIPTION_LENGTH = 1_024
+export const MAX_BANNER_BUTTON_LENGTH = 64
+const BANNER_CONTROL_CHARACTERS = '[\\p{Cc}\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]'
+const BANNER_CONTROL_REPLACE = new RegExp(BANNER_CONTROL_CHARACTERS, 'gu')
+const BANNER_CONTROL_TEST = new RegExp(BANNER_CONTROL_CHARACTERS, 'u')
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u
 
 const POLICY_NAMES = new Map<number, keyof typeof BITWARDEN_POLICY_TYPE>(
@@ -291,6 +311,60 @@ function parseRestrictedItemTypes(data: unknown): RestrictedItemTypesPolicyMetad
   return { kind: 'restrictedItemTypes', cipherTypes: [...cipherTypes].sort((a, b) => a - b) }
 }
 
+function bannerText(value: unknown, maximum: number): string | null | undefined {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string' || value.length > maximum) return undefined
+  return value.replace(BANNER_CONTROL_REPLACE, ' ').trim()
+}
+
+function parseOrganizationUserNotification(
+  data: unknown
+): OrganizationUserNotificationPolicyMetadata | null {
+  if (data !== undefined && data !== null && !isRecord(data)) return null
+  const record = data ?? {}
+  const header = bannerText(readAliased(record, 'header'), MAX_BANNER_HEADER_LENGTH)
+  const description = bannerText(readAliased(record, 'description'), MAX_BANNER_DESCRIPTION_LENGTH)
+  const buttonText = bannerText(readAliased(record, 'buttonText'), MAX_BANNER_BUTTON_LENGTH)
+  const showAfterEveryLogin = readAliased(record, 'showAfterEveryLogin')
+  if (
+    header === undefined ||
+    description === undefined ||
+    buttonText === undefined ||
+    (showAfterEveryLogin !== undefined &&
+      showAfterEveryLogin !== null &&
+      typeof showAfterEveryLogin !== 'boolean')
+  ) {
+    return null
+  }
+  return {
+    kind: 'organizationUserNotification',
+    header: header || null,
+    description: description ?? '',
+    buttonText: buttonText || null,
+    showAfterEveryLogin: showAfterEveryLogin === true
+  }
+}
+
+/**
+ * Re-validates banner metadata read back from encrypted storage. Stored values were already
+ * normalized, so anything outside the exact bounded shape is rejected rather than repaired.
+ */
+export function isStoredOrganizationUserNotification(value: Record<string, unknown>): boolean {
+  const text = (candidate: unknown, maximum: number): boolean =>
+    typeof candidate === 'string' &&
+    candidate.length <= maximum &&
+    !BANNER_CONTROL_TEST.test(candidate)
+  const nullableText = (candidate: unknown, maximum: number): boolean =>
+    candidate === null || (text(candidate, maximum) && candidate !== '')
+  return (
+    value.kind === 'organizationUserNotification' &&
+    nullableText(value.header, MAX_BANNER_HEADER_LENGTH) &&
+    text(value.description, MAX_BANNER_DESCRIPTION_LENGTH) &&
+    nullableText(value.buttonText, MAX_BANNER_BUTTON_LENGTH) &&
+    typeof value.showAfterEveryLogin === 'boolean'
+  )
+}
+
 function actionableData(type: number, data: unknown): ActionablePolicyMetadata | null | undefined {
   switch (type) {
     case BITWARDEN_POLICY_TYPE.PasswordGenerator:
@@ -307,6 +381,8 @@ function actionableData(type: number, data: unknown): ActionablePolicyMetadata |
       return { kind: 'removeUnlockWithPin' }
     case BITWARDEN_POLICY_TYPE.RestrictedItemTypes:
       return parseRestrictedItemTypes(data)
+    case BITWARDEN_POLICY_TYPE.OrganizationUserNotification:
+      return parseOrganizationUserNotification(data)
     case BITWARDEN_POLICY_TYPE.SendControls:
       if (!isRecord(data) || typeof data.disableSend !== 'boolean') return null
       return { kind: 'sendControls', disableSend: data.disableSend }

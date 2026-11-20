@@ -697,6 +697,24 @@ export interface OrganizationView {
   hasPublicAndPrivateKeys: boolean
 }
 
+/**
+ * Organization-authored vault banner for the active account. The strings are untrusted server
+ * content already bounded in main; render them as plain text only.
+ */
+export interface PolicyBannerView {
+  /** Opaque dismissal identity. Send it back unchanged to dismiss exactly this revision. */
+  key: string
+  header: string | null
+  description: string
+  /** Label of the acknowledge button, which dismisses the banner like the close control. */
+  buttonText: string | null
+  showAfterEveryLogin: boolean
+}
+
+export interface PolicyBannerDismissRequest {
+  key: string
+}
+
 export interface CollectionView {
   id: string
   organizationId: string

@@ -14,6 +14,7 @@ import type {
   LoginSummary,
   LoginView,
   OrganizationView,
+  PolicyBannerView,
   SharedLoginSummary,
   SharedLoginView
 } from '../../../shared/vault-contract'
@@ -29,6 +30,8 @@ export interface VaultSessionState {
   folders: FolderView[]
   items: LoginSummary[]
   organizations: OrganizationView[]
+  /** Organization-authored banner still awaiting dismissal; main resolves what is visible. */
+  policyBanner: PolicyBannerView | null
   collections: CollectionView[]
   sharedItems: SharedLoginSummary[]
   scope: Scope
@@ -48,6 +51,7 @@ export interface VaultSessionActions {
   setFolders: (value: SetStateAction<FolderView[]>) => void
   setItems: (value: SetStateAction<LoginSummary[]>) => void
   setOrganizations: (value: SetStateAction<OrganizationView[]>) => void
+  setPolicyBanner: (value: SetStateAction<PolicyBannerView | null>) => void
   setCollections: (value: SetStateAction<CollectionView[]>) => void
   setSharedItems: (value: SetStateAction<SharedLoginSummary[]>) => void
   setScope: (value: SetStateAction<Scope>) => void
@@ -73,6 +77,7 @@ function createInitialState(): VaultSessionState {
     folders: [],
     items: [],
     organizations: [],
+    policyBanner: null,
     collections: [],
     sharedItems: [],
     scope: { kind: 'all' },
@@ -107,6 +112,8 @@ export function createVaultSessionStore(): VaultSessionStoreApi {
         setIfActive((state) => ({
           organizations: resolveValue(value, state.organizations)
         })),
+      setPolicyBanner: (value) =>
+        setIfActive((state) => ({ policyBanner: resolveValue(value, state.policyBanner) })),
       setCollections: (value) =>
         setIfActive((state) => ({ collections: resolveValue(value, state.collections) })),
       setSharedItems: (value) =>

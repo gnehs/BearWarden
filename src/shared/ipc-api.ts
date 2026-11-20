@@ -102,6 +102,8 @@ import type {
   NativeRestoreSessionRequest,
   NativeRestoreStartRequest,
   OrganizationView,
+  PolicyBannerDismissRequest,
+  PolicyBannerView,
   PasskeyApprovalPrompt,
   PasskeyApprovalResponse,
   PasskeyApprovalVerificationRequest,
@@ -320,6 +322,10 @@ export const IPC_API = {
   },
   organizations: {
     list: invoke('organization:list').returns<OrganizationView[]>()
+  },
+  policyBanner: {
+    get: invoke('policy-banner:get').returns<PolicyBannerView | null>(),
+    dismiss: invoke('policy-banner:dismiss', forward<PolicyBannerDismissRequest>).returns()
   },
   collections: {
     list: invoke('collection:list', (organizationId?: string) => organizationId).returns<

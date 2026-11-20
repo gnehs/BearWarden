@@ -75,6 +75,7 @@ export class VaultUnlock {
         sharedLogins: [],
         sends: [],
         generatorHistory: [],
+        policyBannerDismissals: [],
         sync: null,
         nativeAttachmentRestore: null,
         masterPasswordChange: null

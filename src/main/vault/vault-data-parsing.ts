@@ -1,5 +1,6 @@
 import {
   BITWARDEN_POLICY_TYPE,
+  isStoredOrganizationUserNotification,
   type ActionablePolicyMetadata,
   type BitwardenPolicyMetadata,
   type BitwardenPolicySet
@@ -32,6 +33,9 @@ import {
   PENDING_LOGIN_IMPORT_DATA_VERSION,
   PERSONAL_VAULT_PURGE_DATA_VERSION,
   USAGE_COUNT_DATA_VERSION,
+  POLICY_BANNER_DATA_VERSION,
+  MAX_POLICY_BANNER_DISMISSALS,
+  MAX_POLICY_BANNER_KEY_LENGTH,
   DATA_VERSION,
   MAX_REMOTE_ENTITIES,
   MAX_SENDS
@@ -173,6 +177,23 @@ function parseStoredActionablePolicyData(
       action: data.action
     }
   }
+  if (policyType === BITWARDEN_POLICY_TYPE.OrganizationUserNotification) {
+    const data = strictStoredRecord(value, [
+      'kind',
+      'header',
+      'description',
+      'buttonText',
+      'showAfterEveryLogin'
+    ])
+    if (!isStoredOrganizationUserNotification(data)) throw new VaultError('CORRUPT_VAULT')
+    return {
+      kind: 'organizationUserNotification',
+      header: data.header as string | null,
+      description: data.description as string,
+      buttonText: data.buttonText as string | null,
+      showAfterEveryLogin: data.showAfterEveryLogin as boolean
+    }
+  }
   if (policyType === BITWARDEN_POLICY_TYPE.RestrictedItemTypes) {
     const data = strictStoredRecord(value, ['kind', 'cipherTypes'])
     if (
@@ -208,6 +229,20 @@ function parseStoredActionablePolicyData(
   const data = strictStoredRecord(value, ['kind'])
   if (!expectedKind || data.kind !== expectedKind) throw new VaultError('CORRUPT_VAULT')
   return { kind: expectedKind }
+}
+
+function parsePolicyBannerDismissals(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_POLICY_BANNER_DISMISSALS) {
+    throw new VaultError('CORRUPT_VAULT')
+  }
+  const keys = value.map((key) => {
+    if (typeof key !== 'string' || key.length === 0 || key.length > MAX_POLICY_BANNER_KEY_LENGTH) {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return key
+  })
+  if (new Set(keys).size !== keys.length) throw new VaultError('CORRUPT_VAULT')
+  return keys
 }
 
 function parseStoredPolicy(value: unknown): BitwardenPolicyMetadata {
@@ -247,7 +282,8 @@ function parseStoredPolicy(value: unknown): BitwardenPolicyMetadata {
     BITWARDEN_POLICY_TYPE.MaximumVaultTimeout,
     BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
     BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
-    BITWARDEN_POLICY_TYPE.RestrictedItemTypes
+    BITWARDEN_POLICY_TYPE.RestrictedItemTypes,
+    BITWARDEN_POLICY_TYPE.OrganizationUserNotification
   ])
   const expectedExecution =
     expectedTypeName === null
@@ -427,6 +463,7 @@ export function parseVaultData(value: unknown): VaultData {
       PENDING_LOGIN_IMPORT_DATA_VERSION,
       PERSONAL_VAULT_PURGE_DATA_VERSION,
       USAGE_COUNT_DATA_VERSION,
+      POLICY_BANNER_DATA_VERSION,
       DATA_VERSION
     ].includes(value.version)
   ) {
@@ -675,6 +712,12 @@ export function parseVaultData(value: unknown): VaultData {
         : taggedVaultSection('generator-history', () =>
             parseGeneratorHistory(value.generatorHistory)
           ),
+    policyBannerDismissals:
+      dataVersion < POLICY_BANNER_DATA_VERSION
+        ? []
+        : taggedVaultSection('policy-banner-dismissals', () =>
+            parsePolicyBannerDismissals(value.policyBannerDismissals)
+          ),
     sync,
     nativeAttachmentRestore,
     masterPasswordChange
@@ -729,6 +772,7 @@ export function cloneData(data: VaultData): VaultData {
       ...(send.file ? { file: { ...send.file } } : {})
     })),
     generatorHistory: cloneGeneratorHistory(data.generatorHistory),
+    policyBannerDismissals: [...data.policyBannerDismissals],
     nativeAttachmentRestore:
       data.nativeAttachmentRestore === null
         ? null

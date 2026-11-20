@@ -69,6 +69,7 @@ function fakeVault(): FakeVault {
       }
     },
     organizations: { list: async (): Promise<OrganizationView[]> => [] },
+    policyBanner: { get: async () => null },
     collections: { list: async (): Promise<CollectionView[]> => [] },
     sharedLogins: { list: async (): Promise<SharedLoginSummary[]> => [] }
   }
@@ -93,6 +94,34 @@ function setup(hasAuthorization: (id: string) => boolean = () => false): Harness
 }
 
 describe('createVaultDataSync load', () => {
+  it('loads the organization banner and tolerates a banner read failure', async () => {
+    const { sync, session, activeLists, folderLists, api } = setup()
+    const banner = {
+      key: 'org:policy:rev',
+      header: null,
+      description: 'Hello',
+      buttonText: null,
+      showAfterEveryLogin: false
+    }
+    api.policyBanner.get = async () => banner
+
+    const first = sync.load()
+    folderLists[0].resolve([])
+    activeLists[0].resolve([])
+    await first
+    expect(session.getState().policyBanner).toEqual(banner)
+
+    api.policyBanner.get = async () => {
+      throw new Error('banner unavailable')
+    }
+    const second = sync.load()
+    folderLists[1].resolve([])
+    activeLists[1].resolve([])
+    await second
+    expect(session.getState().policyBanner).toBeNull()
+    expect(session.getState().loading).toBe(false)
+  })
+
   it('fills the session lists, sorts folders and ends the loading state', async () => {
     const { sync, session, activeLists, folderLists } = setup()
 

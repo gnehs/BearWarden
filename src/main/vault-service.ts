@@ -47,6 +47,7 @@ import type {
   LoginListRequest,
   LoginPrefetchRequest,
   OrganizationView,
+  PolicyBannerView,
   CollectionView,
   SharedLoginListRequest,
   SharedLoginSummary,
@@ -143,6 +144,7 @@ import { VaultSyncSession } from './vault/sync-session'
 import { VaultFolders } from './vault/folders'
 import { VaultHealth } from './vault/health'
 import { VaultListings } from './vault/listings'
+import { VaultPolicyBanner } from './vault/policy-banner'
 import { VaultPasswordHistory } from './vault/password-history-service'
 import { VaultAttachments } from './vault/attachments'
 import { VaultPortability } from './vault/portability'
@@ -193,6 +195,7 @@ export class VaultService {
   private readonly accountSecurity: VaultAccountSecurity
   private readonly folders: VaultFolders
   private readonly listings: VaultListings
+  private readonly policyBanners: VaultPolicyBanner
   private readonly items: VaultItems
   private readonly authorization: VaultItemAuthorization
   private readonly sharedItems: VaultSharedItems
@@ -239,6 +242,7 @@ export class VaultService {
     )
     this.folders = new VaultFolders(core)
     this.listings = new VaultListings(core, syncSession)
+    this.policyBanners = new VaultPolicyBanner(core)
     this.items = new VaultItems(core, platform)
     this.authorization = new VaultItemAuthorization(core)
     this.sharedItems = new VaultSharedItems(core, syncSession, platform)
@@ -584,6 +588,14 @@ export class VaultService {
 
   listLogins(request: LoginListRequest = {}): Promise<LoginSummary[]> {
     return this.listings.listLogins(request)
+  }
+
+  policyBanner(): Promise<PolicyBannerView | null> {
+    return this.policyBanners.get()
+  }
+
+  dismissPolicyBanner(key: string): Promise<void> {
+    return this.policyBanners.dismiss(key)
   }
 
   listOrganizations(): Promise<OrganizationView[]> {

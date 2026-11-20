@@ -140,6 +140,8 @@ export interface VaultData {
   sharedLogins: StoredSharedLogin[]
   sends: StoredSend[]
   generatorHistory: GeneratorHistoryEntry[]
+  /** Dismissed organization banner keys (organization, policy, revision), newest last. */
+  policyBannerDismissals: string[]
   sync: PersistedSyncData | null
   nativeAttachmentRestore: NativeAttachmentRestoreJournal | null
   masterPasswordChange: MasterPasswordChangeJournal | null
