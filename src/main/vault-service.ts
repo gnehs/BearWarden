@@ -224,7 +224,8 @@ export class VaultService {
         (() => {
           throw new BitwardenDirectError('INVALID_RESPONSE')
         }),
-      options.requestAccountWebAuthnAssertion ?? null
+      options.requestAccountWebAuthnAssertion ?? null,
+      (url) => platform.openExternal(url)
     )
     const pinUnlock = new VaultPinUnlockState()
     const syncEngine = new VaultSyncEngine(core, syncSession, pinUnlock)
@@ -372,6 +373,14 @@ export class VaultService {
 
   sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
     return this.sync.sendSyncEmailTwoFactorCode(request)
+  }
+  /** Runs outside the vault mutex: the Duo login it completes is holding it. */
+  submitSyncDuoCallback(callback: string): void {
+    this.sync.submitDuoCallback(callback)
+  }
+
+  cancelSyncDuo(): void {
+    this.sync.cancelDuoLogin()
   }
 
   resendSyncNewDeviceOtp(request: {

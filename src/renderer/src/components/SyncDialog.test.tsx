@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { PendingImportWarning } from './PendingImportWarning'
 import {
   buildSyncTwoFactorRequest,
+  DUO_TWO_FACTOR_METHOD,
+  ORGANIZATION_DUO_TWO_FACTOR_METHOD,
   resolveSyncTwoFactorMethod,
   syncTwoFactorProviderForMethod,
   WEB_AUTHN_TWO_FACTOR_METHOD
@@ -97,7 +99,7 @@ describe('SyncDialog error diagnostics', () => {
 
   it('presents unsupported sign-in capabilities as stable safe categories', () => {
     expect(syncErrorPresentation('SYNC_SSO_REQUIRED').title).toBe('需要單一登入')
-    expect(syncErrorPresentation('SYNC_DUO_UNSUPPORTED').title).toBe('不支援 Duo 驗證')
+    expect(syncErrorPresentation('SYNC_DUO_FAILED').title).toBe('Duo 驗證未完成')
     expect(syncErrorPresentation('SYNC_KEY_CONNECTOR_UNSUPPORTED').title).toBe(
       '不支援 Key Connector 帳戶'
     )
@@ -107,7 +109,7 @@ describe('SyncDialog error diagnostics', () => {
     expect(
       JSON.stringify([
         syncErrorPresentation('SYNC_SSO_REQUIRED'),
-        syncErrorPresentation('SYNC_DUO_UNSUPPORTED'),
+        syncErrorPresentation('SYNC_DUO_FAILED'),
         syncErrorPresentation('SYNC_KEY_CONNECTOR_UNSUPPORTED'),
         syncErrorPresentation('SYNC_TRUSTED_DEVICE_UNSUPPORTED')
       ])
@@ -120,7 +122,7 @@ describe('SyncDialog error diagnostics', () => {
       undefined,
       'SYNC_AUTH_REQUIRED',
       'SYNC_SSO_REQUIRED',
-      'SYNC_DUO_UNSUPPORTED',
+      'SYNC_DUO_FAILED',
       'SYNC_FAILED'
     ] as const) {
       expect(shouldOfferNewDeviceOtpResend(code)).toBe(false)
@@ -293,15 +295,38 @@ describe('SyncDialog WebAuthn request boundary', () => {
   })
 
   it('does not offer unsupported server providers as a usable form method', () => {
-    expect(resolveSyncTwoFactorMethod('0', ['2', '5', '6', '8'])).toBeNull()
+    expect(resolveSyncTwoFactorMethod('0', ['4', '5', '8'])).toBeNull()
     expect(syncTwoFactorProviderForMethod(WEB_AUTHN_TWO_FACTOR_METHOD)).toBe('7')
+  })
+
+  it('offers personal and organization Duo, preferring in-place code methods', () => {
+    expect(resolveSyncTwoFactorMethod('0', ['2'])).toBe(DUO_TWO_FACTOR_METHOD)
+    expect(resolveSyncTwoFactorMethod('0', ['6'])).toBe(ORGANIZATION_DUO_TWO_FACTOR_METHOD)
+    expect(resolveSyncTwoFactorMethod('0', ['2', '6', '1'])).toBe('1')
+    expect(resolveSyncTwoFactorMethod(ORGANIZATION_DUO_TWO_FACTOR_METHOD, ['2', '6'])).toBe(
+      ORGANIZATION_DUO_TWO_FACTOR_METHOD
+    )
+    expect(syncTwoFactorProviderForMethod(DUO_TWO_FACTOR_METHOD)).toBe('2')
+    expect(syncTwoFactorProviderForMethod(ORGANIZATION_DUO_TWO_FACTOR_METHOD)).toBe('6')
+  })
+
+  it.each([
+    [DUO_TWO_FACTOR_METHOD, '2'],
+    [ORGANIZATION_DUO_TWO_FACTOR_METHOD, '6']
+  ] as const)('starts %s with only the provider and remember choice', (method, provider) => {
+    const request = buildSyncTwoFactorRequest({
+      twoFactorMethod: method,
+      twoFactorCode: 'stale-code-must-not-leave-the-renderer',
+      rememberDevice: true
+    })
+    expect(request).toEqual({ duo: { provider, remember: true } })
   })
 
   it('keeps legacy two-factor requests free of the WebAuthn remember flag', () => {
     const request = buildSyncTwoFactorRequest({
       twoFactorMethod: '0',
       twoFactorCode: '  123456  ',
-      webAuthnRemember: false
+      rememberDevice: false
     })
 
     expect(request).toEqual({ twoFactorMethod: '0', twoFactorCode: '123456' })
@@ -314,7 +339,7 @@ describe('SyncDialog WebAuthn request boundary', () => {
       const request = buildSyncTwoFactorRequest({
         twoFactorMethod: WEB_AUTHN_TWO_FACTOR_METHOD,
         twoFactorCode: 'legacy-code-must-not-leave-the-renderer',
-        webAuthnRemember
+        rememberDevice: webAuthnRemember
       })
 
       expect(request).toEqual({ webAuthnRemember })

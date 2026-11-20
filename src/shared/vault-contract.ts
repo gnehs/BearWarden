@@ -46,7 +46,8 @@ export type VaultErrorCode =
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
   | 'SYNC_SSO_REQUIRED'
-  | 'SYNC_DUO_UNSUPPORTED'
+  | 'SYNC_DUO_FAILED'
+  | 'SYNC_DUO_CANCELED'
   | 'SYNC_KEY_CONNECTOR_UNSUPPORTED'
   | 'SYNC_TRUSTED_DEVICE_UNSUPPORTED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
@@ -923,7 +924,7 @@ export type SyncErrorCode =
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
   | 'SYNC_SSO_REQUIRED'
-  | 'SYNC_DUO_UNSUPPORTED'
+  | 'SYNC_DUO_FAILED'
   | 'SYNC_KEY_CONNECTOR_UNSUPPORTED'
   | 'SYNC_TRUSTED_DEVICE_UNSUPPORTED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
@@ -1023,6 +1024,18 @@ export type SyncTwoFactorProvider = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7
 /** Code-based methods the renderer may submit directly. */
 export type SyncTwoFactorMethod = '0' | '1' | '3'
 
+/** Personal Duo and organization Duo, both completed through the Duo Universal Prompt. */
+export type SyncDuoTwoFactorProvider = '2' | '6'
+
+/**
+ * Starts a Duo login: main fetches a fresh Duo prompt, opens it in the system browser, and waits
+ * for `submitDuoCallback` or `cancelDuo`. The prompt URL and its state never reach the renderer.
+ */
+export interface SyncDuoTwoFactorRequest {
+  provider: SyncDuoTwoFactorProvider
+  remember: boolean
+}
+
 export interface SyncConnectRequest {
   serverUrl: string
   email: string
@@ -1030,6 +1043,7 @@ export interface SyncConnectRequest {
   twoFactorMethod?: SyncTwoFactorMethod
   twoFactorCode?: string
   webAuthnRemember?: boolean
+  duo?: SyncDuoTwoFactorRequest
   newDeviceOtp?: string
 }
 
@@ -1038,7 +1052,13 @@ export interface SyncUnlockRequest {
   twoFactorMethod?: SyncTwoFactorMethod
   twoFactorCode?: string
   webAuthnRemember?: boolean
+  duo?: SyncDuoTwoFactorRequest
   newDeviceOtp?: string
+}
+
+/** What the browser shows after Duo: the redirected page address, or a `code|state` pair. */
+export interface SyncDuoCallbackRequest {
+  callback: string
 }
 
 export interface SyncEmailTwoFactorCodeRequest {

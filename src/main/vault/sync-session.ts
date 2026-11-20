@@ -20,7 +20,17 @@ import { assertUuid } from './parse-primitives'
 import { cloneData } from './vault-data-parsing'
 import type { PinSyncKeyMaterial } from '../pin-unlock'
 import type { VaultCore } from './core'
-import type { PersistedSyncData, VaultAccountWebAuthnAssertionRequester } from './types'
+import type {
+  PersistedSyncData,
+  VaultAccountWebAuthnAssertionRequester,
+  VaultPlatform
+} from './types'
+import { DuoLoginCallbacks, DuoLoginError, type DuoLoginProvider } from '../duo-login'
+
+/** Server-driven second factors that need a ceremony after the first token challenge. */
+export type SyncInteractiveTwoFactor =
+  | { readonly kind: 'webauthn'; readonly remember: boolean }
+  | { readonly kind: 'duo'; readonly provider: DuoLoginProvider; readonly remember: boolean }
 
 export interface AuthenticatorSetupSession {
   readonly generation: number
@@ -80,14 +90,18 @@ export class VaultSyncSession {
   readonly emailTwoFactorSetupSessions = new Map<string, EmailTwoFactorSetupSession>()
   readonly loginApprovalSessions = new Map<string, LoginApprovalSession>()
 
+  readonly duoLoginCallbacks = new DuoLoginCallbacks()
+
   constructor(
     private readonly core: VaultCore,
     private readonly createSyncClient: (sync: PersistedSyncData) => BitwardenSyncClient,
-    private readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null
+    private readonly requestAccountWebAuthnAssertion: VaultAccountWebAuthnAssertionRequester | null,
+    private readonly openExternal: VaultPlatform['openExternal']
   ) {
     core.registerResource({
       abort: () => {
         this.operationAbort?.abort()
+        this.duoLoginCallbacks.cancel()
         this.abortNotificationTokenLeases()
         this.abortAccountSecurityRequests()
         this.abortNativeAttachmentBackups()
@@ -275,11 +289,13 @@ export class VaultSyncSession {
 
   mapSyncError(error: unknown): VaultError {
     if (error instanceof VaultError) {
+      // The user backed out of Duo; nothing failed, so no sync error is recorded.
+      if (error.code === 'SYNC_DUO_CANCELED') return error
       if (
         error.code === 'SYNC_AUTH_REQUIRED' ||
         error.code === 'SYNC_NEW_DEVICE_REQUIRED' ||
         error.code === 'SYNC_SSO_REQUIRED' ||
-        error.code === 'SYNC_DUO_UNSUPPORTED' ||
+        error.code === 'SYNC_DUO_FAILED' ||
         error.code === 'SYNC_KEY_CONNECTOR_UNSUPPORTED' ||
         error.code === 'SYNC_TRUSTED_DEVICE_UNSUPPORTED' ||
         error.code === 'SYNC_UNSUPPORTED_ACCOUNT' ||
@@ -313,13 +329,6 @@ export class VaultSyncSession {
       }
       if (error.code === 'TWO_FACTOR_REQUIRED') {
         const rawProviders = error.twoFactorProviders ?? []
-        if (
-          rawProviders.length > 0 &&
-          rawProviders.every((provider) => provider === 2 || provider === 6)
-        ) {
-          this.recordSyncError('SYNC_DUO_UNSUPPORTED')
-          return new VaultError('SYNC_DUO_UNSUPPORTED')
-        }
         this.recordSyncError('SYNC_AUTH_REQUIRED')
         const providers = rawProviders.flatMap((provider) =>
           Number.isInteger(provider) && provider >= 0 && provider <= 8
@@ -509,10 +518,28 @@ export class VaultSyncSession {
     return normalized
   }
 
-  async authenticateSyncWithWebAuthnRetry(
+  /** One server-driven ceremony may follow the first challenge; at most one retry is sent. */
+  normalizeInteractiveTwoFactor(
+    request: Pick<SyncConnectRequest, 'webAuthnRemember' | 'duo'>,
+    twoFactor: BitwardenTwoFactor | undefined
+  ): SyncInteractiveTwoFactor | undefined {
+    const { webAuthnRemember, duo } = request
+    if (webAuthnRemember !== undefined && duo !== undefined) throw new VaultError('INVALID_INPUT')
+    // A submitted code is the second factor; no ceremony runs alongside it.
+    if (twoFactor !== undefined) return undefined
+    if (duo !== undefined) {
+      const provider = Number(duo.provider) as DuoLoginProvider
+      return { kind: 'duo', provider, remember: duo.remember }
+    }
+    return typeof webAuthnRemember === 'boolean'
+      ? { kind: 'webauthn', remember: webAuthnRemember }
+      : undefined
+  }
+
+  async authenticateSyncWithInteractiveTwoFactor(
     authenticate: (twoFactor: BitwardenLoginTwoFactor | undefined) => Promise<void>,
     initialTwoFactor: BitwardenTwoFactor | undefined,
-    webAuthnRemember: unknown,
+    interactive: SyncInteractiveTwoFactor | undefined,
     serverUrl: string,
     signal: AbortSignal
   ): Promise<void> {
@@ -523,32 +550,96 @@ export class VaultSyncSession {
       if (
         !(error instanceof BitwardenDirectError) ||
         error.code !== 'TWO_FACTOR_REQUIRED' ||
-        error.webAuthnChallenge === undefined ||
         initialTwoFactor !== undefined ||
-        typeof webAuthnRemember !== 'boolean' ||
-        this.requestAccountWebAuthnAssertion === null
+        interactive === undefined
       ) {
         throw error
       }
-
-      let assertion: AccountWebAuthnAssertion
-      try {
-        assertion = await this.requestAccountWebAuthnAssertion(
-          Object.freeze({
-            webVaultUrl: resolveBitwardenUrls(serverUrl).webVaultUrl,
-            challenge: error.webAuthnChallenge,
-            remember: webAuthnRemember,
-            signal
-          })
-        )
-      } catch {
-        // Connector cancellation, timeout, and remote details collapse to stable public errors.
-        throw new BitwardenDirectError(signal.aborted ? 'ABORTED' : 'INVALID_RESPONSE')
-      }
+      const twoFactor =
+        interactive.kind === 'webauthn'
+          ? await this.completeWebAuthnLogin(error, interactive.remember, serverUrl, signal)
+          : await this.completeDuoLogin(error, interactive, signal)
       if (signal.aborted) throw new BitwardenDirectError('ABORTED')
 
-      // This is the only retry. A second provider-7 challenge propagates to the normal mapper.
-      await authenticate({ method: 7, assertion, remember: webAuthnRemember })
+      // This is the only retry. A second challenge propagates to the normal mapper.
+      await authenticate(twoFactor)
     }
+  }
+
+  private async completeWebAuthnLogin(
+    challengeError: BitwardenDirectError,
+    remember: boolean,
+    serverUrl: string,
+    signal: AbortSignal
+  ): Promise<BitwardenLoginTwoFactor> {
+    if (
+      challengeError.webAuthnChallenge === undefined ||
+      this.requestAccountWebAuthnAssertion === null
+    ) {
+      throw challengeError
+    }
+    let assertion: AccountWebAuthnAssertion
+    try {
+      assertion = await this.requestAccountWebAuthnAssertion(
+        Object.freeze({
+          webVaultUrl: resolveBitwardenUrls(serverUrl).webVaultUrl,
+          challenge: challengeError.webAuthnChallenge,
+          remember,
+          signal
+        })
+      )
+    } catch {
+      // Connector cancellation, timeout, and remote details collapse to stable public errors.
+      throw new BitwardenDirectError(signal.aborted ? 'ABORTED' : 'INVALID_RESPONSE')
+    }
+    return { method: 7, assertion, remember }
+  }
+
+  /**
+   * Duo's redirect URI is fixed by the server (`{domain}/duo-redirect-connector.html?client=…`)
+   * and signed into the prompt, so the result comes back as the redirected address the user
+   * pastes. The prompt's own state gates that paste before anything reaches the server.
+   */
+  private async completeDuoLogin(
+    challengeError: BitwardenDirectError,
+    interactive: Extract<SyncInteractiveTwoFactor, { kind: 'duo' }>,
+    signal: AbortSignal
+  ): Promise<BitwardenLoginTwoFactor> {
+    const prompt = challengeError.duoLoginPrompts?.find(
+      (candidate) => candidate.provider === interactive.provider
+    )
+    if (!prompt) throw challengeError
+    const callback = this.duoLoginCallbacks.wait(prompt, signal)
+    try {
+      await this.openExternal(prompt.authUrl)
+    } catch {
+      this.duoLoginCallbacks.cancel()
+      await callback.catch(() => undefined)
+      throw new VaultError('SYNC_DUO_FAILED')
+    }
+    let token: string
+    try {
+      token = await callback
+    } catch (error) {
+      if (signal.aborted) throw new BitwardenDirectError('ABORTED')
+      if (error instanceof DuoLoginError && error.code === 'CANCELED') {
+        throw new VaultError('SYNC_DUO_CANCELED')
+      }
+      throw new VaultError('SYNC_DUO_FAILED')
+    }
+    return { method: prompt.provider, token, remember: interactive.remember }
+  }
+
+  /** Delivers the pasted Duo result to the in-flight login; malformed input keeps it waiting. */
+  submitDuoCallback(callback: string): void {
+    try {
+      this.duoLoginCallbacks.submit(callback)
+    } catch {
+      throw new VaultError('INVALID_INPUT')
+    }
+  }
+
+  cancelDuoLogin(): void {
+    this.duoLoginCallbacks.cancel()
   }
 }

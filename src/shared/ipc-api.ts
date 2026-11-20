@@ -137,6 +137,7 @@ import type {
   SshKeyImportResult,
   SshKeyUpdateImportedRequest,
   SyncConnectRequest,
+  SyncDuoCallbackRequest,
   SyncConnectResponse,
   SyncEmailTwoFactorCodeRequest,
   SyncPurgePersonalVaultRequest,
@@ -547,6 +548,11 @@ export const IPC_API = {
     status: invoke('sync:status').returns<SyncStatus>(),
     connect: invoke('sync:connect', forward<SyncConnectRequest>).returns<SyncConnectResponse>(),
     unlock: invoke('sync:unlock', forward<SyncUnlockRequest>).returns<SyncUnlockResponse>(),
+    submitDuoCallback: invoke(
+      'sync:submit-duo-callback',
+      (callback: string): SyncDuoCallbackRequest => ({ callback })
+    ).returns(),
+    cancelDuo: invoke('sync:cancel-duo').returns(),
     sendEmailTwoFactorCode: invoke(
       'sync:send-email-two-factor-code',
       forward<SyncEmailTwoFactorCodeRequest>

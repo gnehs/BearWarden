@@ -247,6 +247,8 @@ describe('preload sync API', () => {
       'status',
       'connect',
       'unlock',
+      'submitDuoCallback',
+      'cancelDuo',
       'sendEmailTwoFactorCode',
       'resendNewDeviceOtp',
       'now',

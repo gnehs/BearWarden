@@ -2042,6 +2042,8 @@ describe('registerVaultIpc reprompt gate', () => {
       sendSyncEmailTwoFactorCode: vi.fn(async () => undefined),
       resendSyncNewDeviceOtp: vi.fn(async () => undefined),
       resolvePendingLoginImport: vi.fn(async () => ({ configured: true, state: 'ready' })),
+      submitSyncDuoCallback: vi.fn(),
+      cancelSyncDuo: vi.fn(),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
@@ -2274,6 +2276,41 @@ describe('registerVaultIpc reprompt gate', () => {
       resolve(event, { masterPassword: 'wrong password', confirmRetry: true })
     ).rejects.toThrow('BEARWARDEN:INVALID_MASTER_PASSWORD')
     expect(received).toEqual({ masterPassword: '', confirmRetry: true })
+  })
+
+  it('accepts a typed Duo start request and relays only the pasted callback string', async () => {
+    const { event, vault } = harness()
+    const connect = electronMock.handlers.get('sync:connect')!
+    const submit = electronMock.handlers.get('sync:submit-duo-callback')!
+    const cancel = electronMock.handlers.get('sync:cancel-duo')!
+    const connectRequest = {
+      serverUrl: 'https://vault.example.invalid',
+      email: 'person@example.invalid',
+      masterPassword: 'remote password',
+      duo: { provider: '6', remember: true }
+    }
+
+    await connect(event, connectRequest)
+    expect(vault.connectSync).toHaveBeenCalledWith(connectRequest)
+    for (const duo of [
+      { provider: '7', remember: true },
+      { provider: 2, remember: true },
+      { provider: '2', remember: 'yes' },
+      { provider: '2', remember: true, authUrl: 'https://api-x.duosecurity.com/' },
+      null
+    ]) {
+      await expect(connect(event, { ...connectRequest, duo })).rejects.toThrow(
+        'BEARWARDEN:INVALID_INPUT'
+      )
+    }
+
+    await submit(event, { callback: 'code|state' })
+    expect(vault.submitSyncDuoCallback).toHaveBeenCalledWith('code|state')
+    for (const invalid of [{ callback: '' }, { callback: 1 }, { callback: 'x', state: 'y' }]) {
+      await expect(submit(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    await cancel(event, undefined)
+    expect(vault.cancelSyncDuo).toHaveBeenCalledOnce()
   })
 
   it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {

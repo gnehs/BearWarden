@@ -121,13 +121,14 @@ export class VaultSyncService {
         request.twoFactorMethod,
         request.twoFactorCode
       )
+      const interactive = this.syncSession.normalizeInteractiveTwoFactor(request, twoFactor)
       const newDeviceOtp = this.syncSession.normalizeNewDeviceOtp(request.newDeviceOtp)
       const abort = this.syncSession.startSyncOperation()
 
       try {
         const sync = initialSyncData(serverUrl, email)
         const client = this.syncSession.createDetachedClient(sync)
-        await this.syncSession.authenticateSyncWithWebAuthnRetry(
+        await this.syncSession.authenticateSyncWithInteractiveTwoFactor(
           (retryTwoFactor) =>
             client.login({
               email,
@@ -137,7 +138,7 @@ export class VaultSyncService {
               signal: abort.signal
             }),
           twoFactor,
-          request.webAuthnRemember,
+          interactive,
           sync.serverUrl,
           abort.signal
         )
@@ -167,6 +168,14 @@ export class VaultSyncService {
         this.syncSession.finishSyncOperation(abort)
       }
     })
+  }
+
+  submitDuoCallback(callback: string): void {
+    this.syncSession.submitDuoCallback(callback)
+  }
+
+  cancelDuoLogin(): void {
+    this.syncSession.cancelDuoLogin()
   }
 
   sendSyncEmailTwoFactorCode(request: SyncEmailTwoFactorCodeRequest): Promise<void> {
@@ -251,8 +260,9 @@ export class VaultSyncService {
       request.twoFactorMethod,
       request.twoFactorCode
     )
+    const interactive = this.syncSession.normalizeInteractiveTwoFactor(request, twoFactor)
     const newDeviceOtp = this.syncSession.normalizeNewDeviceOtp(request.newDeviceOtp)
-    await this.syncSession.authenticateSyncWithWebAuthnRetry(
+    await this.syncSession.authenticateSyncWithInteractiveTwoFactor(
       (retryTwoFactor) =>
         client.unlock({
           password,
@@ -261,7 +271,7 @@ export class VaultSyncService {
           signal
         }),
       twoFactor,
-      request.webAuthnRemember,
+      interactive,
       sync.serverUrl,
       signal
     )

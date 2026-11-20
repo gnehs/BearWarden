@@ -89,6 +89,8 @@ import {
   type VaultLoginUri,
   type VaultItemType,
   type SyncConnectRequest,
+  type SyncDuoCallbackRequest,
+  type SyncDuoTwoFactorRequest,
   type SyncPurgePersonalVaultRequest,
   type SyncResolvePendingImportRequest,
   type SyncStatus,
@@ -2097,15 +2099,36 @@ function isSyncTwoFactorProvider(value: unknown): value is SyncTwoFactorProvider
   )
 }
 
+function optionalDuoTwoFactor(record: RecordValue): SyncDuoTwoFactorRequest | undefined {
+  if (record.duo === undefined) return undefined
+  const duo = exactRecord(record.duo, ['provider', 'remember'])
+  const remember = duo.remember
+  if ((duo.provider !== '2' && duo.provider !== '6') || typeof remember !== 'boolean') {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { provider: duo.provider, remember }
+}
+
 function applySyncTwoFactorOptions(record: RecordValue, result: SyncUnlockRequest): void {
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
   const twoFactorMethod = optionalTwoFactorMethod(record)
   const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
+  const duo = optionalDuoTwoFactor(record)
   const newDeviceOtp = optionalStringOrNull(record, 'newDeviceOtp')
   if (twoFactorCode) result.twoFactorCode = twoFactorCode
   if (twoFactorMethod) result.twoFactorMethod = twoFactorMethod
   if (webAuthnRemember !== undefined) result.webAuthnRemember = webAuthnRemember
+  if (duo) result.duo = duo
   if (newDeviceOtp) result.newDeviceOtp = newDeviceOtp
+}
+
+function parseSyncDuoCallback(value: unknown): SyncDuoCallbackRequest {
+  const record = exactDataRecord(value, ['callback'])
+  const callback = requiredString(record, 'callback')
+  if (callback.length === 0 || callback.length > MAX_SYNC_SERVER_URL_LENGTH * 2) {
+    throw new VaultError('INVALID_INPUT')
+  }
+  return { callback }
 }
 
 function parseSyncConnect(value: unknown): SyncConnectRequest {
@@ -2116,6 +2139,7 @@ function parseSyncConnect(value: unknown): SyncConnectRequest {
     'twoFactorMethod',
     'twoFactorCode',
     'webAuthnRemember',
+    'duo',
     'newDeviceOtp'
   ])
   const result: SyncConnectRequest = {
@@ -2133,6 +2157,7 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
     'twoFactorMethod',
     'twoFactorCode',
     'webAuthnRemember',
+    'duo',
     'newDeviceOtp'
   ])
   const result: SyncUnlockRequest = {
@@ -3117,6 +3142,12 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       await refreshSyncStatus()
       throw error
     }
+  })
+  ipc.handle('sync:submit-duo-callback', parseSyncDuoCallback, ({ callback }) => {
+    vault.submitSyncDuoCallback(callback)
+  })
+  ipc.handle('sync:cancel-duo', parseNoInput, () => {
+    vault.cancelSyncDuo()
   })
   ipc.handle('sync:send-email-two-factor-code', parseSyncCredentials, (request) =>
     vault.sendSyncEmailTwoFactorCode(request)

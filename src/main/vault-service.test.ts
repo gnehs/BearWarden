@@ -39,6 +39,8 @@ import type {
   AccountWebAuthnAttestation,
   AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
+import type { DuoLoginPrompt } from './duo-login'
+import type { SyncResult } from '../shared/vault-contract'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -2846,7 +2848,7 @@ describe('VaultService encrypted local data', () => {
     })
   })
 
-  it('reports Duo-only two-factor challenges as an unsupported login flow', async () => {
+  it('passes Duo-only two-factor challenges through as selectable providers', async () => {
     let fake: ReturnType<typeof createSyncFake> | null = null
     const { service } = await createHarness({
       createSyncClient: (sync) => {
@@ -2864,10 +2866,147 @@ describe('VaultService encrypted local data', () => {
       throw new BitwardenDirectError('TWO_FACTOR_REQUIRED', undefined, undefined, [2, 6])
     }
 
-    await expect(service.syncNow()).rejects.toMatchObject({ code: 'SYNC_DUO_UNSUPPORTED' })
-    await expect(service.syncStatus()).resolves.toMatchObject({
-      state: 'error',
-      lastError: 'SYNC_DUO_UNSUPPORTED'
+    await expect(service.syncNow()).rejects.toMatchObject({
+      code: 'SYNC_AUTH_REQUIRED',
+      providers: ['2', '6']
+    })
+  })
+
+  describe('Duo login', () => {
+    const duoState = 'D'.repeat(40)
+    const duoPrompt: DuoLoginPrompt = Object.freeze({
+      provider: 2,
+      authUrl: 'https://api-1234abcd.duosecurity.com/oauth/v1/authorize?request=x',
+      state: duoState,
+      redirectBase: 'https://vault.example.invalid/duo-redirect-connector.html'
+    })
+    const duoCallback = `${duoPrompt.redirectBase}?client=desktop&code=duo-code&state=${duoState}`
+
+    function duoChallenge(prompts: readonly DuoLoginPrompt[] = [duoPrompt]): BitwardenDirectError {
+      return new BitwardenDirectError(
+        'TWO_FACTOR_REQUIRED',
+        undefined,
+        undefined,
+        [2],
+        undefined,
+        prompts
+      )
+    }
+
+    async function duoHarness(): Promise<{
+      service: VaultService
+      openExternal: ReturnType<typeof vi.fn>
+      loginRequests: Parameters<BitwardenSyncClient['login']>[0][]
+    }> {
+      const loginRequests: Parameters<BitwardenSyncClient['login']>[0][] = []
+      const harness = await createHarness({
+        createSyncClient: (sync) => {
+          const client = createSyncFake(sync.state)
+          const login = client.login.bind(client)
+          client.login = async (request) => {
+            loginRequests.push(request)
+            if (loginRequests.length === 1) throw duoChallenge()
+            await login(request)
+          }
+          return client
+        }
+      })
+      await harness.service.setup(MASTER_PASSWORD)
+      return { service: harness.service, openExternal: harness.openExternal, loginRequests }
+    }
+
+    function connectWithDuo(service: VaultService, remember: boolean): Promise<SyncResult> {
+      return service.connectSync({
+        serverUrl: 'https://vault.example.invalid',
+        email: 'sync@example.invalid',
+        masterPassword: 'remote master password',
+        duo: { provider: '2', remember }
+      })
+    }
+
+    it.each([true, false])(
+      'opens the prompt externally and retries once with code|state and remember=%s',
+      async (remember) => {
+        const { service, openExternal, loginRequests } = await duoHarness()
+        const connecting = connectWithDuo(service, remember)
+        await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith(duoPrompt.authUrl))
+
+        expect(() => service.submitSyncDuoCallback('not a duo result')).toThrow(
+          expect.objectContaining({ code: 'INVALID_INPUT' })
+        )
+        service.submitSyncDuoCallback(duoCallback)
+
+        await expect(connecting).resolves.toMatchObject({ configured: true, state: 'ready' })
+        expect(loginRequests).toHaveLength(2)
+        expect(loginRequests[0]!.twoFactor).toBeUndefined()
+        expect(loginRequests[1]!.twoFactor).toEqual({
+          method: 2,
+          token: `duo-code|${duoState}`,
+          remember
+        })
+        expect(JSON.stringify(service)).not.toContain(duoState)
+      }
+    )
+
+    it('fails closed on a foreign state without retrying the token request', async () => {
+      const { service, openExternal, loginRequests } = await duoHarness()
+      const connecting = connectWithDuo(service, false)
+      await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
+      service.submitSyncDuoCallback(`duo-code|${'F'.repeat(40)}`)
+
+      await expect(connecting).rejects.toMatchObject({ code: 'SYNC_DUO_FAILED' })
+      expect(loginRequests).toHaveLength(1)
+      await expect(service.syncStatus()).resolves.toMatchObject({ lastError: 'SYNC_DUO_FAILED' })
+    })
+
+    it('reports a user cancel without recording a sync error', async () => {
+      const { service, openExternal, loginRequests } = await duoHarness()
+      const connecting = connectWithDuo(service, false)
+      await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
+      service.cancelSyncDuo()
+
+      await expect(connecting).rejects.toMatchObject({ code: 'SYNC_DUO_CANCELED' })
+      expect(loginRequests).toHaveLength(1)
+      await expect(service.syncStatus()).resolves.not.toHaveProperty('lastError')
+      expect(() => service.submitSyncDuoCallback(duoCallback)).toThrow(
+        expect.objectContaining({ code: 'INVALID_INPUT' })
+      )
+    })
+
+    it('abandons the waiting Duo login when the vault locks', async () => {
+      const { service, openExternal, loginRequests } = await duoHarness()
+      const connecting = connectWithDuo(service, false)
+      await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
+      const settled = connecting.catch((error: unknown) => error)
+      await service.lock()
+
+      expect(await settled).toBeInstanceOf(Error)
+      expect(loginRequests).toHaveLength(1)
+      expect(() => service.submitSyncDuoCallback(duoCallback)).toThrow(
+        expect.objectContaining({ code: 'INVALID_INPUT' })
+      )
+    })
+
+    it('surfaces the challenge unchanged when the server offered no usable Duo prompt', async () => {
+      const loginRequests: Parameters<BitwardenSyncClient['login']>[0][] = []
+      const { service, openExternal } = await createHarness({
+        createSyncClient: (sync) => {
+          const client = createSyncFake(sync.state)
+          client.login = async (request) => {
+            loginRequests.push(request)
+            throw duoChallenge([])
+          }
+          return client
+        }
+      })
+      await service.setup(MASTER_PASSWORD)
+
+      await expect(connectWithDuo(service, true)).rejects.toMatchObject({
+        code: 'SYNC_AUTH_REQUIRED',
+        providers: ['2']
+      })
+      expect(openExternal).not.toHaveBeenCalled()
+      expect(loginRequests).toHaveLength(1)
     })
   })
 

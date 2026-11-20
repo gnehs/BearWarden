@@ -47,6 +47,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel
 } from '@renderer/components/ui/field'
@@ -78,11 +79,15 @@ import { PendingImportWarning } from './PendingImportWarning'
 import { SyncErrorDetailsDialog } from './SyncErrorDetailsDialog'
 import {
   buildSyncTwoFactorRequest,
+  DUO_TWO_FACTOR_METHOD,
+  ORGANIZATION_DUO_TWO_FACTOR_METHOD,
   resolveSyncTwoFactorMethod,
+  syncTwoFactorMethodKind,
   syncTwoFactorProviderForMethod,
   WEB_AUTHN_TWO_FACTOR_METHOD,
   type SyncTwoFactorFormMethod
 } from './sync-two-factor-request'
+import { useDuoLoginCallback } from '../hooks/use-duo-login-callback'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
 
@@ -135,6 +140,10 @@ interface SyncDialogProps {
   onSynced: () => Promise<void>
 }
 
+function isDuoCanceled(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('SYNC_DUO_CANCELED')
+}
+
 function describeSyncError(error: unknown): string {
   if (!(error instanceof Error)) return t`Sync did not complete. Please try again later.`
   if (/(?:CANCEL|ABORT)/i.test(error.message)) return t`The operation was canceled.`
@@ -142,8 +151,13 @@ function describeSyncError(error: unknown): string {
     return t`The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options.`
   if (error.message.includes('SYNC_SSO_REQUIRED'))
     return t`This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet.`
-  if (error.message.includes('SYNC_DUO_UNSUPPORTED'))
-    return t`This account requires Duo two-step verification, which BearWarden does not support yet. Use another enabled verification method or the official Bitwarden client.`
+  if (error.message.includes('SYNC_DUO_FAILED'))
+    return t({
+      message:
+        'Duo verification did not complete. It may have timed out, or the pasted address belongs to a different Duo sign-in. Open Duo again to retry.',
+      comment:
+        'Sign-in dialog error after the Duo two-step verification step fails, times out, or receives a callback address from another sign-in attempt.'
+    })
   if (error.message.includes('SYNC_KEY_CONNECTOR_UNSUPPORTED'))
     return t`This organization uses Key Connector. BearWarden cannot unlock this account safely; use the official Bitwarden client.`
   if (error.message.includes('SYNC_TRUSTED_DEVICE_UNSUPPORTED'))
@@ -180,7 +194,7 @@ const SYNC_ERROR_CODES: readonly SyncErrorCode[] = [
   'SYNC_AUTH_REQUIRED',
   'SYNC_NEW_DEVICE_REQUIRED',
   'SYNC_SSO_REQUIRED',
-  'SYNC_DUO_UNSUPPORTED',
+  'SYNC_DUO_FAILED',
   'SYNC_KEY_CONNECTOR_UNSUPPORTED',
   'SYNC_TRUSTED_DEVICE_UNSUPPORTED',
   'SYNC_UNSUPPORTED_ACCOUNT',
@@ -350,10 +364,19 @@ export function syncErrorPresentation(code: SyncErrorCode): SyncErrorPresentatio
         title: t`Single sign-on is required`,
         description: t`This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in.`
       }
-    case 'SYNC_DUO_UNSUPPORTED':
+    case 'SYNC_DUO_FAILED':
       return {
-        title: t`Duo verification is not supported`,
-        description: t`Use another enabled two-step verification method, or sign in with the official Bitwarden client.`
+        title: t({
+          message: 'Duo verification did not complete',
+          comment:
+            'Title of the sync error shown when Duo two-step verification fails or times out.'
+        }),
+        description: t({
+          message:
+            'Open Duo again from the sign-in dialog and paste the address of the page Duo returns you to within five minutes.',
+          comment:
+            'Sync error description for a failed Duo two-step verification; the user must restart Duo and paste the browser address of the final page.'
+        })
       }
     case 'SYNC_KEY_CONNECTOR_UNSUPPORTED':
       return {
@@ -496,7 +519,9 @@ function SyncDialog({
   const [twoFactorChallengeActive, setTwoFactorChallengeActive] = useState(false)
   const [emailCodeBusy, setEmailCodeBusy] = useState(false)
   const [emailCodeSent, setEmailCodeSent] = useState(false)
-  const [webAuthnRemember, setWebAuthnRemember] = useState(false)
+  const [rememberDevice, setRememberDevice] = useState(false)
+  const duoLogin = useDuoLoginCallback()
+  const [duoCallbackRejected, setDuoCallbackRejected] = useState(false)
   const [newDeviceOtp, setNewDeviceOtp] = useState('')
   const [newDeviceOtpBusy, setNewDeviceOtpBusy] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(shouldOfferNewDeviceOtpResend(status.lastError))
@@ -523,8 +548,24 @@ function SyncDialog({
     { label: t`Authenticator app`, value: '0' },
     { label: t`Email`, value: '1' },
     { label: t`YubiKey OTP`, value: '3' },
-    { label: t`Security key`, value: WEB_AUTHN_TWO_FACTOR_METHOD }
+    { label: t`Security key`, value: WEB_AUTHN_TWO_FACTOR_METHOD },
+    {
+      label: t({
+        message: 'Duo',
+        comment: 'Two-step login method option for Duo Security tied to the personal account.'
+      }),
+      value: DUO_TWO_FACTOR_METHOD
+    },
+    {
+      label: t({
+        message: 'Duo (organization)',
+        comment:
+          "Two-step login method option for Duo Security configured by the user's Bitwarden organization."
+      }),
+      value: ORGANIZATION_DUO_TWO_FACTOR_METHOD
+    }
   ]
+  const twoFactorMethodKind = syncTwoFactorMethodKind(twoFactorMethod)
   const availableTwoFactorMethods = twoFactorChallengeActive
     ? twoFactorMethods.filter(({ value }) =>
         twoFactorProviders.includes(syncTwoFactorProviderForMethod(value))
@@ -608,7 +649,7 @@ function SyncDialog({
     setTwoFactorChallengeActive(false)
     setEmailCodeBusy(false)
     setEmailCodeSent(false)
-    setWebAuthnRemember(false)
+    setRememberDevice(false)
     setNewDeviceOtp('')
     setShowPassword(false)
   }
@@ -677,7 +718,16 @@ function SyncDialog({
     setShowAdvanced(true)
     setTwoFactorCode('')
     setEmailCodeSent(false)
-    if (method) {
+    if (method && syncTwoFactorMethodKind(method) === 'duo') {
+      setTwoFactorMethod(method)
+      setError(
+        t({
+          message: 'Two-step verification is required. Choose Open Duo to verify in your browser.',
+          comment:
+            'Sign-in dialog notice when the server requires two-step login and Duo is the selected method; "Open Duo" is the submit button label.'
+        })
+      )
+    } else if (method) {
       setTwoFactorMethod(method)
       setError(t`Two-step verification is required. Enter a current verification code to continue.`)
     } else {
@@ -686,6 +736,15 @@ function SyncDialog({
       )
     }
     return method
+  }
+
+  function beginDuoLogin(): void {
+    setDuoCallbackRejected(false)
+    duoLogin.begin()
+  }
+
+  async function submitDuoCallback(): Promise<void> {
+    setDuoCallbackRejected((await duoLogin.submit()) === 'rejected')
   }
 
   async function sendEmailTwoFactorCode(
@@ -751,13 +810,15 @@ function SyncDialog({
     setOperationErrorDiagnostic(null)
     setErrorDetailsOpen(false)
     setSuccess('')
+    const startsDuo = twoFactorMethodKind === 'duo'
+    if (startsDuo) beginDuoLogin()
     try {
       const response = await window.bearwarden.sync.connect({
         serverUrl: normalizedUrl,
         email: email.trim(),
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
-        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
+        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, rememberDevice })
       })
       if (response.kind === 'two-factor-required') {
         const method = applyTwoFactorChallenge(response.providers)
@@ -766,11 +827,13 @@ function SyncDialog({
       }
       await refreshAfterSuccess(response.result, (summary) => t`Connected and synced. ${summary}.`)
     } catch (connectError) {
+      if (isDuoCanceled(connectError)) return
       if (connectError instanceof Error && connectError.message.includes('NEW_DEVICE_REQUIRED')) {
         setShowAdvanced(true)
       }
       await presentSyncOperationFailure(connectError)
     } finally {
+      if (startsDuo) duoLogin.finish()
       setBusy(false)
     }
   }
@@ -785,11 +848,13 @@ function SyncDialog({
     setOperationErrorDiagnostic(null)
     setErrorDetailsOpen(false)
     setSuccess('')
+    const startsDuo = twoFactorMethodKind === 'duo'
+    if (startsDuo) beginDuoLogin()
     try {
       const response = await window.bearwarden.sync.unlock({
         masterPassword,
         ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
-        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, webAuthnRemember })
+        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, rememberDevice })
       })
       if (response.kind === 'two-factor-required') {
         const method = applyTwoFactorChallenge(response.providers)
@@ -801,11 +866,13 @@ function SyncDialog({
       }
       await refreshAfterSuccess(response.result, (summary) => t`Unlocked and synced. ${summary}.`)
     } catch (unlockError) {
+      if (isDuoCanceled(unlockError)) return
       if (unlockError instanceof Error && unlockError.message.includes('NEW_DEVICE_REQUIRED')) {
         setShowAdvanced(true)
       }
       await presentSyncOperationFailure(unlockError)
     } finally {
+      if (startsDuo) duoLogin.finish()
       setBusy(false)
     }
   }
@@ -1135,26 +1202,99 @@ function SyncDialog({
                           </FieldDescription>
                         )}
                       </Field>
-                      {twoFactorMethod === WEB_AUTHN_TWO_FACTOR_METHOD ? (
-                        <Field orientation="horizontal" data-disabled={busy || undefined}>
-                          <Checkbox
-                            id="webauthn-remember"
-                            checked={webAuthnRemember}
-                            onCheckedChange={setWebAuthnRemember}
-                            disabled={busy}
-                          />
-                          <FieldContent>
-                            <FieldLabel htmlFor="webauthn-remember">
-                              <Trans>Remember this device</Trans>
-                            </FieldLabel>
-                            <FieldDescription>
-                              <Trans>
-                                Let the server temporarily skip two-step verification on this
-                                device.
-                              </Trans>
-                            </FieldDescription>
-                          </FieldContent>
-                        </Field>
+                      {twoFactorMethodKind !== 'code' ? (
+                        <>
+                          <Field orientation="horizontal" data-disabled={busy || undefined}>
+                            <Checkbox
+                              id="two-factor-remember"
+                              checked={rememberDevice}
+                              onCheckedChange={setRememberDevice}
+                              disabled={busy}
+                            />
+                            <FieldContent>
+                              <FieldLabel htmlFor="two-factor-remember">
+                                <Trans>Remember this device</Trans>
+                              </FieldLabel>
+                              <FieldDescription>
+                                <Trans>
+                                  Let the server temporarily skip two-step verification on this
+                                  device.
+                                </Trans>
+                              </FieldDescription>
+                            </FieldContent>
+                          </Field>
+                          {twoFactorMethodKind === 'duo' && (
+                            <Field data-disabled={!duoLogin.awaiting || undefined}>
+                              <FieldLabel htmlFor="duo-callback">
+                                <Trans comment="Label of the field where the user pastes the browser address shown after approving Duo two-step login.">
+                                  Duo result address
+                                </Trans>
+                              </FieldLabel>
+                              <Input
+                                id="duo-callback"
+                                autoCapitalize="none"
+                                autoComplete="off"
+                                spellCheck={false}
+                                value={duoLogin.callback}
+                                onChange={(event) => {
+                                  duoLogin.setCallback(event.target.value)
+                                  setDuoCallbackRejected(false)
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'Enter') return
+                                  event.preventDefault()
+                                  void submitDuoCallback()
+                                }}
+                                disabled={!duoLogin.awaiting || duoLogin.submitting}
+                                aria-invalid={duoCallbackRejected || undefined}
+                              />
+                              <FieldDescription>
+                                <Trans comment="Instructions under the Duo result field. Open Duo is the submit button; the final page is the web vault page Duo redirects to after approval, which may say the user can close the window.">
+                                  Open Duo approves this sign-in in your browser. When Duo sends you
+                                  to a page saying you may close the window, copy the full address
+                                  of that page and paste it here.
+                                </Trans>
+                              </FieldDescription>
+                              {duoCallbackRejected && (
+                                <FieldError>
+                                  <Trans comment="Error under the Duo result field when the pasted text is not a Duo result address for the waiting sign-in.">
+                                    This is not the address of the Duo result page. Copy the full
+                                    address from the browser and try again.
+                                  </Trans>
+                                </FieldError>
+                              )}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  type="button"
+                                  disabled={
+                                    !duoLogin.awaiting ||
+                                    duoLogin.submitting ||
+                                    !duoLogin.callback.trim()
+                                  }
+                                  onClick={() => void submitDuoCallback()}
+                                >
+                                  {duoLogin.submitting && (
+                                    <Spinner data-icon="inline-start" aria-hidden="true" />
+                                  )}
+                                  <Trans comment="Button that sends the pasted Duo result address to finish two-step login.">
+                                    Continue sign-in
+                                  </Trans>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  type="button"
+                                  disabled={!duoLogin.awaiting}
+                                  onClick={duoLogin.cancel}
+                                >
+                                  <Trans comment="Button that abandons the Duo two-step login currently waiting for the browser result.">
+                                    Cancel Duo
+                                  </Trans>
+                                </Button>
+                              </div>
+                            </Field>
+                          )}
+                        </>
                       ) : (
                         <Field>
                           <FieldLabel htmlFor="two-factor-code">
@@ -1259,7 +1399,15 @@ function SyncDialog({
                 </Button>
                 <Button type="submit" disabled={isSyncing || unsupportedTwoFactorChallenge}>
                   {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
-                  {configured ? t`Unlock and sync` : t`Connect and sync`}
+                  {twoFactorMethodKind === 'duo'
+                    ? t({
+                        message: 'Open Duo',
+                        comment:
+                          'Sign-in dialog submit button when Duo is the two-step method; it opens Duo in the system browser.'
+                      })
+                    : configured
+                      ? t`Unlock and sync`
+                      : t`Connect and sync`}
                 </Button>
               </ModalFooter>
             </form>
