@@ -33,6 +33,10 @@ export type BitwardenDirectErrorCode =
   | 'ACCOUNT_PROFILE_STALE'
   | 'ACCOUNT_PROFILE_MUTATION_UNKNOWN'
   | 'STATE_PERSISTENCE_FAILED'
+  | 'DEVICE_LOGIN_DENIED'
+  | 'DEVICE_LOGIN_EXPIRED'
+  | 'DEVICE_LOGIN_UNSUPPORTED'
+  | 'DEVICE_LOGIN_UNKNOWN_DEVICE'
 
 export class BitwardenDirectError extends Error {
   constructor(

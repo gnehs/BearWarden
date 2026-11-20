@@ -56,7 +56,7 @@ import {
   type JsonObject,
   type JsonValue
 } from './bitwarden-http'
-import { authRequestFingerprint } from './bitwarden-device-login'
+import { authRequestFingerprint, DeviceLoginRequest } from './bitwarden-device-login'
 import type {
   SyncInvalidResponseReason,
   SyncInvalidResponseStage,
@@ -351,6 +351,14 @@ export interface BitwardenUnlockRequest {
   signal?: AbortSignal
 }
 
+export interface BitwardenDeviceLoginRequest {
+  /** An approved request; its access code is the password-grant credential. */
+  request: DeviceLoginRequest
+  twoFactor?: BitwardenLoginTwoFactor
+  newDeviceOtp?: string
+  signal?: AbortSignal
+}
+
 export interface BitwardenMasterPasswordChangeRequest {
   currentPassword: string
   newPassword: string
@@ -420,6 +428,13 @@ export interface BitwardenSyncClient {
   resendVerificationEmail?(signal?: AbortSignal): Promise<void>
   sendEmailTwoFactorLoginCode?(masterPassword: string, signal?: AbortSignal): Promise<void>
   resendNewDeviceOtp?(masterPassword: string, signal?: AbortSignal): Promise<void>
+  requestDeviceLogin?(signal?: AbortSignal): Promise<DeviceLoginRequest>
+  pollDeviceLogin?(request: DeviceLoginRequest, signal?: AbortSignal): Promise<boolean>
+  loginWithDevice?(request: BitwardenDeviceLoginRequest): Promise<void>
+  sendEmailTwoFactorDeviceLoginCode?(
+    request: DeviceLoginRequest,
+    signal?: AbortSignal
+  ): Promise<void>
   revisionDate?(signal?: AbortSignal): Promise<string>
   userDecryptionCapabilities?(): BitwardenUserDecryptionCapabilities
   policySet?(): BitwardenPolicySet
@@ -1213,6 +1228,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private state: BitwardenDirectState
   private stretchedKey: Buffer | null = null
   private pendingMasterKey: Buffer | null = null
+  /** A Login with device user key awaiting its first sync, which proves it against the account. */
+  private pendingUserKey: BitwardenSymmetricKey | null = null
   private userKey: BitwardenSymmetricKey | null = null
   private wrappedUserKeyFingerprint: Buffer | null = null
   private folders = new Map<string, CachedFolder>()
@@ -2446,6 +2463,146 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  /** Opens a Login with device request from this installation's registered device identifier. */
+  async requestDeviceLogin(signal?: AbortSignal): Promise<DeviceLoginRequest> {
+    const request = DeviceLoginRequest.create(this.email, Date.now())
+    try {
+      request.accept(
+        await this.http.createDeviceAuthRequest(
+          {
+            email: this.email,
+            publicKey: request.publicKey,
+            deviceIdentifier: this.state.deviceIdentifier,
+            accessCode: request.accessCode
+          },
+          this.deviceType,
+          signal
+        )
+      )
+      return request
+    } catch (error) {
+      request.dispose()
+      if (error instanceof BitwardenHttpError) {
+        if (error.status === 404 || error.status === 405 || error.status === 501) {
+          throw new BitwardenDirectError('DEVICE_LOGIN_UNSUPPORTED')
+        }
+        if (error.status === 400) throw new BitwardenDirectError('DEVICE_LOGIN_UNKNOWN_DEVICE')
+      }
+      throw this.mapError(error)
+    }
+  }
+
+  /**
+   * Reads the request's answer once and resolves `true` when it was approved, after which the
+   * request holds the user key. A request the server dropped before its deadline was denied:
+   * Vaultwarden deletes a denied request instead of recording the answer.
+   */
+  async pollDeviceLogin(request: DeviceLoginRequest, signal?: AbortSignal): Promise<boolean> {
+    try {
+      const status = await this.http.getDeviceAuthRequestResponse(
+        request.id,
+        request.accessCode,
+        this.deviceType,
+        signal
+      )
+      if (status.state === 'pending') return false
+      if (status.state !== 'approved') throw new BitwardenDirectError('DEVICE_LOGIN_DENIED')
+      request.approve(status.key)
+      return true
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
+  /**
+   * Signs in with an approved request: the access code is the password-grant credential and the
+   * approved user key replaces any master-password key until the next sync validates it.
+   */
+  async loginWithDevice({
+    request,
+    twoFactor,
+    newDeviceOtp,
+    signal
+  }: BitwardenDeviceLoginRequest): Promise<void> {
+    const operationGeneration = this.runtimeGeneration
+    let userKey: BitwardenSymmetricKey | null = null
+    try {
+      userKey = request.userKey()
+      let installedRuntimeGeneration: number
+      try {
+        installedRuntimeGeneration = await this.installPasswordTokenSession(
+          request.accessCode,
+          twoFactor,
+          newDeviceOtp,
+          operationGeneration,
+          signal,
+          request.id
+        )
+      } catch (error) {
+        // An approved request the server no longer accepts is spent or past its login window
+        // (Vaultwarden allows five minutes from creation); the server says only "incorrect".
+        if (
+          error instanceof BitwardenHttpError &&
+          error.status === 400 &&
+          (error.code === 'AUTH' || error.code === 'NETWORK')
+        ) {
+          throw new BitwardenDirectError('DEVICE_LOGIN_EXPIRED')
+        }
+        throw error
+      }
+      this.stretchedKey?.fill(0)
+      this.stretchedKey = null
+      this.clearPendingKeys()
+      this.pendingUserKey = userKey
+      userKey = null
+      try {
+        await this.notifyStateChanged()
+      } catch {
+        if (this.runtimeGeneration === installedRuntimeGeneration) {
+          this.clearDecryptedState()
+          this.state.session = null
+          this.state.rememberedTwoFactorToken = undefined
+          this.http.clearSession()
+        }
+        throw new BitwardenDirectError('STATE_PERSISTENCE_FAILED')
+      }
+    } catch (error) {
+      const mapped = this.mapError(error)
+      if (mapped.code === 'INVALID_RESPONSE' && !mapped.syncInvalidResponseStage) {
+        throw new BitwardenDirectError(
+          'INVALID_RESPONSE',
+          undefined,
+          'authentication',
+          undefined,
+          mapped.syncInvalidResponseReason ?? 'response-shape'
+        )
+      }
+      throw mapped
+    } finally {
+      clearBitwardenSymmetricKey(userKey)
+    }
+  }
+
+  async sendEmailTwoFactorDeviceLoginCode(
+    request: DeviceLoginRequest,
+    signal?: AbortSignal
+  ): Promise<void> {
+    try {
+      await this.http.sendEmailTwoFactorLoginCode(
+        {
+          email: this.email,
+          authRequestId: request.id,
+          authRequestAccessCode: request.accessCode,
+          deviceIdentifier: this.state.deviceIdentifier,
+          deviceType: this.deviceType
+        },
+        signal
+      )
+    } catch (error) {
+      throw this.mapError(error)
+    }
+  }
+
   async login(request: BitwardenLoginRequest): Promise<void> {
     if (normalizeEmail(request.email) !== this.email) {
       throw new BitwardenDirectError('AUTH_REQUIRED')
@@ -2546,6 +2703,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let invalidResponseStage: SyncInvalidResponseStage | null = 'access-token'
     let wrappedKeyFingerprint: Buffer | null = null
     const pendingMasterKey = this.pendingMasterKey
+    const pendingUserKey = this.pendingUserKey
     const operationGeneration = this.runtimeGeneration
     let accountIdentityChange: 'profile' | 'security-stamp' | null = null
     let accountKeysValidated = false
@@ -2572,7 +2730,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const userKey = this.unwrapSyncUserKey(
         wrappedUserKey,
         wrappedKeyFingerprint,
-        pendingMasterKey
+        pendingMasterKey,
+        pendingUserKey
       )
       try {
         await validateAccountKeys(profile, userKey)
@@ -2676,6 +2835,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       wrappedKeyFingerprint?.fill(0)
       pendingMasterKey?.fill(0)
       if (this.pendingMasterKey === pendingMasterKey) this.pendingMasterKey = null
+      clearBitwardenSymmetricKey(pendingUserKey)
+      if (this.pendingUserKey === pendingUserKey) this.pendingUserKey = null
     }
   }
 
@@ -2683,8 +2844,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
   private unwrapSyncUserKey(
     wrappedUserKey: string,
     wrappedKeyFingerprint: Buffer,
-    pendingMasterKey: Buffer | null
+    pendingMasterKey: Buffer | null,
+    pendingUserKey: BitwardenSymmetricKey | null
   ): BitwardenSymmetricKey {
+    // `validateAccountKeys` then proves the approved key opens this account's private key.
+    if (pendingUserKey) return cloneBitwardenAccountKey(pendingUserKey)
     if (pendingMasterKey) {
       return decryptBitwardenMasterKeyWrappedUserKey(wrappedUserKey, pendingMasterKey)
     }
@@ -3700,6 +3864,101 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
   }
 
+  /**
+   * Exchanges a password-grant credential for a session and installs it, returning the runtime
+   * generation it owns. `password` is the master-password hash, or a Login with device access
+   * code when `authRequest` names the approved request.
+   */
+  private async installPasswordTokenSession(
+    password: string,
+    twoFactor: BitwardenLoginTwoFactor | undefined,
+    newDeviceOtp: string | undefined,
+    operationGeneration: number,
+    signal: AbortSignal | undefined,
+    authRequest?: string
+  ): Promise<number> {
+    let twoFactorToken: string | undefined
+    try {
+      let twoFactorRemember: boolean | undefined
+      const rememberedTwoFactorToken = twoFactor ? undefined : this.state.rememberedTwoFactorToken
+      if (twoFactor) {
+        if (twoFactor.method === 7) {
+          if (typeof twoFactor.remember !== 'boolean') {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          twoFactorToken = serializeAccountWebAuthnAssertion(twoFactor.assertion)
+          twoFactorRemember = twoFactor.remember
+        } else if (twoFactor.method === 2 || twoFactor.method === 6) {
+          if (typeof twoFactor.token !== 'string' || typeof twoFactor.remember !== 'boolean') {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          twoFactorToken = twoFactor.token
+          twoFactorRemember = twoFactor.remember
+        } else {
+          if (
+            (twoFactor.method !== 0 && twoFactor.method !== 1 && twoFactor.method !== 3) ||
+            typeof twoFactor.code !== 'string' ||
+            (twoFactor.remember !== undefined && typeof twoFactor.remember !== 'boolean')
+          ) {
+            throw new BitwardenDirectError('INVALID_RESPONSE')
+          }
+          twoFactorToken = twoFactor.code
+          twoFactorRemember = twoFactor.remember ?? true
+        }
+      }
+      let session: BitwardenSession
+      try {
+        session = await this.http.passwordToken(
+          {
+            email: this.email,
+            password,
+            deviceIdentifier: this.state.deviceIdentifier,
+            deviceType: this.deviceType,
+            deviceName: this.deviceName,
+            ...(authRequest ? { authRequest } : {}),
+            ...(newDeviceOtp ? { newDeviceOtp } : {}),
+            ...(twoFactor
+              ? {
+                  twoFactorProvider: twoFactor.method,
+                  twoFactorToken,
+                  twoFactorRemember
+                }
+              : rememberedTwoFactorToken
+                ? {
+                    twoFactorProvider: 5,
+                    twoFactorToken: rememberedTwoFactorToken,
+                    twoFactorRemember: false
+                  }
+                : {})
+          },
+          signal
+        )
+      } catch (error) {
+        if (
+          rememberedTwoFactorToken &&
+          error instanceof BitwardenHttpError &&
+          error.code === 'TWO_FACTOR'
+        ) {
+          this.state.rememberedTwoFactorToken = undefined
+          await this.notifyStateChanged().catch(() => undefined)
+        }
+        throw error
+      }
+      if (signal?.aborted || operationGeneration !== this.runtimeGeneration) {
+        throw new BitwardenDirectError('ABORTED')
+      }
+      this.captureRememberedTwoFactorToken(session)
+      const normalizedSession = this.normalizedSession(session)
+      this.runtimeGeneration += 1
+      this.http.setSession(normalizedSession)
+      this.state.session = normalizedSession
+      return this.runtimeGeneration
+    } finally {
+      // JavaScript strings are immutable; release the local assertion/token reference promptly.
+      twoFactorToken = undefined
+    }
+  }
+
   private async deriveAndAuthenticate(
     password: string,
     twoFactor: BitwardenLoginTwoFactor | undefined,
@@ -3712,7 +3971,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let masterKey: Buffer | null = null
     let passwordKey: Buffer | null = null
     let stretched: ReturnType<typeof stretchMasterKey> | null = null
-    let twoFactorToken: string | undefined
     let installedPendingMasterKey: Buffer | null = null
     let installedRuntimeGeneration: number | null = null
     try {
@@ -3739,79 +3997,13 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       stretched = stretchMasterKey(masterKey)
       if (requestToken) {
         invalidResponseStage = 'authentication'
-        let twoFactorRemember: boolean | undefined
-        const rememberedTwoFactorToken = twoFactor ? undefined : this.state.rememberedTwoFactorToken
-        if (twoFactor) {
-          if (twoFactor.method === 7) {
-            if (typeof twoFactor.remember !== 'boolean') {
-              throw new BitwardenDirectError('INVALID_RESPONSE')
-            }
-            twoFactorToken = serializeAccountWebAuthnAssertion(twoFactor.assertion)
-            twoFactorRemember = twoFactor.remember
-          } else if (twoFactor.method === 2 || twoFactor.method === 6) {
-            if (typeof twoFactor.token !== 'string' || typeof twoFactor.remember !== 'boolean') {
-              throw new BitwardenDirectError('INVALID_RESPONSE')
-            }
-            twoFactorToken = twoFactor.token
-            twoFactorRemember = twoFactor.remember
-          } else {
-            if (
-              (twoFactor.method !== 0 && twoFactor.method !== 1 && twoFactor.method !== 3) ||
-              typeof twoFactor.code !== 'string' ||
-              (twoFactor.remember !== undefined && typeof twoFactor.remember !== 'boolean')
-            ) {
-              throw new BitwardenDirectError('INVALID_RESPONSE')
-            }
-            twoFactorToken = twoFactor.code
-            twoFactorRemember = twoFactor.remember ?? true
-          }
-        }
-        let session: BitwardenSession
-        try {
-          session = await this.http.passwordToken(
-            {
-              email: this.email,
-              password: passwordKey.toString('base64'),
-              deviceIdentifier: this.state.deviceIdentifier,
-              deviceType: this.deviceType,
-              deviceName: this.deviceName,
-              ...(newDeviceOtp ? { newDeviceOtp } : {}),
-              ...(twoFactor
-                ? {
-                    twoFactorProvider: twoFactor.method,
-                    twoFactorToken,
-                    twoFactorRemember
-                  }
-                : rememberedTwoFactorToken
-                  ? {
-                      twoFactorProvider: 5,
-                      twoFactorToken: rememberedTwoFactorToken,
-                      twoFactorRemember: false
-                    }
-                  : {})
-            },
-            signal
-          )
-        } catch (error) {
-          if (
-            rememberedTwoFactorToken &&
-            error instanceof BitwardenHttpError &&
-            error.code === 'TWO_FACTOR'
-          ) {
-            this.state.rememberedTwoFactorToken = undefined
-            await this.notifyStateChanged().catch(() => undefined)
-          }
-          throw error
-        }
-        if (signal?.aborted || operationGeneration !== this.runtimeGeneration) {
-          throw new BitwardenDirectError('ABORTED')
-        }
-        this.captureRememberedTwoFactorToken(session)
-        const normalizedSession = this.normalizedSession(session)
-        this.runtimeGeneration += 1
-        installedRuntimeGeneration = this.runtimeGeneration
-        this.http.setSession(normalizedSession)
-        this.state.session = normalizedSession
+        installedRuntimeGeneration = await this.installPasswordTokenSession(
+          passwordKey.toString('base64'),
+          twoFactor,
+          newDeviceOtp,
+          operationGeneration,
+          signal
+        )
       } else {
         if (signal?.aborted || operationGeneration !== this.runtimeGeneration) {
           throw new BitwardenDirectError('ABORTED')
@@ -3822,7 +4014,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.stretchedKey?.fill(0)
       this.stretchedKey = stretched.combinedKey
       stretched.combinedKey = Buffer.alloc(0)
-      this.clearPendingMasterKey()
+      this.clearPendingKeys()
       this.pendingMasterKey = masterKey
       installedPendingMasterKey = masterKey
       masterKey = null
@@ -3842,7 +4034,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
         throw new BitwardenDirectError('STATE_PERSISTENCE_FAILED')
       }
     } catch (error) {
-      if (this.pendingMasterKey === installedPendingMasterKey) this.clearPendingMasterKey()
+      if (this.pendingMasterKey === installedPendingMasterKey) this.clearPendingKeys()
       const mapped = this.mapError(error)
       if (mapped.code === 'INVALID_RESPONSE' && !mapped.syncInvalidResponseStage) {
         throw new BitwardenDirectError(
@@ -3855,8 +4047,6 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw mapped
     } finally {
-      // JavaScript strings are immutable; release the local assertion/token reference promptly.
-      twoFactorToken = undefined
       masterKey?.fill(0)
       passwordKey?.fill(0)
       stretched?.encKey.fill(0)
@@ -4128,7 +4318,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     }
     this.preparedLoginImports.clear()
     this.stretchedKey?.fill(0)
-    this.clearPendingMasterKey()
+    this.clearPendingKeys()
     clearBitwardenSymmetricKey(this.userKey)
     this.wrappedUserKeyFingerprint?.fill(0)
     this.stretchedKey = null
@@ -4148,9 +4338,11 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     this.syncedUserDecryptionCapabilities = noUserDecryptionCapabilities()
   }
 
-  private clearPendingMasterKey(): void {
+  private clearPendingKeys(): void {
     this.pendingMasterKey?.fill(0)
     this.pendingMasterKey = null
+    clearBitwardenSymmetricKey(this.pendingUserKey)
+    this.pendingUserKey = null
   }
 
   private mapError(error: unknown): BitwardenDirectError {

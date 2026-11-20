@@ -7127,3 +7127,265 @@ describe('sync field spellings', () => {
     await expect(client.listFolders()).resolves.toHaveLength(count)
   })
 })
+
+describe('Login with device requester', () => {
+  const REQUESTER_DEVICE = '00000000-0000-4000-8000-0000000000aa'
+
+  interface DeviceLoginServer {
+    fetch: FetchLike
+    created: JsonObject[]
+    tokenBodies: URLSearchParams[]
+    emailBodies: JsonObject[]
+    answer: { approvedKey?: string; denied?: boolean; gone?: boolean }
+    tokenChallenges: number
+    tokenRejection?: number
+  }
+
+  async function deviceLoginServer(): Promise<DeviceLoginServer> {
+    const sync = await encryptedSync()
+    const server: DeviceLoginServer = {
+      created: [],
+      tokenBodies: [],
+      emailBodies: [],
+      answer: {},
+      tokenChallenges: 0,
+      fetch: async (url, init) => {
+        const record = server.created[0]
+        const request = (): JsonObject => ({
+          id: AUTH_REQUEST_ID,
+          publicKey: record?.publicKey,
+          requestDeviceType: 'macOS',
+          creationDate: new Date().toISOString(),
+          object: 'auth-request'
+        })
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          const body = new URLSearchParams(String(init?.body))
+          server.tokenBodies.push(body)
+          if (body.get('authRequest')) {
+            if (server.tokenRejection) {
+              return jsonResponse({ message: 'Username or access code is incorrect.' }, 400)
+            }
+            if (body.get('password') !== record?.accessCode) {
+              return jsonResponse({ error: 'invalid_grant' }, 400)
+            }
+            if (server.tokenChallenges > 0 && !body.get('twoFactorToken')) {
+              server.tokenChallenges -= 1
+              return jsonResponse(
+                {
+                  error: 'invalid_grant',
+                  error_description: 'Two factor required.',
+                  TwoFactorProviders2: { '0': null }
+                },
+                400
+              )
+            }
+          }
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3_600
+          })
+        }
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        if (url.endsWith('/api/auth-requests') && init?.method === 'POST') {
+          server.created.push(JSON.parse(String(init.body)) as JsonObject)
+          return jsonResponse({ ...request(), publicKey: server.created[0]!.publicKey })
+        }
+        if (url.includes(`/api/auth-requests/${AUTH_REQUEST_ID}/response?code=`)) {
+          const code = new URL(url).searchParams.get('code')
+          if (server.answer.gone || code !== record?.accessCode) {
+            return jsonResponse({ message: "AuthRequest doesn't exist" }, 400)
+          }
+          return jsonResponse({
+            ...request(),
+            key: server.answer.approvedKey ?? null,
+            requestApproved: server.answer.approvedKey ? true : server.answer.denied ? false : null,
+            responseDate:
+              server.answer.approvedKey || server.answer.denied ? new Date().toISOString() : null
+          })
+        }
+        if (url.endsWith('/api/auth-requests/pending')) {
+          return jsonResponse({
+            data: [{ ...request(), requestApproved: null, responseDate: null }],
+            object: 'list',
+            continuationToken: null
+          })
+        }
+        if (url.endsWith(`/api/auth-requests/${AUTH_REQUEST_ID}`) && init?.method === 'GET') {
+          return jsonResponse({ ...request(), requestApproved: null, responseDate: null })
+        }
+        if (url.endsWith(`/api/auth-requests/${AUTH_REQUEST_ID}`) && init?.method === 'PUT') {
+          const answer = JSON.parse(String(init.body)) as JsonObject
+          if (answer.requestApproved) server.answer.approvedKey = String(answer.key)
+          else server.answer.gone = true
+          return jsonResponse({
+            ...request(),
+            requestApproved: answer.requestApproved,
+            responseDate: new Date().toISOString()
+          })
+        }
+        if (url.endsWith('/api/two-factor/send-email-login')) {
+          server.emailBodies.push(JSON.parse(String(init?.body)) as JsonObject)
+          return new Response(null, { status: 200 })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    }
+    return server
+  }
+
+  function requester(server: DeviceLoginServer): BitwardenDirectClient {
+    return new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      deviceType: 7,
+      state: {
+        session: null,
+        deviceIdentifier: REQUESTER_DEVICE,
+        profileId: PROFILE_ID,
+        securityStamp: 'test-security-stamp'
+      },
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: server.fetch
+      })
+    })
+  }
+
+  async function approver(server: DeviceLoginServer): Promise<BitwardenDirectClient> {
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: server.fetch
+      })
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    return client
+  }
+
+  it('signs in and unlocks with a request approved by another BearWarden device', async () => {
+    const server = await deviceLoginServer()
+    const client = requester(server)
+    const request = await client.requestDeviceLogin()
+
+    expect(server.created).toEqual([
+      {
+        email: EMAIL,
+        publicKey: request.publicKey,
+        deviceIdentifier: REQUESTER_DEVICE,
+        accessCode: request.accessCode,
+        type: 0
+      }
+    ])
+    expect(request.id).toBe(AUTH_REQUEST_ID)
+    await expect(client.pollDeviceLogin(request)).resolves.toBe(false)
+
+    const approving = await approver(server)
+    const [pending] = await approving.listPendingLoginRequests()
+    expect(pending?.fingerprint).toBe(request.fingerprint)
+    await approving.respondLoginRequest(AUTH_REQUEST_ID, request.fingerprint, true)
+
+    await expect(client.pollDeviceLogin(request)).resolves.toBe(true)
+    await client.loginWithDevice({ request })
+    const token = server.tokenBodies.at(-1)!
+    expect(token.get('grant_type')).toBe('password')
+    expect(token.get('username')).toBe(EMAIL)
+    expect(token.get('password')).toBe(request.accessCode)
+    expect(token.get('authRequest')).toBe(AUTH_REQUEST_ID)
+    expect(token.get('deviceIdentifier')).toBe(REQUESTER_DEVICE)
+
+    await client.sync()
+    await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
+    await expect(client.listPersonalLogins()).resolves.not.toHaveLength(0)
+    expect(client.pinUnlockMaterial()?.accountKey).toEqual(Buffer.alloc(64, 7))
+    request.dispose()
+  })
+
+  it.each([
+    ['denied by Bitwarden', { denied: true }],
+    ['deleted by Vaultwarden on denial', { gone: true }]
+  ])('reports a request %s as denied', async (_label, answer) => {
+    const server = await deviceLoginServer()
+    const client = requester(server)
+    const request = await client.requestDeviceLogin()
+    server.answer = answer
+    await expect(client.pollDeviceLogin(request)).rejects.toMatchObject({
+      code: 'DEVICE_LOGIN_DENIED'
+    })
+  })
+
+  it.each([
+    [400, 'DEVICE_LOGIN_UNKNOWN_DEVICE'],
+    [404, 'DEVICE_LOGIN_UNSUPPORTED']
+  ])('maps a %i request creation failure to %s', async (status, code) => {
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: new BitwardenHttpClient({
+        server: 'https://vault.example.invalid',
+        fetch: async () => jsonResponse({ message: 'User or known device not found.' }, status)
+      })
+    })
+    await expect(client.requestDeviceLogin()).rejects.toMatchObject({ code })
+  })
+
+  it('keeps the approved request through a two-step challenge and retries with the code', async () => {
+    const server = await deviceLoginServer()
+    server.tokenChallenges = 1
+    const client = requester(server)
+    const request = await client.requestDeviceLogin()
+    await (await approver(server)).respondLoginRequest(AUTH_REQUEST_ID, request.fingerprint, true)
+    await client.pollDeviceLogin(request)
+
+    await expect(client.loginWithDevice({ request })).rejects.toMatchObject({
+      code: 'TWO_FACTOR_REQUIRED',
+      twoFactorProviders: [0]
+    })
+    await client.sendEmailTwoFactorDeviceLoginCode(request)
+    expect(server.emailBodies).toEqual([
+      {
+        email: EMAIL,
+        authRequestId: AUTH_REQUEST_ID,
+        authRequestAccessCode: request.accessCode,
+        deviceIdentifier: REQUESTER_DEVICE
+      }
+    ])
+    await client.loginWithDevice({
+      request,
+      twoFactor: { method: 0, code: '123456', remember: false }
+    })
+    const token = server.tokenBodies.at(-1)!
+    expect(token.get('authRequest')).toBe(AUTH_REQUEST_ID)
+    expect(token.get('twoFactorProvider')).toBe('0')
+    expect(token.get('twoFactorToken')).toBe('123456')
+    await client.sync()
+    await expect(client.status()).resolves.toEqual({ status: 'unlocked' })
+  })
+
+  it('reports an approved request the token endpoint no longer accepts as expired', async () => {
+    const server = await deviceLoginServer()
+    const client = requester(server)
+    const request = await client.requestDeviceLogin()
+    await (await approver(server)).respondLoginRequest(AUTH_REQUEST_ID, request.fingerprint, true)
+    await client.pollDeviceLogin(request)
+    server.tokenRejection = 400
+    await expect(client.loginWithDevice({ request })).rejects.toMatchObject({
+      code: 'DEVICE_LOGIN_EXPIRED'
+    })
+    await expect(client.status()).resolves.toEqual({ status: 'unauthenticated' })
+  })
+
+  it('refuses to sign in before the request is approved', async () => {
+    const server = await deviceLoginServer()
+    const client = requester(server)
+    const request = await client.requestDeviceLogin()
+    await expect(client.loginWithDevice({ request })).rejects.toMatchObject({ code: 'ABORTED' })
+    expect(server.tokenBodies).toEqual([])
+  })
+})
