@@ -297,7 +297,7 @@ msgstr "{0}: {1}"
 msgid "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 msgstr "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:502
+#: src/renderer/src/components/SyncDialog.tsx:529
 msgid "{conflicts, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflicts, plural, one {# conflict} other {# conflicts}}"
 
@@ -326,7 +326,7 @@ msgstr "{count} items"
 msgid "{currentTypeLabel} details"
 msgstr "{currentTypeLabel} details"
 
-#: src/renderer/src/components/SyncDialog.tsx:499
+#: src/renderer/src/components/SyncDialog.tsx:526
 msgid "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 msgstr "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 
@@ -407,11 +407,11 @@ msgstr "{protectedSkippedCount, plural, one {# login item with master password r
 msgid "{providerName} has been disabled."
 msgstr "{providerName} has been disabled."
 
-#: src/renderer/src/components/SyncDialog.tsx:497
+#: src/renderer/src/components/SyncDialog.tsx:524
 msgid "{pulled, plural, one {Pulled # item} other {Pulled # items}}"
 msgstr "{pulled, plural, one {Pulled # item} other {Pulled # items}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:498
+#: src/renderer/src/components/SyncDialog.tsx:525
 msgid "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 msgstr "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 
@@ -536,7 +536,7 @@ msgstr "60 minutes"
 msgid "A local account switch is already in progress. Wait for BearWarden to restart."
 msgstr "A local account switch is already in progress. Wait for BearWarden to restart."
 
-#: src/renderer/src/components/SyncDialog.tsx:789
+#: src/renderer/src/components/SyncDialog.tsx:872
 msgid "A new device verification code was sent by email."
 msgstr "A new device verification code was sent by email."
 
@@ -556,11 +556,12 @@ msgstr "A password is required when adding a login item."
 msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
 msgstr "A read-only mirror of shared items. The server determines permissions and password visibility."
 
-#: src/renderer/src/components/SyncDialog.tsx:1010
+#: src/renderer/src/components/SyncDialog.tsx:1093
 msgid "A sync issue needs attention"
 msgstr "A sync issue needs attention"
 
-#: src/renderer/src/components/SyncDialog.tsx:763
+#: src/renderer/src/components/SyncDialog.tsx:800
+#: src/renderer/src/components/SyncDialog.tsx:816
 msgid "A two-step verification code was sent by email."
 msgstr "A two-step verification code was sent by email."
 
@@ -602,7 +603,7 @@ msgid "Access requested"
 msgstr "Access requested"
 
 #. Privacy-safe sync diagnostic stage for refreshing an expired access token before downloading vault data.
-#: src/renderer/src/components/SyncDialog.tsx:252
+#: src/renderer/src/components/SyncDialog.tsx:279
 msgid "Access token refresh"
 msgstr "Access token refresh"
 
@@ -630,7 +631,7 @@ msgstr "Accessibility permission not granted"
 msgid "Accessibility permission required"
 msgstr "Accessibility permission required"
 
-#: src/renderer/src/components/SyncDialog.tsx:1430
+#: src/renderer/src/components/SyncDialog.tsx:1560
 msgid "Account"
 msgstr "Account"
 
@@ -638,7 +639,7 @@ msgstr "Account"
 msgid "Account {slot}"
 msgstr "Account {slot}"
 
-#: src/renderer/src/components/SyncDialog.tsx:260
+#: src/renderer/src/components/SyncDialog.tsx:287
 msgid "Account and encryption information"
 msgstr "Account and encryption information"
 
@@ -646,7 +647,7 @@ msgstr "Account and encryption information"
 msgid "Account breaches"
 msgstr "Account breaches"
 
-#: src/renderer/src/components/SyncDialog.tsx:327
+#: src/renderer/src/components/SyncDialog.tsx:354
 msgid "Account decryption options"
 msgstr "Account decryption options"
 
@@ -660,23 +661,23 @@ msgid "Account devices"
 msgstr "Account devices"
 
 #. Privacy-safe sync diagnostic reason shown when a prelogin endpoint returns an error envelope instead of KDF fields.
-#: src/renderer/src/components/SyncDialog.tsx:307
+#: src/renderer/src/components/SyncDialog.tsx:334
 msgid "Account key derivation endpoint response"
 msgstr "Account key derivation endpoint response"
 
 #. Privacy-safe sync diagnostic reason shown when parsed account KDF parameters exceed supported security or resource bounds.
-#: src/renderer/src/components/SyncDialog.tsx:319
+#: src/renderer/src/components/SyncDialog.tsx:346
 msgid "Account key derivation parameters"
 msgstr "Account key derivation parameters"
 
 #. Privacy-safe sync diagnostic reason shown when prelogin KDF fields are missing or have incompatible types.
 #. Privacy-safe sync diagnostic stage for the prelogin KDF settings response, before credentials are submitted.
-#: src/renderer/src/components/SyncDialog.tsx:240
-#: src/renderer/src/components/SyncDialog.tsx:313
+#: src/renderer/src/components/SyncDialog.tsx:267
+#: src/renderer/src/components/SyncDialog.tsx:340
 msgid "Account key derivation settings"
 msgstr "Account key derivation settings"
 
-#: src/renderer/src/components/SyncDialog.tsx:1457
+#: src/renderer/src/components/SyncDialog.tsx:1587
 msgid "Account management"
 msgstr "Account management"
 
@@ -698,11 +699,11 @@ msgstr "Account name"
 msgid "Account number"
 msgstr "Account number"
 
-#: src/renderer/src/components/SyncDialog.tsx:325
+#: src/renderer/src/components/SyncDialog.tsx:352
 msgid "Account profile data"
 msgstr "Account profile data"
 
-#: src/renderer/src/components/SyncDialog.tsx:1476
+#: src/renderer/src/components/SyncDialog.tsx:1606
 msgid "Account security status"
 msgstr "Account security status"
 
@@ -1059,6 +1060,16 @@ msgstr "Approve signing"
 msgid "Approve SSH key signing?"
 msgstr "Approve SSH key signing?"
 
+#. Explains the Login with device step. The verification phrase is the six-word phrase above, which the approving Bitwarden or BearWarden device also displays.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:28
+msgid "Approve this request in Bitwarden or BearWarden on a device that is already signed in to this account. Make sure that device shows the same verification phrase."
+msgstr "Approve this request in Bitwarden or BearWarden on a device that is already signed in to this account. Make sure that device shows the same verification phrase."
+
+#. Status in the Login with device step after another device approved the request but the server still requires two-step verification.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:35
+msgid "Approved. Complete two-step verification to continue."
+msgstr "Approved. Complete two-step verification to continue."
+
 #: src/renderer/src/components/AutofillPickerHost.tsx:39
 msgid "Arc did not mark the focused field as web content."
 msgstr "Arc did not mark the focused field as web content."
@@ -1149,7 +1160,7 @@ msgid "Authentication code time remaining"
 msgstr "Authentication code time remaining"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:112
-#: src/renderer/src/components/SyncDialog.tsx:548
+#: src/renderer/src/components/SyncDialog.tsx:585
 msgid "Authenticator app"
 msgstr "Authenticator app"
 
@@ -1273,11 +1284,11 @@ msgstr "BearWarden can control the current browser and perform autofill."
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 
-#: src/renderer/src/components/SyncDialog.tsx:389
+#: src/renderer/src/components/SyncDialog.tsx:416
 msgid "BearWarden cannot unlock this account safely without its trusted-device keys. Use the official Bitwarden client."
 msgstr "BearWarden cannot unlock this account safely without its trusted-device keys. Use the official Bitwarden client."
 
-#: src/renderer/src/components/SyncDialog.tsx:384
+#: src/renderer/src/components/SyncDialog.tsx:411
 msgid "BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client."
 msgstr "BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client."
 
@@ -1457,7 +1468,7 @@ msgstr "Can restore"
 #: src/renderer/src/components/SendPasswordDialog.tsx:101
 #: src/renderer/src/components/SendsPage.tsx:775
 #: src/renderer/src/components/SendsPage.tsx:811
-#: src/renderer/src/components/SyncDialog.tsx:1398
+#: src/renderer/src/components/SyncDialog.tsx:1521
 #: src/renderer/src/components/VaultItemAccessCards.tsx:94
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:603
 #: src/renderer/src/components/VaultShellDialogs.tsx:214
@@ -1469,7 +1480,7 @@ msgid "Cancel check"
 msgstr "Cancel check"
 
 #. Button that abandons the Duo two-step login currently waiting for the browser result.
-#: src/renderer/src/components/SyncDialog.tsx:1290
+#: src/renderer/src/components/SyncDialog.tsx:1407
 msgid "Cancel Duo"
 msgstr "Cancel Duo"
 
@@ -1645,7 +1656,7 @@ msgstr "Check your input and try again."
 msgid "Check your network connection and try again later."
 msgstr "Check your network connection and try again later."
 
-#: src/renderer/src/components/SyncDialog.tsx:399
+#: src/renderer/src/components/SyncDialog.tsx:426
 msgid "Check your network, server URL, and TLS certificate, and make sure the server is reachable."
 msgstr "Check your network, server URL, and TLS certificate, and make sure the server is reachable."
 
@@ -1819,8 +1830,8 @@ msgstr "Clipboard and website icons"
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:444
-#: src/renderer/src/components/SyncDialog.tsx:972
-#: src/renderer/src/components/SyncDialog.tsx:1586
+#: src/renderer/src/components/SyncDialog.tsx:1055
+#: src/renderer/src/components/SyncDialog.tsx:1716
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:136
 #: src/renderer/src/components/ui/dialog.tsx:87
 #: src/renderer/src/components/ui/dialog.tsx:128
@@ -1910,7 +1921,7 @@ msgstr "Complete the confirmed local master-password change?"
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "Complete the locally pending change confirmed by the server"
 
-#: src/renderer/src/components/SyncDialog.tsx:1093
+#: src/renderer/src/components/SyncDialog.tsx:1180
 msgid "Configured account"
 msgstr "Configured account"
 
@@ -1986,7 +1997,7 @@ msgstr "Confirming…"
 msgid "Conflict requires attention"
 msgstr "Conflict requires attention"
 
-#: src/renderer/src/components/SyncDialog.tsx:1410
+#: src/renderer/src/components/SyncDialog.tsx:1540
 msgid "Connect and sync"
 msgstr "Connect and sync"
 
@@ -2003,15 +2014,15 @@ msgstr "Connected"
 msgid "Connected account"
 msgstr "Connected account"
 
-#: src/renderer/src/components/SyncDialog.tsx:828
+#: src/renderer/src/components/SyncDialog.tsx:911
 msgid "Connected and synced. {summary}."
 msgstr "Connected and synced. {summary}."
 
-#: src/renderer/src/components/SyncDialog.tsx:1008
+#: src/renderer/src/components/SyncDialog.tsx:1091
 msgid "Connected, vault locked"
 msgstr "Connected, vault locked"
 
-#: src/renderer/src/components/SyncDialog.tsx:1006
+#: src/renderer/src/components/SyncDialog.tsx:1089
 msgid "Connected, vault unlocked"
 msgstr "Connected, vault unlocked"
 
@@ -2039,7 +2050,7 @@ msgid "Continue restoring"
 msgstr "Continue restoring"
 
 #. Button that sends the pasted Duo result address to finish two-step login.
-#: src/renderer/src/components/SyncDialog.tsx:1280
+#: src/renderer/src/components/SyncDialog.tsx:1397
 msgid "Continue sign-in"
 msgstr "Continue sign-in"
 
@@ -2149,11 +2160,11 @@ msgstr "Core text and file Send workflows are available. File editing, advanced 
 msgid "Could not clear the completion record. The backup data itself was not deleted."
 msgstr "Could not clear the completion record. The backup data itself was not deleted."
 
-#: src/renderer/src/components/SyncDialog.tsx:398
+#: src/renderer/src/components/SyncDialog.tsx:425
 msgid "Could not connect to the sync server"
 msgstr "Could not connect to the sync server"
 
-#: src/renderer/src/components/SyncDialog.tsx:172
+#: src/renderer/src/components/SyncDialog.tsx:199
 msgid "Could not connect to the sync server. Check your network, server URL, and TLS certificate, then try again."
 msgstr "Could not connect to the sync server. Check your network, server URL, and TLS certificate, then try again."
 
@@ -2219,7 +2230,7 @@ msgstr "Could not load Sends"
 msgid "Could not load shared item"
 msgstr "Could not load shared item"
 
-#: src/renderer/src/components/SyncDialog.tsx:609
+#: src/renderer/src/components/SyncDialog.tsx:646
 msgid "Could not load the account security status."
 msgstr "Could not load the account security status."
 
@@ -2231,7 +2242,7 @@ msgstr "Could not remove the Send password."
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Could not save the Send. Confirm that sync is connected."
 
-#: src/renderer/src/components/SyncDialog.tsx:637
+#: src/renderer/src/components/SyncDialog.tsx:674
 msgid "Could not send the verification email. Make sure email is configured in Vaultwarden."
 msgstr "Could not send the verification email. Make sure email is configured in Vaultwarden."
 
@@ -2676,16 +2687,16 @@ msgstr "Discard changes"
 msgid "Discard unsaved changes?"
 msgstr "Discard unsaved changes?"
 
-#: src/renderer/src/components/SyncDialog.tsx:1551
-#: src/renderer/src/components/SyncDialog.tsx:1579
+#: src/renderer/src/components/SyncDialog.tsx:1681
+#: src/renderer/src/components/SyncDialog.tsx:1709
 msgid "Disconnect"
 msgstr "Disconnect"
 
-#: src/renderer/src/components/SyncDialog.tsx:1559
+#: src/renderer/src/components/SyncDialog.tsx:1689
 msgid "Disconnect sync?"
 msgstr "Disconnect sync?"
 
-#: src/renderer/src/components/SyncDialog.tsx:927
+#: src/renderer/src/components/SyncDialog.tsx:1010
 msgid "Disconnected from Bitwarden sync."
 msgstr "Disconnected from Bitwarden sync."
 
@@ -2780,27 +2791,27 @@ msgstr "DuckDuckGo web app"
 
 #. Two-step login method option for Duo Security tied to the personal account.
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:114
-#: src/renderer/src/components/SyncDialog.tsx:553
+#: src/renderer/src/components/SyncDialog.tsx:590
 msgid "Duo"
 msgstr ""
 
 #. Two-step login method option for Duo Security configured by the user's Bitwarden organization.
-#: src/renderer/src/components/SyncDialog.tsx:560
+#: src/renderer/src/components/SyncDialog.tsx:597
 msgid "Duo (organization)"
 msgstr "Duo (organization)"
 
 #. Label of the field where the user pastes the browser address shown after approving Duo two-step login.
-#: src/renderer/src/components/SyncDialog.tsx:1229
+#: src/renderer/src/components/SyncDialog.tsx:1346
 msgid "Duo result address"
 msgstr "Duo result address"
 
 #. Title of the sync error shown when Duo two-step verification fails or times out.
-#: src/renderer/src/components/SyncDialog.tsx:369
+#: src/renderer/src/components/SyncDialog.tsx:396
 msgid "Duo verification did not complete"
 msgstr "Duo verification did not complete"
 
 #. Sign-in dialog error after the Duo two-step verification step fails, times out, or receives a callback address from another sign-in attempt.
-#: src/renderer/src/components/SyncDialog.tsx:155
+#: src/renderer/src/components/SyncDialog.tsx:182
 msgid "Duo verification did not complete. It may have timed out, or the pasted address belongs to a different Duo sign-in. Open Duo again to retry."
 msgstr "Duo verification did not complete. It may have timed out, or the pasted address belongs to a different Duo sign-in. Open Duo again to retry."
 
@@ -2884,8 +2895,8 @@ msgstr "Editing file Sends is not available yet."
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:786
 #: src/renderer/src/components/LoginEditor.tsx:665
 #: src/renderer/src/components/LoginEditor.tsx:2368
-#: src/renderer/src/components/SyncDialog.tsx:549
-#: src/renderer/src/components/SyncDialog.tsx:1073
+#: src/renderer/src/components/SyncDialog.tsx:586
+#: src/renderer/src/components/SyncDialog.tsx:1160
 #: src/renderer/src/components/VaultItemDetailViews.tsx:254
 #: src/renderer/src/components/VaultItemDetailViews.tsx:383
 msgid "Email"
@@ -2903,7 +2914,7 @@ msgstr "Email address for verification codes"
 msgid "Email cannot be changed here."
 msgstr "Email cannot be changed here."
 
-#: src/renderer/src/components/SyncDialog.tsx:1485
+#: src/renderer/src/components/SyncDialog.tsx:1615
 msgid "Email not verified"
 msgstr "Email not verified"
 
@@ -2919,7 +2930,7 @@ msgstr "Email verification"
 msgid "Email verification code"
 msgstr "Email verification code"
 
-#: src/renderer/src/components/SyncDialog.tsx:1484
+#: src/renderer/src/components/SyncDialog.tsx:1614
 msgid "Email verified"
 msgstr "Email verified"
 
@@ -2937,7 +2948,7 @@ msgid "Emergency Access is not configured"
 msgstr "Emergency Access is not configured"
 
 #. Privacy-safe sync diagnostic reason shown when a successful response has no body.
-#: src/renderer/src/components/SyncDialog.tsx:284
+#: src/renderer/src/components/SyncDialog.tsx:311
 msgid "Empty server response"
 msgstr "Empty server response"
 
@@ -3031,9 +3042,9 @@ msgstr "Enter a valid email address with no more than 254 characters."
 msgid "Enter a valid email address."
 msgstr "Enter a valid email address."
 
-#: src/renderer/src/components/SyncDialog.tsx:184
-#: src/renderer/src/components/SyncDialog.tsx:776
-#: src/renderer/src/components/SyncDialog.tsx:801
+#: src/renderer/src/components/SyncDialog.tsx:211
+#: src/renderer/src/components/SyncDialog.tsx:859
+#: src/renderer/src/components/SyncDialog.tsx:884
 msgid "Enter a valid HTTPS server URL."
 msgstr "Enter a valid HTTPS server URL."
 
@@ -3132,11 +3143,11 @@ msgstr "Enter your current master password to confirm restoring to this vault."
 msgid "Enter your current master password."
 msgstr "Enter your current master password."
 
-#: src/renderer/src/components/SyncDialog.tsx:805
+#: src/renderer/src/components/SyncDialog.tsx:888
 msgid "Enter your email and master password."
 msgstr "Enter your email and master password."
 
-#: src/renderer/src/components/SyncDialog.tsx:355
+#: src/renderer/src/components/SyncDialog.tsx:382
 msgid "Enter your master password again and complete two-step verification if the server requests it."
 msgstr "Enter your master password again and complete two-step verification if the server requests it."
 
@@ -3176,8 +3187,8 @@ msgstr "Enter your master password to unlock items stored on this device."
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
 #: src/renderer/src/components/AuthScreen.tsx:206
 #: src/renderer/src/components/Dialogs.tsx:489
-#: src/renderer/src/components/SyncDialog.tsx:843
-#: src/renderer/src/components/SyncDialog.tsx:898
+#: src/renderer/src/components/SyncDialog.tsx:926
+#: src/renderer/src/components/SyncDialog.tsx:981
 msgid "Enter your master password."
 msgstr "Enter your master password."
 
@@ -3190,7 +3201,7 @@ msgstr "Equivalent domains"
 msgid "Error code"
 msgstr "Error code"
 
-#: src/renderer/src/components/SyncDialog.tsx:436
+#: src/renderer/src/components/SyncDialog.tsx:463
 msgid "Error code: {code}"
 msgstr "Error code: {code}"
 
@@ -3389,8 +3400,8 @@ msgstr "First name"
 msgid "Folder"
 msgstr "Folder"
 
-#: src/renderer/src/components/SyncDialog.tsx:264
-#: src/renderer/src/components/SyncDialog.tsx:335
+#: src/renderer/src/components/SyncDialog.tsx:291
+#: src/renderer/src/components/SyncDialog.tsx:362
 msgid "Folder data"
 msgstr "Folder data"
 
@@ -3525,7 +3536,7 @@ msgstr "Generator"
 msgid "Generator history"
 msgstr "Generator history"
 
-#: src/renderer/src/components/SyncDialog.tsx:360
+#: src/renderer/src/components/SyncDialog.tsx:387
 msgid "Get the verification code from the email sent by Bitwarden and enter it under advanced options."
 msgstr "Get the verification code from the email sent by Bitwarden and enter it under advanced options."
 
@@ -3544,7 +3555,7 @@ msgstr "GitHub"
 msgid "Given name"
 msgstr "Given name"
 
-#: src/renderer/src/components/SyncDialog.tsx:1570
+#: src/renderer/src/components/SyncDialog.tsx:1700
 msgid "Go back"
 msgstr "Go back"
 
@@ -3607,7 +3618,7 @@ msgstr "Hide {0}"
 msgid "Hide {label}"
 msgstr "Hide {label}"
 
-#: src/renderer/src/components/SyncDialog.tsx:1139
+#: src/renderer/src/components/SyncDialog.tsx:1254
 msgid "Hide advanced options"
 msgstr "Hide advanced options"
 
@@ -3617,7 +3628,7 @@ msgstr "Hide custom field contents"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:76
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1115
+#: src/renderer/src/components/SyncDialog.tsx:1209
 msgid "Hide master password"
 msgstr "Hide master password"
 
@@ -3914,7 +3925,7 @@ msgstr "KeePass 2 XML is unencrypted plaintext containing directly readable pass
 msgid "Key"
 msgstr "Key"
 
-#: src/renderer/src/components/SyncDialog.tsx:383
+#: src/renderer/src/components/SyncDialog.tsx:410
 msgid "Key Connector accounts are not supported"
 msgstr "Key Connector accounts are not supported"
 
@@ -3960,11 +3971,11 @@ msgstr "Last name"
 msgid "Last revised"
 msgstr "Last revised"
 
-#: src/renderer/src/components/SyncDialog.tsx:1437
+#: src/renderer/src/components/SyncDialog.tsx:1567
 msgid "Last sync"
 msgstr "Last sync"
 
-#: src/renderer/src/components/SyncDialog.tsx:1019
+#: src/renderer/src/components/SyncDialog.tsx:1102
 msgid "Last synced: {lastSyncTime}"
 msgstr "Last synced: {lastSyncTime}"
 
@@ -3988,7 +3999,7 @@ msgstr "Length"
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "Let terminals and Git use SSH keys from the vault through a local socket."
 
-#: src/renderer/src/components/SyncDialog.tsx:1219
+#: src/renderer/src/components/SyncDialog.tsx:1336
 msgid "Let the server temporarily skip two-step verification on this device."
 msgstr "Let the server temporarily skip two-step verification on this device."
 
@@ -4164,7 +4175,7 @@ msgstr "Local accounts and cloud connections"
 msgid "Local generator"
 msgstr "Local generator"
 
-#: src/renderer/src/components/SyncDialog.tsx:345
+#: src/renderer/src/components/SyncDialog.tsx:372
 msgid "Local sync snapshot limit"
 msgstr "Local sync snapshot limit"
 
@@ -4208,6 +4219,11 @@ msgstr "Lock when the screen is locked"
 #: src/renderer/src/components/SettingsPage.tsx:398
 msgid "Locking and unlocking"
 msgstr "Locking and unlocking"
+
+#. Button in the sync sign-in form that asks another signed-in device to approve this sign-in instead of entering the master password.
+#: src/renderer/src/components/SyncDialog.tsx:1230
+msgid "Log in with device"
+msgstr "Log in with device"
 
 #: src/renderer/src/components/LoginEditor.tsx:696
 #: src/renderer/src/hooks/use-item-type-meta.ts:17
@@ -4306,7 +4322,7 @@ msgstr "Manual update"
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
-#: src/renderer/src/components/SyncDialog.tsx:1098
+#: src/renderer/src/components/SyncDialog.tsx:1192
 msgid "Master password"
 msgstr "Master password"
 
@@ -4610,7 +4626,7 @@ msgstr "Never ask (approve automatically)"
 #~ msgid "Never match"
 #~ msgstr "Never match"
 
-#: src/renderer/src/components/SyncDialog.tsx:491
+#: src/renderer/src/components/SyncDialog.tsx:518
 msgid "Never synced"
 msgstr "Never synced"
 
@@ -4622,11 +4638,11 @@ msgstr "Never used"
 msgid "New backup password"
 msgstr "New backup password"
 
-#: src/renderer/src/components/SyncDialog.tsx:1341
+#: src/renderer/src/components/SyncDialog.tsx:1464
 msgid "New device verification code (optional)"
 msgstr "New device verification code (optional)"
 
-#: src/renderer/src/components/SyncDialog.tsx:359
+#: src/renderer/src/components/SyncDialog.tsx:386
 msgid "New device verification code required"
 msgstr "New device verification code required"
 
@@ -4809,7 +4825,7 @@ msgstr "None of the analyzed login items share the same password."
 msgid "None of the valid personal login items use an http:// URI."
 msgstr "None of the valid personal login items use an http:// URI."
 
-#: src/renderer/src/components/SyncDialog.tsx:1198
+#: src/renderer/src/components/SyncDialog.tsx:1315
 msgid "None of the verification methods offered by this server are supported by BearWarden."
 msgstr "None of the verification methods offered by this server are supported by BearWarden."
 
@@ -4831,7 +4847,7 @@ msgstr "Not configured"
 #~ msgid "Not directly assigned"
 #~ msgstr "Not directly assigned"
 
-#: src/renderer/src/components/SyncDialog.tsx:1432
+#: src/renderer/src/components/SyncDialog.tsx:1562
 msgid "Not provided"
 msgstr "Not provided"
 
@@ -4919,17 +4935,17 @@ msgid "Open BearWarden"
 msgstr "Open BearWarden"
 
 #. Sign-in dialog submit button when Duo is the two-step method; it opens Duo in the system browser.
-#: src/renderer/src/components/SyncDialog.tsx:1403
+#: src/renderer/src/components/SyncDialog.tsx:1533
 msgid "Open Duo"
 msgstr "Open Duo"
 
 #. Sync error description for a failed Duo two-step verification; the user must restart Duo and paste the browser address of the final page.
-#: src/renderer/src/components/SyncDialog.tsx:374
+#: src/renderer/src/components/SyncDialog.tsx:401
 msgid "Open Duo again from the sign-in dialog and paste the address of the page Duo returns you to within five minutes."
 msgstr "Open Duo again from the sign-in dialog and paste the address of the page Duo returns you to within five minutes."
 
 #. Instructions under the Duo result field. Open Duo is the submit button; the final page is the web vault page Duo redirects to after approval, which may say the user can close the window.
-#: src/renderer/src/components/SyncDialog.tsx:1252
+#: src/renderer/src/components/SyncDialog.tsx:1369
 msgid "Open Duo approves this sign-in in your browser. When Duo sends you to a page saying you may close the window, copy the full address of that page and paste it here."
 msgstr "Open Duo approves this sign-in in your browser. When Duo sends you to a page saying you may close the window, copy the full address of that page and paste it here."
 
@@ -4987,11 +5003,11 @@ msgctxt "shared-organization-activity"
 msgid "Organization and activity"
 msgstr "Organization and activity"
 
-#: src/renderer/src/components/SyncDialog.tsx:341
+#: src/renderer/src/components/SyncDialog.tsx:368
 msgid "Organization collection data"
 msgstr "Organization collection data"
 
-#: src/renderer/src/components/SyncDialog.tsx:268
+#: src/renderer/src/components/SyncDialog.tsx:295
 msgid "Organization collection relationships"
 msgstr "Organization collection relationships"
 
@@ -4999,7 +5015,7 @@ msgstr "Organization collection relationships"
 msgid "Organization Duo"
 msgstr "Organization Duo"
 
-#: src/renderer/src/components/SyncDialog.tsx:331
+#: src/renderer/src/components/SyncDialog.tsx:358
 msgid "Organization encryption key"
 msgstr "Organization encryption key"
 
@@ -5007,11 +5023,11 @@ msgstr "Organization encryption key"
 msgid "Organization items"
 msgstr "Organization items"
 
-#: src/renderer/src/components/SyncDialog.tsx:262
+#: src/renderer/src/components/SyncDialog.tsx:289
 msgid "Organization keys and member data"
 msgstr "Organization keys and member data"
 
-#: src/renderer/src/components/SyncDialog.tsx:329
+#: src/renderer/src/components/SyncDialog.tsx:356
 msgid "Organization profile data"
 msgstr "Organization profile data"
 
@@ -5382,7 +5398,7 @@ msgstr "Private notes"
 msgid "Problem section"
 msgstr "Problem section"
 
-#: src/renderer/src/components/SyncDialog.tsx:435
+#: src/renderer/src/components/SyncDialog.tsx:462
 msgid "Problem section: {detailLabel}"
 msgstr "Problem section: {detailLabel}"
 
@@ -5420,7 +5436,7 @@ msgstr "Protected items were not queried"
 msgid "Provider {providerType}"
 msgstr "Provider {providerType}"
 
-#: src/renderer/src/components/SyncDialog.tsx:333
+#: src/renderer/src/components/SyncDialog.tsx:360
 msgid "Provider-managed organization key"
 msgstr "Provider-managed organization key"
 
@@ -5575,7 +5591,7 @@ msgid "Remember approvals until locked"
 msgstr "Remember approvals until locked"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:117
-#: src/renderer/src/components/SyncDialog.tsx:1216
+#: src/renderer/src/components/SyncDialog.tsx:1333
 msgid "Remember this device"
 msgstr "Remember this device"
 
@@ -5710,19 +5726,19 @@ msgstr "Require master password reprompt"
 msgid "Required for password-protected JSON. Leave blank for unencrypted JSON or CSV."
 msgstr "Required for password-protected JSON. Leave blank for unencrypted JSON or CSV."
 
-#: src/renderer/src/components/SyncDialog.tsx:1331
+#: src/renderer/src/components/SyncDialog.tsx:1454
 msgid "Resend email code"
 msgstr "Resend email code"
 
-#: src/renderer/src/components/SyncDialog.tsx:1365
+#: src/renderer/src/components/SyncDialog.tsx:1488
 msgid "Resend verification code"
 msgstr "Resend verification code"
 
-#: src/renderer/src/components/SyncDialog.tsx:1506
+#: src/renderer/src/components/SyncDialog.tsx:1636
 msgid "Resend verification email"
 msgstr "Resend verification email"
 
-#: src/renderer/src/components/SyncDialog.tsx:911
+#: src/renderer/src/components/SyncDialog.tsx:994
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "Resending is now allowed. Select “Sync now” to retry."
 
@@ -5999,7 +6015,7 @@ msgstr "Security & unlock"
 msgid "Security code"
 msgstr "Security code"
 
-#: src/renderer/src/components/SyncDialog.tsx:551
+#: src/renderer/src/components/SyncDialog.tsx:588
 msgid "Security key"
 msgstr "Security key"
 
@@ -6019,7 +6035,7 @@ msgstr "Select"
 msgid "Select a catalog face or upload your own card image."
 msgstr "Select a catalog face or upload your own card image."
 
-#: src/renderer/src/components/SyncDialog.tsx:1184
+#: src/renderer/src/components/SyncDialog.tsx:1301
 msgid "Select a verification method"
 msgstr "Select a verification method"
 
@@ -6063,8 +6079,8 @@ msgstr "Selected items"
 msgid "Send created"
 msgstr "Send created"
 
-#: src/renderer/src/components/SyncDialog.tsx:270
-#: src/renderer/src/components/SyncDialog.tsx:343
+#: src/renderer/src/components/SyncDialog.tsx:297
+#: src/renderer/src/components/SyncDialog.tsx:370
 msgid "Send data"
 msgstr "Send data"
 
@@ -6072,7 +6088,7 @@ msgstr "Send data"
 msgid "Send deleted"
 msgstr "Send deleted"
 
-#: src/renderer/src/components/SyncDialog.tsx:1333
+#: src/renderer/src/components/SyncDialog.tsx:1456
 msgid "Send email code"
 msgstr "Send email code"
 
@@ -6097,6 +6113,11 @@ msgstr "Send verification code"
 #~ msgid "Sender email hidden"
 #~ msgstr "Sender email hidden"
 
+#. Status while BearWarden creates a Login with device request on the server.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:42
+msgid "Sending the sign-in request…"
+msgstr "Sending the sign-in request…"
+
 #: src/renderer/src/components/SendsPage.tsx:337
 #: src/renderer/src/components/VaultShellSidebar.tsx:433
 msgid "Sends"
@@ -6111,7 +6132,7 @@ msgid "Separator"
 msgstr "Separator"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:230
-#: src/renderer/src/components/SyncDialog.tsx:1423
+#: src/renderer/src/components/SyncDialog.tsx:1553
 msgid "Server"
 msgstr "Server"
 
@@ -6120,20 +6141,20 @@ msgid "Server confirms master password was not changed"
 msgstr "Server confirms master password was not changed"
 
 #. Privacy-safe sync diagnostic reason shown when JSON was returned but the top-level sync value has the wrong type.
-#: src/renderer/src/components/SyncDialog.tsx:295
+#: src/renderer/src/components/SyncDialog.tsx:322
 msgid "Server response is not a JSON object"
 msgstr "Server response is not a JSON object"
 
 #. Privacy-safe sync diagnostic reason shown when a successful server or proxy response cannot be parsed as JSON.
-#: src/renderer/src/components/SyncDialog.tsx:289
+#: src/renderer/src/components/SyncDialog.tsx:316
 msgid "Server response is not valid JSON"
 msgstr "Server response is not valid JSON"
 
-#: src/renderer/src/components/SyncDialog.tsx:258
+#: src/renderer/src/components/SyncDialog.tsx:285
 msgid "Server sync response"
 msgstr "Server sync response"
 
-#: src/renderer/src/components/SyncDialog.tsx:1051
+#: src/renderer/src/components/SyncDialog.tsx:1138
 msgid "Server URL"
 msgstr "Server URL"
 
@@ -6142,7 +6163,7 @@ msgid "Service domains are compared with the static list only on this device."
 msgstr "Service domains are compared with the static list only on this device."
 
 #. Privacy-safe sync diagnostic reason for incompatible sign-in or access-token refresh metadata.
-#: src/renderer/src/components/SyncDialog.tsx:301
+#: src/renderer/src/components/SyncDialog.tsx:328
 msgid "Session refresh response"
 msgstr "Session refresh response"
 
@@ -6267,7 +6288,7 @@ msgstr "Show in Finder"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:76
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1115
+#: src/renderer/src/components/SyncDialog.tsx:1209
 msgid "Show master password"
 msgstr "Show master password"
 
@@ -6279,7 +6300,7 @@ msgstr "Show password in large type"
 msgid "Show this historical password"
 msgstr "Show this historical password"
 
-#: src/renderer/src/components/SyncDialog.tsx:1139
+#: src/renderer/src/components/SyncDialog.tsx:1254
 msgid "Show two-step verification"
 msgstr "Show two-step verification"
 
@@ -6292,7 +6313,7 @@ msgid "Sign in with a passkey"
 msgstr "Sign in with a passkey"
 
 #. Privacy-safe sync diagnostic stage for the password or two-factor token exchange response.
-#: src/renderer/src/components/SyncDialog.tsx:246
+#: src/renderer/src/components/SyncDialog.tsx:273
 msgid "Sign-in token response"
 msgstr "Sign-in token response"
 
@@ -6300,11 +6321,16 @@ msgstr "Sign-in token response"
 msgid "Signature approval"
 msgstr "Signature approval"
 
+#. Status after the Login with device request was approved and BearWarden is signing in and syncing.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:46
+msgid "Signing in…"
+msgstr "Signing in…"
+
 #: src/renderer/src/components/SettingsPage.tsx:462
 msgid "Simplified Chinese"
 msgstr "Simplified Chinese"
 
-#: src/renderer/src/components/SyncDialog.tsx:364
+#: src/renderer/src/components/SyncDialog.tsx:391
 msgid "Single sign-on is required"
 msgstr "Single sign-on is required"
 
@@ -6441,7 +6467,7 @@ msgstr "Switch to this local account · Local code {code}"
 msgid "Symbols, numbers, and letters use different colors to make them easier to distinguish."
 msgstr "Symbols, numbers, and letters use different colors to make them easier to distinguish."
 
-#: src/renderer/src/components/SyncDialog.tsx:965
+#: src/renderer/src/components/SyncDialog.tsx:1048
 msgid "Sync"
 msgstr "Sync"
 
@@ -6449,23 +6475,23 @@ msgstr "Sync"
 msgid "Sync & accounts"
 msgstr "Sync & accounts"
 
-#: src/renderer/src/components/SyncDialog.tsx:888
+#: src/renderer/src/components/SyncDialog.tsx:971
 msgid "Sync complete. {summary}."
 msgstr "Sync complete. {summary}."
 
-#: src/renderer/src/components/SyncDialog.tsx:1418
+#: src/renderer/src/components/SyncDialog.tsx:1548
 msgid "Sync connection information"
 msgstr "Sync connection information"
 
-#: src/renderer/src/components/SyncDialog.tsx:418
+#: src/renderer/src/components/SyncDialog.tsx:445
 msgid "Sync did not complete"
 msgstr "Sync did not complete"
 
-#: src/renderer/src/components/SyncDialog.tsx:185
+#: src/renderer/src/components/SyncDialog.tsx:212
 msgid "Sync did not complete. Check your connection and sign-in information, then try again."
 msgstr "Sync did not complete. Check your connection and sign-in information, then try again."
 
-#: src/renderer/src/components/SyncDialog.tsx:148
+#: src/renderer/src/components/SyncDialog.tsx:151
 msgid "Sync did not complete. Please try again later."
 msgstr "Sync did not complete. Please try again later."
 
@@ -6473,27 +6499,27 @@ msgstr "Sync did not complete. Please try again later."
 msgid "Sync error details"
 msgstr "Sync error details"
 
-#: src/renderer/src/components/SyncDialog.tsx:1016
+#: src/renderer/src/components/SyncDialog.tsx:1099
 msgid "Sync failed: {lastErrorTime}"
 msgstr "Sync failed: {lastErrorTime}"
 
-#: src/renderer/src/components/SyncDialog.tsx:1011
+#: src/renderer/src/components/SyncDialog.tsx:1094
 msgid "Sync is not configured"
 msgstr "Sync is not configured"
 
-#: src/renderer/src/components/SyncDialog.tsx:1590
+#: src/renderer/src/components/SyncDialog.tsx:1720
 msgid "Sync now"
 msgstr "Sync now"
 
-#: src/renderer/src/components/SyncDialog.tsx:282
+#: src/renderer/src/components/SyncDialog.tsx:309
 msgid "Sync response structure"
 msgstr "Sync response structure"
 
-#: src/renderer/src/components/SyncDialog.tsx:272
+#: src/renderer/src/components/SyncDialog.tsx:299
 msgid "Sync state commit"
 msgstr "Sync state commit"
 
-#: src/renderer/src/components/SyncDialog.tsx:1023
+#: src/renderer/src/components/SyncDialog.tsx:1106
 msgid "Syncing"
 msgstr "Syncing"
 
@@ -6502,7 +6528,7 @@ msgid "Syncing attachment list"
 msgstr "Syncing attachment list"
 
 #: src/renderer/src/components/SettingsPage.tsx:478
-#: src/renderer/src/components/SyncDialog.tsx:1004
+#: src/renderer/src/components/SyncDialog.tsx:1087
 #: src/renderer/src/components/VaultShell.tsx:189
 msgid "Syncing…"
 msgstr "Syncing…"
@@ -6628,7 +6654,7 @@ msgstr "The backup password must be at least 12 characters."
 msgid "The backup passwords do not match."
 msgstr "The backup passwords do not match."
 
-#: src/renderer/src/components/SyncDialog.tsx:168
+#: src/renderer/src/components/SyncDialog.tsx:195
 msgid "The Bitwarden vault must be signed in to or unlocked again."
 msgstr "The Bitwarden vault must be signed in to or unlocked again."
 
@@ -6710,7 +6736,7 @@ msgstr "The custom inactivity timeout cannot exceed 8,760 hours."
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "The custom inactivity timeout must be at least 1 minute."
 
-#: src/renderer/src/components/SyncDialog.tsx:404
+#: src/renderer/src/components/SyncDialog.tsx:431
 msgid "The data returned by the server cannot be processed safely. Check the Bitwarden or Vaultwarden version and compatibility."
 msgstr "The data returned by the server cannot be processed safely. Check the Bitwarden or Vaultwarden version and compatibility."
 
@@ -6758,7 +6784,7 @@ msgstr "The item remains in the encrypted trash and can be restored later."
 msgid "The key is shown only during this short-lived setup session."
 msgstr "The key is shown only during this short-lived setup session."
 
-#: src/renderer/src/components/SyncDialog.tsx:1017
+#: src/renderer/src/components/SyncDialog.tsx:1100
 msgid "The last sync encountered a problem."
 msgstr "The last sync encountered a problem."
 
@@ -6801,7 +6827,7 @@ msgstr "The main process is comparing service domains locally without uploading 
 
 #: src/renderer/src/components/auth-screen-ui.ts:60
 #: src/renderer/src/components/SettingsPage.tsx:569
-#: src/renderer/src/components/SyncDialog.tsx:181
+#: src/renderer/src/components/SyncDialog.tsx:208
 msgid "The master password is incorrect."
 msgstr "The master password is incorrect."
 
@@ -6837,7 +6863,7 @@ msgstr "The only available passkey was selected automatically."
 msgid "The operation did not finish. Refresh and confirm the current state."
 msgstr "The operation did not finish. Refresh and confirm the current state."
 
-#: src/renderer/src/components/SyncDialog.tsx:149
+#: src/renderer/src/components/SyncDialog.tsx:176
 msgid "The operation was canceled."
 msgstr "The operation was canceled."
 
@@ -6981,19 +7007,19 @@ msgstr "The server applies hidden-password permissions, so sensitive fields are 
 msgid "The server cannot currently report this provider’s actual status. Forcing it off may remove a sign-in method that is still in use. If it is the last method, your account will no longer be protected by two-factor authentication."
 msgstr "The server cannot currently report this provider’s actual status. Forcing it off may remove a sign-in method that is still in use. If it is the last method, your account will no longer be protected by two-factor authentication."
 
-#: src/renderer/src/components/SyncDialog.tsx:408
+#: src/renderer/src/components/SyncDialog.tsx:435
 msgid "The server contains an incomplete SSH key"
 msgstr "The server contains an incomplete SSH key"
 
-#: src/renderer/src/components/SyncDialog.tsx:176
+#: src/renderer/src/components/SyncDialog.tsx:203
 msgid "The server contains an incomplete SSH key. Repair or delete it in Bitwarden or Vaultwarden first."
 msgstr "The server contains an incomplete SSH key. Repair or delete it in Bitwarden or Vaultwarden first."
 
-#: src/renderer/src/components/SyncDialog.tsx:178
+#: src/renderer/src/components/SyncDialog.tsx:205
 msgid "The server data changed, so this sync was not applied. Sync again to get the latest version."
 msgstr "The server data changed, so this sync was not applied. Sync again to get the latest version."
 
-#: src/renderer/src/components/SyncDialog.tsx:413
+#: src/renderer/src/components/SyncDialog.tsx:440
 msgid "The server data has changed"
 msgstr "The server data has changed"
 
@@ -7009,15 +7035,20 @@ msgstr "The server did not return any account devices."
 msgid "The server did not return any trusted contacts or grantors."
 msgstr "The server did not return any trusted contacts or grantors."
 
+#. Sync dialog error when the server refuses a Login with device request because this installation is not registered as one of the account devices.
+#: src/renderer/src/components/SyncDialog.tsx:164
+msgid "The server does not recognize this device for this account. Sign in with your master password instead."
+msgstr "The server does not recognize this device for this account. Sign in with your master password instead."
+
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:490
 msgid "The server has multiple attachments with the same name, or their contents could not be verified. BearWarden stopped and saved progress to avoid duplicate uploads."
 msgstr "The server has multiple attachments with the same name, or their contents could not be verified. BearWarden stopped and saved progress to avoid duplicate uploads."
 
-#: src/renderer/src/components/SyncDialog.tsx:151
+#: src/renderer/src/components/SyncDialog.tsx:178
 msgid "The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options."
 msgstr "The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options."
 
-#: src/renderer/src/components/SyncDialog.tsx:403
+#: src/renderer/src/components/SyncDialog.tsx:430
 msgid "The server response is incompatible"
 msgstr "The server response is incompatible"
 
@@ -7033,7 +7064,7 @@ msgstr "The server result for this batch import is unknown"
 msgid "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 msgstr "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 
-#: src/renderer/src/components/SyncDialog.tsx:174
+#: src/renderer/src/components/SyncDialog.tsx:201
 msgid "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 msgstr "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 
@@ -7056,6 +7087,16 @@ msgstr "The setup key has been copied. The clipboard will be cleared within 30 s
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:300
 msgid "The setup session has expired. Start again."
 msgstr "The setup session has expired. Start again."
+
+#. Sync dialog error when a Login with device request was not approved in time, or was approved after the server stopped accepting it.
+#: src/renderer/src/components/SyncDialog.tsx:158
+msgid "The sign-in request expired before it could be used. Send a new request."
+msgstr "The sign-in request expired before it could be used. Send a new request."
+
+#. Sync dialog error when another device rejected the Login with device request.
+#: src/renderer/src/components/SyncDialog.tsx:153
+msgid "The sign-in request was denied on the other device."
+msgstr "The sign-in request was denied on the other device."
 
 #: src/renderer/src/lib/ssh-agent-ui.ts:45
 #~ msgid "The signing purpose is not in an SSHSIG namespace recognized by BearWarden."
@@ -7121,7 +7162,7 @@ msgstr "The vault file could not be found. Check that it has not been moved or d
 #~ msgid "The vault file was not found. Check that it has not been moved or deleted."
 #~ msgstr "The vault file was not found. Check that it has not been moved or deleted."
 
-#: src/renderer/src/components/SyncDialog.tsx:180
+#: src/renderer/src/components/SyncDialog.tsx:207
 msgid "The vault is locked. Enter your master password and try again."
 msgstr "The vault is locked. Enter your master password and try again."
 
@@ -7162,7 +7203,7 @@ msgstr "The verification code was sent to {emailAddress}."
 msgid "The verification code will be sent to the specified address. The email address is retained only during this short-lived setup flow."
 msgstr "The verification code will be sent to the specified address. The email address is retained only during this short-lived setup flow."
 
-#: src/renderer/src/components/SyncDialog.tsx:633
+#: src/renderer/src/components/SyncDialog.tsx:670
 msgid "The verification email request was sent. If email is configured on the server, check your inbox to complete verification."
 msgstr "The verification email request was sent. If email is configured on the server, check your inbox to complete verification."
 
@@ -7202,7 +7243,7 @@ msgstr "These values exist only in this device’s encrypted vault. Closing or l
 msgid "Third-party email forwarding integrations that require API credentials are not available."
 msgstr "Third-party email forwarding integrations that require API credentials are not available."
 
-#: src/renderer/src/components/SyncDialog.tsx:735
+#: src/renderer/src/components/SyncDialog.tsx:772
 msgid "This account requires a two-step verification method that BearWarden does not support."
 msgstr "This account requires a two-step verification method that BearWarden does not support."
 
@@ -7210,15 +7251,15 @@ msgstr "This account requires a two-step verification method that BearWarden doe
 #~ msgid "This account requires Duo two-step verification, which BearWarden does not support yet. Use another enabled verification method or the official Bitwarden client."
 #~ msgstr "This account requires Duo two-step verification, which BearWarden does not support yet. Use another enabled verification method or the official Bitwarden client."
 
-#: src/renderer/src/components/SyncDialog.tsx:164
+#: src/renderer/src/components/SyncDialog.tsx:191
 msgid "This account requires trusted-device encryption. BearWarden cannot unlock it safely; use the official Bitwarden client."
 msgstr "This account requires trusted-device encryption. BearWarden cannot unlock it safely; use the official Bitwarden client."
 
-#: src/renderer/src/components/SyncDialog.tsx:170
+#: src/renderer/src/components/SyncDialog.tsx:197
 msgid "This account uses a newer account encryption or sign-in method that is not yet supported. To prevent data loss, BearWarden will not write any changes to the server."
 msgstr "This account uses a newer account encryption or sign-in method that is not yet supported. To prevent data loss, BearWarden will not write any changes to the server."
 
-#: src/renderer/src/components/SyncDialog.tsx:393
+#: src/renderer/src/components/SyncDialog.tsx:420
 msgid "This account's encryption method is not supported"
 msgstr "This account's encryption method is not supported"
 
@@ -7262,7 +7303,7 @@ msgstr "This app wants to use the SSH key to sign Git content."
 msgid "This attachment"
 msgstr "This attachment"
 
-#: src/renderer/src/components/SyncDialog.tsx:414
+#: src/renderer/src/components/SyncDialog.tsx:441
 msgid "This change was not applied. Sync again to get the latest version, then retry."
 msgstr "This change was not applied. Sync again to get the latest version, then retry."
 
@@ -7296,7 +7337,7 @@ msgid "This is an account-level setting"
 msgstr "This is an account-level setting"
 
 #. Error under the Duo result field when the pasted text is not a Duo result address for the waiting sign-in.
-#: src/renderer/src/components/SyncDialog.tsx:1260
+#: src/renderer/src/components/SyncDialog.tsx:1377
 msgid "This is not the address of the Duo result page. Copy the full address from the browser and try again."
 msgstr "This is not the address of the Duo result page. Copy the full address from the browser and try again."
 
@@ -7336,20 +7377,20 @@ msgstr "This only changes your master password and its protection. It does not c
 msgid "This only deletes personal data for the currently synced account. Shared organization items are not deleted."
 msgstr "This only deletes personal data for the currently synced account. Shared organization items are not deleted."
 
-#: src/renderer/src/components/SyncDialog.tsx:166
+#: src/renderer/src/components/SyncDialog.tsx:193
 #: src/renderer/src/hooks/use-describe-vault-error.ts:13
 msgid "This operation is restricted by your organization's policy."
 msgstr "This operation is restricted by your organization's policy."
 
-#: src/renderer/src/components/SyncDialog.tsx:153
+#: src/renderer/src/components/SyncDialog.tsx:180
 msgid "This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet."
 msgstr "This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet."
 
-#: src/renderer/src/components/SyncDialog.tsx:365
+#: src/renderer/src/components/SyncDialog.tsx:392
 msgid "This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in."
 msgstr "This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in."
 
-#: src/renderer/src/components/SyncDialog.tsx:162
+#: src/renderer/src/components/SyncDialog.tsx:189
 msgid "This organization uses Key Connector. BearWarden cannot unlock this account safely; use the official Bitwarden client."
 msgstr "This organization uses Key Connector. BearWarden cannot unlock this account safely; use the official Bitwarden client."
 
@@ -7414,6 +7455,11 @@ msgstr "This Send uses email verification. BearWarden does not yet support OTP, 
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 
+#. Sync dialog error when the Bitwarden or Vaultwarden server has no Login with device endpoint.
+#: src/renderer/src/components/SyncDialog.tsx:171
+msgid "This server does not support logging in with a device."
+msgstr "This server does not support logging in with a device."
+
 #: src/renderer/src/hooks/use-describe-vault-error.ts:25
 msgid "This server or account does not currently allow this attachment to be added."
 msgstr "This server or account does not currently allow this attachment to be added."
@@ -7472,7 +7518,7 @@ msgstr "This week"
 msgid "This will deauthorize all sessions"
 msgstr "This will deauthorize all sessions"
 
-#: src/renderer/src/components/SyncDialog.tsx:1562
+#: src/renderer/src/components/SyncDialog.tsx:1692
 msgid "This will not delete your local vault, but it will no longer sync with Bitwarden."
 msgstr "This will not delete your local vault, but it will no longer sync with Bitwarden."
 
@@ -7487,7 +7533,7 @@ msgstr "Time unavailable"
 msgid "Title"
 msgstr "Title"
 
-#: src/renderer/src/components/SyncDialog.tsx:394
+#: src/renderer/src/components/SyncDialog.tsx:421
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 
@@ -7570,7 +7616,7 @@ msgstr "Trust status"
 msgid "Trusted"
 msgstr "Trusted"
 
-#: src/renderer/src/components/SyncDialog.tsx:388
+#: src/renderer/src/components/SyncDialog.tsx:415
 msgid "Trusted-device encryption is not supported"
 msgstr "Trusted-device encryption is not supported"
 
@@ -7586,7 +7632,7 @@ msgstr "Try a shorter search term or switch to All items."
 msgid "Try again"
 msgstr "Try again"
 
-#: src/renderer/src/components/SyncDialog.tsx:419
+#: src/renderer/src/components/SyncDialog.tsx:446
 msgid "Try again. If the problem persists, note the error code below for troubleshooting."
 msgstr "Try again. If the problem persists, note the error code below for troubleshooting."
 
@@ -7607,40 +7653,40 @@ msgstr "Two-factor authentication"
 msgid "Two-factor authentication not enabled"
 msgstr "Two-factor authentication not enabled"
 
-#: src/renderer/src/components/SyncDialog.tsx:1302
+#: src/renderer/src/components/SyncDialog.tsx:1419
 msgid "Two-step verification code"
 msgstr "Two-step verification code"
 
-#: src/renderer/src/components/SyncDialog.tsx:1304
+#: src/renderer/src/components/SyncDialog.tsx:1421
 msgid "Two-step verification code (optional)"
 msgstr "Two-step verification code (optional)"
 
-#: src/renderer/src/components/SyncDialog.tsx:1491
+#: src/renderer/src/components/SyncDialog.tsx:1621
 msgid "Two-step verification enabled"
 msgstr "Two-step verification enabled"
 
 #. Sign-in dialog notice when the server requires two-step login and Duo is the selected method; "Open Duo" is the submit button label.
-#: src/renderer/src/components/SyncDialog.tsx:724
+#: src/renderer/src/components/SyncDialog.tsx:761
 msgid "Two-step verification is required. Choose Open Duo to verify in your browser."
 msgstr "Two-step verification is required. Choose Open Duo to verify in your browser."
 
-#: src/renderer/src/components/SyncDialog.tsx:732
+#: src/renderer/src/components/SyncDialog.tsx:769
 msgid "Two-step verification is required. Enter a current verification code to continue."
 msgstr "Two-step verification is required. Enter a current verification code to continue."
 
-#: src/renderer/src/components/SyncDialog.tsx:1162
+#: src/renderer/src/components/SyncDialog.tsx:1277
 msgid "Two-step verification method"
 msgstr "Two-step verification method"
 
-#: src/renderer/src/components/SyncDialog.tsx:1164
+#: src/renderer/src/components/SyncDialog.tsx:1279
 msgid "Two-step verification method (optional)"
 msgstr "Two-step verification method (optional)"
 
-#: src/renderer/src/components/SyncDialog.tsx:1492
+#: src/renderer/src/components/SyncDialog.tsx:1622
 msgid "Two-step verification not enabled"
 msgstr "Two-step verification not enabled"
 
-#: src/renderer/src/components/SyncDialog.tsx:183
+#: src/renderer/src/components/SyncDialog.tsx:210
 msgid "Two-step verification was invalid, expired, or canceled. Please try again."
 msgstr "Two-step verification was invalid, expired, or canceled. Please try again."
 
@@ -7996,7 +8042,7 @@ msgstr "Unknown type ({0})"
 #~ msgid "Unknown type ({type})"
 #~ msgstr "Unknown type ({type})"
 
-#: src/renderer/src/components/SyncDialog.tsx:1409
+#: src/renderer/src/components/SyncDialog.tsx:1539
 msgid "Unlock and sync"
 msgstr "Unlock and sync"
 
@@ -8030,7 +8076,8 @@ msgstr "Unlock with PIN"
 msgid "Unlock your vault in BearWarden, then return to the browser to use autofill."
 msgstr "Unlock your vault in BearWarden, then return to the browser to use autofill."
 
-#: src/renderer/src/components/SyncDialog.tsx:867
+#: src/renderer/src/components/SyncDialog.tsx:553
+#: src/renderer/src/components/SyncDialog.tsx:950
 msgid "Unlocked and synced. {summary}."
 msgstr "Unlocked and synced. {summary}."
 
@@ -8060,7 +8107,7 @@ msgstr "Unsecured websites"
 msgid "Unsupported key format"
 msgstr "Unsupported key format"
 
-#: src/renderer/src/components/SyncDialog.tsx:337
+#: src/renderer/src/components/SyncDialog.tsx:364
 msgid "Unsupported vault item type"
 msgstr "Unsupported vault item type"
 
@@ -8131,7 +8178,7 @@ msgstr "Uppercase letters"
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "Use at least 4 characters and avoid numbers that are easy to guess."
 
-#: src/renderer/src/components/SyncDialog.tsx:1066
+#: src/renderer/src/components/SyncDialog.tsx:1153
 msgid "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 msgstr "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 
@@ -8143,7 +8190,12 @@ msgstr "Use long passwords created by the password generator instead."
 msgid "Use master password"
 msgstr "Use master password"
 
-#: src/renderer/src/components/SyncDialog.tsx:1352
+#. Button that abandons the Login with device request and returns to the master password field.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:65
+msgid "Use master password instead"
+msgstr "Use master password instead"
+
+#: src/renderer/src/components/SyncDialog.tsx:1475
 msgid "Use only when Bitwarden asks you to verify a new device."
 msgstr "Use only when Bitwarden asks you to verify a new device."
 
@@ -8210,8 +8262,8 @@ msgstr "Vault categories"
 msgid "Vault health report"
 msgstr "Vault health report"
 
-#: src/renderer/src/components/SyncDialog.tsx:266
-#: src/renderer/src/components/SyncDialog.tsx:339
+#: src/renderer/src/components/SyncDialog.tsx:293
+#: src/renderer/src/components/SyncDialog.tsx:366
 msgid "Vault item data"
 msgstr "Vault item data"
 
@@ -8227,7 +8279,7 @@ msgstr "Vault navigation"
 msgid "Vaultwarden does not have an HIBP API key configured"
 msgstr "Vaultwarden does not have an HIBP API key configured"
 
-#: src/renderer/src/components/SyncDialog.tsx:409
+#: src/renderer/src/components/SyncDialog.tsx:436
 msgid "Vaultwarden returned an SSH key that is missing required key fields. Repair or delete it in the official web vault, then sync again."
 msgstr "Vaultwarden returned an SSH key that is missing required key fields. Repair or delete it in the official web vault, then sync again."
 
@@ -8245,6 +8297,7 @@ msgstr "Vaultwarden verifies your master password again during activation."
 #~ msgstr "Verification code time remaining"
 
 #: src/renderer/src/components/LoginApprovalDialog.tsx:88
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:18
 msgid "Verification phrase"
 msgstr "Verification phrase"
 
@@ -8317,8 +8370,8 @@ msgstr "View {findingName}"
 msgid "View {title}"
 msgstr "View {title}"
 
-#: src/renderer/src/components/SyncDialog.tsx:453
-#: src/renderer/src/components/SyncDialog.tsx:482
+#: src/renderer/src/components/SyncDialog.tsx:480
+#: src/renderer/src/components/SyncDialog.tsx:509
 msgid "View details"
 msgstr "View details"
 
@@ -8371,6 +8424,11 @@ msgstr "Waiting for a file"
 #: src/renderer/src/hooks/use-attachment-operations.ts:93
 msgid "Waiting for a save location"
 msgstr "Waiting for a save location"
+
+#. Status while BearWarden waits for another signed-in device to approve the Login with device request.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:50
+msgid "Waiting for approval…"
+msgstr "Waiting for approval…"
 
 #: src/renderer/src/components/LoginEditor.tsx:3251
 msgid "Waiting for private key password…"
@@ -8561,7 +8619,7 @@ msgstr "Your current session has expired. Please sign in again."
 msgid "Your master password and decrypted data never leave this device."
 msgstr "Your master password and decrypted data never leave this device."
 
-#: src/renderer/src/components/SyncDialog.tsx:1020
+#: src/renderer/src/components/SyncDialog.tsx:1103
 msgid "Your master password and verification codes are used only for this operation and are not stored on this device."
 msgstr "Your master password and verification codes are used only for this operation and are not stored on this device."
 
@@ -8602,7 +8660,7 @@ msgstr "Your remote account and local encrypted vault have been updated. Reconne
 msgid "Your server has not enabled bank account, driver's license, and passport items yet."
 msgstr "Your server has not enabled bank account, driver's license, and passport items yet."
 
-#: src/renderer/src/components/SyncDialog.tsx:354
+#: src/renderer/src/components/SyncDialog.tsx:381
 msgid "Your sign-in has expired"
 msgstr "Your sign-in has expired"
 
@@ -8615,6 +8673,6 @@ msgid "Your sync session has expired. Sign in again first."
 msgstr "Your sync session has expired. Sign in again first."
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:115
-#: src/renderer/src/components/SyncDialog.tsx:550
+#: src/renderer/src/components/SyncDialog.tsx:587
 msgid "YubiKey OTP"
 msgstr ""

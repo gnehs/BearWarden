@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Server,
   ShieldCheck,
+  Smartphone,
   Unplug,
   X
 } from 'lucide-react'
@@ -88,6 +89,8 @@ import {
   type SyncTwoFactorFormMethod
 } from './sync-two-factor-request'
 import { useDuoLoginCallback } from '../hooks/use-duo-login-callback'
+import { useLoginWithDevice } from '../hooks/use-login-with-device'
+import { LoginWithDevicePanel } from './LoginWithDevicePanel'
 
 const BITWARDEN_CLOUD_URL = 'https://bitwarden.com'
 
@@ -146,6 +149,30 @@ function isDuoCanceled(error: unknown): boolean {
 
 function describeSyncError(error: unknown): string {
   if (!(error instanceof Error)) return t`Sync did not complete. Please try again later.`
+  if (error.message.includes('SYNC_LOGIN_WITH_DEVICE_DENIED'))
+    return t({
+      message: 'The sign-in request was denied on the other device.',
+      comment: 'Sync dialog error when another device rejected the Login with device request.'
+    })
+  if (error.message.includes('SYNC_LOGIN_WITH_DEVICE_EXPIRED'))
+    return t({
+      message: 'The sign-in request expired before it could be used. Send a new request.',
+      comment:
+        'Sync dialog error when a Login with device request was not approved in time, or was approved after the server stopped accepting it.'
+    })
+  if (error.message.includes('SYNC_LOGIN_WITH_DEVICE_UNKNOWN_DEVICE'))
+    return t({
+      message:
+        'The server does not recognize this device for this account. Sign in with your master password instead.',
+      comment:
+        'Sync dialog error when the server refuses a Login with device request because this installation is not registered as one of the account devices.'
+    })
+  if (error.message.includes('SYNC_LOGIN_WITH_DEVICE_UNSUPPORTED'))
+    return t({
+      message: 'This server does not support logging in with a device.',
+      comment:
+        'Sync dialog error when the Bitwarden or Vaultwarden server has no Login with device endpoint.'
+    })
   if (/(?:CANCEL|ABORT)/i.test(error.message)) return t`The operation was canceled.`
   if (error.message.includes('NEW_DEVICE_REQUIRED'))
     return t`The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options.`
@@ -521,6 +548,16 @@ function SyncDialog({
   const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [rememberDevice, setRememberDevice] = useState(false)
   const duoLogin = useDuoLoginCallback()
+  const deviceLogin = useLoginWithDevice({
+    onSynced: (result) =>
+      refreshAfterSuccess(result, (summary) => t`Unlocked and synced. ${summary}.`),
+    onTwoFactor: (providers) => {
+      const method = applyTwoFactorChallenge(providers)
+      if (method === '1') void sendDeviceLoginEmailCode(false)
+    },
+    onFailure: presentSyncOperationFailure
+  })
+  const deviceLoginState = deviceLogin.state.phase === 'idle' ? null : deviceLogin.state
   const [duoCallbackRejected, setDuoCallbackRejected] = useState(false)
   const [newDeviceOtp, setNewDeviceOtp] = useState('')
   const [newDeviceOtpBusy, setNewDeviceOtpBusy] = useState(false)
@@ -768,6 +805,52 @@ function SyncDialog({
     } finally {
       setEmailCodeBusy(false)
     }
+  }
+
+  async function sendDeviceLoginEmailCode(showConfirmation: boolean): Promise<void> {
+    if (emailCodeBusy) return
+    setEmailCodeBusy(true)
+    try {
+      await deviceLogin.sendEmailCode()
+      setEmailCodeSent(true)
+      if (showConfirmation) setSuccess(t`A two-step verification code was sent by email.`)
+    } catch (sendError) {
+      setError(describeSyncError(sendError))
+    } finally {
+      setEmailCodeBusy(false)
+    }
+  }
+
+  async function startDeviceLogin(): Promise<void> {
+    setError('')
+    setOperationErrorDiagnostic(null)
+    setErrorDetailsOpen(false)
+    setSuccess('')
+    clearSecrets()
+    await deviceLogin.begin()
+  }
+
+  async function submitDeviceLoginTwoFactor(): Promise<void> {
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    const startsDuo = twoFactorMethodKind === 'duo'
+    if (startsDuo) beginDuoLogin()
+    try {
+      await deviceLogin.submitTwoFactor({
+        ...(newDeviceOtp.trim() ? { newDeviceOtp: newDeviceOtp.trim() } : {}),
+        ...buildSyncTwoFactorRequest({ twoFactorMethod, twoFactorCode, rememberDevice })
+      })
+    } finally {
+      if (startsDuo) duoLogin.finish()
+      setBusy(false)
+    }
+  }
+
+  function switchToMasterPassword(): void {
+    deviceLogin.cancel()
+    clearSecrets()
+    setError('')
   }
 
   async function resendNewDeviceOtp(): Promise<void> {
@@ -1038,7 +1121,11 @@ function SyncDialog({
                 configured
                   ? (event) => {
                       event.preventDefault()
-                      void unlock()
+                      if (deviceLoginState?.phase === 'two-factor') {
+                        void submitDeviceLoginTwoFactor()
+                      } else if (!deviceLoginState) {
+                        void unlock()
+                      }
                     }
                   : connect
               }
@@ -1093,38 +1180,66 @@ function SyncDialog({
                     <AlertDescription>{status.email ?? t`Configured account`}</AlertDescription>
                   </Alert>
                 )}
-                <Field className="grid gap-2">
-                  <FieldLabel htmlFor="sync-master-password">
-                    <Trans>Master password</Trans>
-                  </FieldLabel>
-                  <InputGroup>
-                    <InputGroupInput
-                      id="sync-master-password"
-                      autoFocus={configured}
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      value={masterPassword}
-                      onChange={(event) => setMasterPassword(event.target.value)}
-                      disabled={busy}
-                      required
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        size="icon-xs"
-                        aria-label={
-                          showPassword ? t`Hide master password` : t`Show master password`
-                        }
-                        aria-pressed={showPassword}
-                        onClick={() => setShowPassword((visible) => !visible)}
-                        disabled={busy}
+                {deviceLoginState ? (
+                  <LoginWithDevicePanel
+                    state={deviceLoginState}
+                    onUseMasterPassword={switchToMasterPassword}
+                  />
+                ) : (
+                  <>
+                    <Field className="grid gap-2">
+                      <FieldLabel htmlFor="sync-master-password">
+                        <Trans>Master password</Trans>
+                      </FieldLabel>
+                      <InputGroup>
+                        <InputGroupInput
+                          id="sync-master-password"
+                          autoFocus={configured}
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          value={masterPassword}
+                          onChange={(event) => setMasterPassword(event.target.value)}
+                          disabled={busy}
+                          required
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupButton
+                            size="icon-xs"
+                            aria-label={
+                              showPassword ? t`Hide master password` : t`Show master password`
+                            }
+                            aria-pressed={showPassword}
+                            onClick={() => setShowPassword((visible) => !visible)}
+                            disabled={busy}
+                          >
+                            {showPassword ? <EyeOff /> : <Eye />}
+                          </InputGroupButton>
+                        </InputGroupAddon>
+                      </InputGroup>
+                    </Field>
+                    {configured && (
+                      <Button
+                        className="justify-self-start"
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={() => void startDeviceLogin()}
+                        disabled={isSyncing}
                       >
-                        {showPassword ? <EyeOff /> : <Eye />}
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                </Field>
+                        <Smartphone data-icon="inline-start" aria-hidden="true" />
+                        <Trans comment="Button in the sync sign-in form that asks another signed-in device to approve this sign-in instead of entering the master password.">
+                          Log in with device
+                        </Trans>
+                      </Button>
+                    )}
+                  </>
+                )}
               </FieldGroup>
               <div
+                hidden={
+                  deviceLoginState?.phase === 'requesting' ||
+                  deviceLoginState?.phase === 'awaiting-approval'
+                }
                 className="mx-5 [&[data-open=true]_[data-slot=sync-accordion-chevron]]:scale-y-[-1] [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:opacity-100 [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:blur-none [&[data-open=true]_[data-slot=sync-accordion-panel-inner]]:duration-[var(--acc-expand)] [&[data-open=true]_[data-slot=sync-accordion-panel]]:grid-rows-[1fr] [&[data-open=true]_[data-slot=sync-accordion-panel]]:duration-[var(--acc-expand)]"
                 data-open={showAdvanced ? 'true' : 'false'}
               >
@@ -1171,7 +1286,9 @@ function SyncDialog({
                             const method = value as SyncTwoFactorFormMethod
                             setTwoFactorMethod(method)
                             setTwoFactorCode('')
-                            if (method === '1' && !emailCodeSent) {
+                            if (method === '1' && !emailCodeSent && deviceLoginState) {
+                              void sendDeviceLoginEmailCode(false)
+                            } else if (method === '1' && !emailCodeSent) {
                               const normalizedUrl = validateServerUrl()
                               if (normalizedUrl) {
                                 void sendEmailTwoFactorCode(normalizedUrl, false)
@@ -1317,8 +1434,14 @@ function SyncDialog({
                               className="justify-self-start"
                               variant="outline"
                               type="button"
-                              disabled={busy || emailCodeBusy || !masterPassword}
+                              disabled={
+                                busy || emailCodeBusy || (!deviceLoginState && !masterPassword)
+                              }
                               onClick={() => {
+                                if (deviceLoginState) {
+                                  void sendDeviceLoginEmailCode(true)
+                                  return
+                                }
                                 const normalizedUrl = validateServerUrl()
                                 if (normalizedUrl) {
                                   void sendEmailTwoFactorCode(normalizedUrl, true)
@@ -1397,7 +1520,14 @@ function SyncDialog({
                 >
                   <Trans>Cancel</Trans>
                 </Button>
-                <Button type="submit" disabled={isSyncing || unsupportedTwoFactorChallenge}>
+                <Button
+                  type="submit"
+                  disabled={
+                    isSyncing ||
+                    unsupportedTwoFactorChallenge ||
+                    (deviceLoginState !== null && deviceLoginState.phase !== 'two-factor')
+                  }
+                >
                   {isSyncing && <Spinner data-icon="inline-start" aria-hidden="true" />}
                   {twoFactorMethodKind === 'duo'
                     ? t({

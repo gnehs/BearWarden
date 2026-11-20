@@ -297,7 +297,7 @@ msgstr "{0}：{1}"
 msgid "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 msgstr "{breachCount, plural, one {發現 # 筆已知外洩紀錄} other {發現 # 筆已知外洩紀錄}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:502
+#: src/renderer/src/components/SyncDialog.tsx:529
 msgid "{conflicts, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflicts, plural, one {# 個衝突} other {# 個衝突}}"
 
@@ -326,7 +326,7 @@ msgstr "{count} 個項目"
 msgid "{currentTypeLabel} details"
 msgstr "{currentTypeLabel} 詳細資料"
 
-#: src/renderer/src/components/SyncDialog.tsx:499
+#: src/renderer/src/components/SyncDialog.tsx:526
 msgid "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 msgstr "{deleted, plural, one {已刪除 # 個項目} other {已刪除 # 個項目}}"
 
@@ -407,11 +407,11 @@ msgstr "{protectedSkippedCount, plural, one {# 個啟用主密碼重新驗證的
 msgid "{providerName} has been disabled."
 msgstr "{providerName} 已停用。"
 
-#: src/renderer/src/components/SyncDialog.tsx:497
+#: src/renderer/src/components/SyncDialog.tsx:524
 msgid "{pulled, plural, one {Pulled # item} other {Pulled # items}}"
 msgstr "{pulled, plural, one {已擷取 # 個項目} other {已擷取 # 個項目}}"
 
-#: src/renderer/src/components/SyncDialog.tsx:498
+#: src/renderer/src/components/SyncDialog.tsx:525
 msgid "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 msgstr "{pushed, plural, one {已推送 # 個項目} other {已推送 # 個項目}}"
 
@@ -536,7 +536,7 @@ msgstr "60 分鐘"
 msgid "A local account switch is already in progress. Wait for BearWarden to restart."
 msgstr "本機帳戶切換已在進行中。請等待 BearWarden 重新啟動。"
 
-#: src/renderer/src/components/SyncDialog.tsx:789
+#: src/renderer/src/components/SyncDialog.tsx:872
 msgid "A new device verification code was sent by email."
 msgstr "新裝置驗證碼已透過電子郵件寄出。"
 
@@ -556,11 +556,12 @@ msgstr "新增登入項目時必須填寫密碼。"
 msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
 msgstr "共用項目的唯讀映像。伺服器會決定權限及密碼的可見性。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1010
+#: src/renderer/src/components/SyncDialog.tsx:1093
 msgid "A sync issue needs attention"
 msgstr "同步問題需要處理"
 
-#: src/renderer/src/components/SyncDialog.tsx:763
+#: src/renderer/src/components/SyncDialog.tsx:800
+#: src/renderer/src/components/SyncDialog.tsx:816
 msgid "A two-step verification code was sent by email."
 msgstr "兩步驟驗證碼已透過電子郵件寄出。"
 
@@ -602,7 +603,7 @@ msgid "Access requested"
 msgstr "已請求存取"
 
 #. Privacy-safe sync diagnostic stage for refreshing an expired access token before downloading vault data.
-#: src/renderer/src/components/SyncDialog.tsx:252
+#: src/renderer/src/components/SyncDialog.tsx:279
 msgid "Access token refresh"
 msgstr "存取權杖更新"
 
@@ -630,7 +631,7 @@ msgstr "尚未授予輔助使用權限"
 msgid "Accessibility permission required"
 msgstr "需要輔助使用權限"
 
-#: src/renderer/src/components/SyncDialog.tsx:1430
+#: src/renderer/src/components/SyncDialog.tsx:1560
 msgid "Account"
 msgstr "帳戶"
 
@@ -638,7 +639,7 @@ msgstr "帳戶"
 msgid "Account {slot}"
 msgstr "帳戶 {slot}"
 
-#: src/renderer/src/components/SyncDialog.tsx:260
+#: src/renderer/src/components/SyncDialog.tsx:287
 msgid "Account and encryption information"
 msgstr "帳戶與加密資訊"
 
@@ -646,7 +647,7 @@ msgstr "帳戶與加密資訊"
 msgid "Account breaches"
 msgstr "帳戶外洩"
 
-#: src/renderer/src/components/SyncDialog.tsx:327
+#: src/renderer/src/components/SyncDialog.tsx:354
 msgid "Account decryption options"
 msgstr "帳戶解密選項"
 
@@ -660,23 +661,23 @@ msgid "Account devices"
 msgstr "帳戶裝置"
 
 #. Privacy-safe sync diagnostic reason shown when a prelogin endpoint returns an error envelope instead of KDF fields.
-#: src/renderer/src/components/SyncDialog.tsx:307
+#: src/renderer/src/components/SyncDialog.tsx:334
 msgid "Account key derivation endpoint response"
 msgstr "帳戶金鑰衍生端點回應"
 
 #. Privacy-safe sync diagnostic reason shown when parsed account KDF parameters exceed supported security or resource bounds.
-#: src/renderer/src/components/SyncDialog.tsx:319
+#: src/renderer/src/components/SyncDialog.tsx:346
 msgid "Account key derivation parameters"
 msgstr "帳戶金鑰衍生參數"
 
 #. Privacy-safe sync diagnostic reason shown when prelogin KDF fields are missing or have incompatible types.
 #. Privacy-safe sync diagnostic stage for the prelogin KDF settings response, before credentials are submitted.
-#: src/renderer/src/components/SyncDialog.tsx:240
-#: src/renderer/src/components/SyncDialog.tsx:313
+#: src/renderer/src/components/SyncDialog.tsx:267
+#: src/renderer/src/components/SyncDialog.tsx:340
 msgid "Account key derivation settings"
 msgstr "帳戶金鑰衍生設定"
 
-#: src/renderer/src/components/SyncDialog.tsx:1457
+#: src/renderer/src/components/SyncDialog.tsx:1587
 msgid "Account management"
 msgstr "帳戶管理"
 
@@ -698,11 +699,11 @@ msgstr "帳戶名稱"
 msgid "Account number"
 msgstr "帳號"
 
-#: src/renderer/src/components/SyncDialog.tsx:325
+#: src/renderer/src/components/SyncDialog.tsx:352
 msgid "Account profile data"
 msgstr "帳戶設定檔資料"
 
-#: src/renderer/src/components/SyncDialog.tsx:1476
+#: src/renderer/src/components/SyncDialog.tsx:1606
 msgid "Account security status"
 msgstr "帳戶安全性狀態"
 
@@ -1059,6 +1060,16 @@ msgstr "核准簽署"
 msgid "Approve SSH key signing?"
 msgstr "要核准 SSH 金鑰簽署嗎？"
 
+#. Explains the Login with device step. The verification phrase is the six-word phrase above, which the approving Bitwarden or BearWarden device also displays.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:28
+msgid "Approve this request in Bitwarden or BearWarden on a device that is already signed in to this account. Make sure that device shows the same verification phrase."
+msgstr "請在已登入此帳戶的裝置上，透過 Bitwarden 或 BearWarden 核准這項要求，並確認該裝置顯示的驗證片語與此處相同。"
+
+#. Status in the Login with device step after another device approved the request but the server still requires two-step verification.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:35
+msgid "Approved. Complete two-step verification to continue."
+msgstr "已核准。請完成兩步驟驗證以繼續。"
+
 #: src/renderer/src/components/AutofillPickerHost.tsx:39
 msgid "Arc did not mark the focused field as web content."
 msgstr "Arc 未將焦點欄位標示為網頁內容。"
@@ -1149,7 +1160,7 @@ msgid "Authentication code time remaining"
 msgstr "驗證碼剩餘時間"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:112
-#: src/renderer/src/components/SyncDialog.tsx:548
+#: src/renderer/src/components/SyncDialog.tsx:585
 msgid "Authenticator app"
 msgstr "驗證器應用程式"
 
@@ -1273,11 +1284,11 @@ msgstr "BearWarden 可以控制目前的瀏覽器並執行自動填入。"
 msgid "BearWarden can't safely determine the remote outcome on the current connection. No new action will be submitted now to prevent duplicate changes."
 msgstr "BearWarden 無法安全地判定目前連線的遠端結果。為避免重複變更，現在不會提交任何新動作。"
 
-#: src/renderer/src/components/SyncDialog.tsx:389
+#: src/renderer/src/components/SyncDialog.tsx:416
 msgid "BearWarden cannot unlock this account safely without its trusted-device keys. Use the official Bitwarden client."
 msgstr "沒有受信任裝置金鑰，BearWarden 無法安全解鎖此帳戶。請使用官方 Bitwarden 用戶端。"
 
-#: src/renderer/src/components/SyncDialog.tsx:384
+#: src/renderer/src/components/SyncDialog.tsx:411
 msgid "BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client."
 msgstr "BearWarden 無法安全解鎖此組織的帳戶。請使用官方 Bitwarden 用戶端。"
 
@@ -1457,7 +1468,7 @@ msgstr "可還原"
 #: src/renderer/src/components/SendPasswordDialog.tsx:101
 #: src/renderer/src/components/SendsPage.tsx:775
 #: src/renderer/src/components/SendsPage.tsx:811
-#: src/renderer/src/components/SyncDialog.tsx:1398
+#: src/renderer/src/components/SyncDialog.tsx:1521
 #: src/renderer/src/components/VaultItemAccessCards.tsx:94
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:603
 #: src/renderer/src/components/VaultShellDialogs.tsx:214
@@ -1469,7 +1480,7 @@ msgid "Cancel check"
 msgstr "取消檢查"
 
 #. Button that abandons the Duo two-step login currently waiting for the browser result.
-#: src/renderer/src/components/SyncDialog.tsx:1290
+#: src/renderer/src/components/SyncDialog.tsx:1407
 msgid "Cancel Duo"
 msgstr "取消 Duo"
 
@@ -1645,7 +1656,7 @@ msgstr "請檢查您的輸入，然後再試一次。"
 msgid "Check your network connection and try again later."
 msgstr "請檢查您的網路連線，稍後再試一次。"
 
-#: src/renderer/src/components/SyncDialog.tsx:399
+#: src/renderer/src/components/SyncDialog.tsx:426
 msgid "Check your network, server URL, and TLS certificate, and make sure the server is reachable."
 msgstr "請檢查網路、伺服器 URL 與 TLS 憑證，並確認可以連線至伺服器。"
 
@@ -1819,8 +1830,8 @@ msgstr "剪貼簿和網站圖示"
 #: src/renderer/src/components/Dialogs.tsx:100
 #: src/renderer/src/components/Dialogs.tsx:783
 #: src/renderer/src/components/MasterPasswordChangeDialog.tsx:444
-#: src/renderer/src/components/SyncDialog.tsx:972
-#: src/renderer/src/components/SyncDialog.tsx:1586
+#: src/renderer/src/components/SyncDialog.tsx:1055
+#: src/renderer/src/components/SyncDialog.tsx:1716
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:136
 #: src/renderer/src/components/ui/dialog.tsx:87
 #: src/renderer/src/components/ui/dialog.tsx:128
@@ -1910,7 +1921,7 @@ msgstr "要完成已確認的本機主密碼變更嗎？"
 msgid "Complete the locally pending change confirmed by the server"
 msgstr "完成由伺服器確認、仍在本機待處理的變更"
 
-#: src/renderer/src/components/SyncDialog.tsx:1093
+#: src/renderer/src/components/SyncDialog.tsx:1180
 msgid "Configured account"
 msgstr "已設定的帳戶"
 
@@ -1986,7 +1997,7 @@ msgstr "確認中…"
 msgid "Conflict requires attention"
 msgstr "衝突需要處理"
 
-#: src/renderer/src/components/SyncDialog.tsx:1410
+#: src/renderer/src/components/SyncDialog.tsx:1540
 msgid "Connect and sync"
 msgstr "連線並同步"
 
@@ -2003,15 +2014,15 @@ msgstr "已連線"
 msgid "Connected account"
 msgstr "已連線的帳戶"
 
-#: src/renderer/src/components/SyncDialog.tsx:828
+#: src/renderer/src/components/SyncDialog.tsx:911
 msgid "Connected and synced. {summary}."
 msgstr "已連線並同步。{summary}。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1008
+#: src/renderer/src/components/SyncDialog.tsx:1091
 msgid "Connected, vault locked"
 msgstr "已連線，保管庫已鎖定"
 
-#: src/renderer/src/components/SyncDialog.tsx:1006
+#: src/renderer/src/components/SyncDialog.tsx:1089
 msgid "Connected, vault unlocked"
 msgstr "已連線，保管庫已解鎖"
 
@@ -2039,7 +2050,7 @@ msgid "Continue restoring"
 msgstr "繼續還原"
 
 #. Button that sends the pasted Duo result address to finish two-step login.
-#: src/renderer/src/components/SyncDialog.tsx:1280
+#: src/renderer/src/components/SyncDialog.tsx:1397
 msgid "Continue sign-in"
 msgstr "繼續登入"
 
@@ -2149,11 +2160,11 @@ msgstr "核心文字與檔案 Send 流程已可使用。檔案編輯、進階驗
 msgid "Could not clear the completion record. The backup data itself was not deleted."
 msgstr "無法清除完成紀錄。備份資料本身並未刪除。"
 
-#: src/renderer/src/components/SyncDialog.tsx:398
+#: src/renderer/src/components/SyncDialog.tsx:425
 msgid "Could not connect to the sync server"
 msgstr "無法連線至同步伺服器"
 
-#: src/renderer/src/components/SyncDialog.tsx:172
+#: src/renderer/src/components/SyncDialog.tsx:199
 msgid "Could not connect to the sync server. Check your network, server URL, and TLS certificate, then try again."
 msgstr "無法連線至同步伺服器。請檢查您的網路、伺服器 URL 與 TLS 憑證，然後再試一次。"
 
@@ -2219,7 +2230,7 @@ msgstr "無法載入 Sends"
 msgid "Could not load shared item"
 msgstr "無法載入共享項目"
 
-#: src/renderer/src/components/SyncDialog.tsx:609
+#: src/renderer/src/components/SyncDialog.tsx:646
 msgid "Could not load the account security status."
 msgstr "無法載入帳戶安全狀態。"
 
@@ -2231,7 +2242,7 @@ msgstr "無法移除 Send 密碼。"
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "無法儲存 Send。請確認同步已連線。"
 
-#: src/renderer/src/components/SyncDialog.tsx:637
+#: src/renderer/src/components/SyncDialog.tsx:674
 msgid "Could not send the verification email. Make sure email is configured in Vaultwarden."
 msgstr "無法傳送驗證電子郵件。請確認已在 Vaultwarden 中設定電子郵件。"
 
@@ -2676,16 +2687,16 @@ msgstr "捨棄變更"
 msgid "Discard unsaved changes?"
 msgstr "要捨棄未儲存的變更嗎？"
 
-#: src/renderer/src/components/SyncDialog.tsx:1551
-#: src/renderer/src/components/SyncDialog.tsx:1579
+#: src/renderer/src/components/SyncDialog.tsx:1681
+#: src/renderer/src/components/SyncDialog.tsx:1709
 msgid "Disconnect"
 msgstr "中斷連線"
 
-#: src/renderer/src/components/SyncDialog.tsx:1559
+#: src/renderer/src/components/SyncDialog.tsx:1689
 msgid "Disconnect sync?"
 msgstr "要中斷同步嗎？"
 
-#: src/renderer/src/components/SyncDialog.tsx:927
+#: src/renderer/src/components/SyncDialog.tsx:1010
 msgid "Disconnected from Bitwarden sync."
 msgstr "已中斷與 Bitwarden 的同步。"
 
@@ -2780,27 +2791,27 @@ msgstr "DuckDuckGo 網頁應用程式"
 
 #. Two-step login method option for Duo Security tied to the personal account.
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:114
-#: src/renderer/src/components/SyncDialog.tsx:553
+#: src/renderer/src/components/SyncDialog.tsx:590
 msgid "Duo"
 msgstr "Duo"
 
 #. Two-step login method option for Duo Security configured by the user's Bitwarden organization.
-#: src/renderer/src/components/SyncDialog.tsx:560
+#: src/renderer/src/components/SyncDialog.tsx:597
 msgid "Duo (organization)"
 msgstr "Duo（組織）"
 
 #. Label of the field where the user pastes the browser address shown after approving Duo two-step login.
-#: src/renderer/src/components/SyncDialog.tsx:1229
+#: src/renderer/src/components/SyncDialog.tsx:1346
 msgid "Duo result address"
 msgstr "Duo 結果網址"
 
 #. Title of the sync error shown when Duo two-step verification fails or times out.
-#: src/renderer/src/components/SyncDialog.tsx:369
+#: src/renderer/src/components/SyncDialog.tsx:396
 msgid "Duo verification did not complete"
 msgstr "Duo 驗證未完成"
 
 #. Sign-in dialog error after the Duo two-step verification step fails, times out, or receives a callback address from another sign-in attempt.
-#: src/renderer/src/components/SyncDialog.tsx:155
+#: src/renderer/src/components/SyncDialog.tsx:182
 msgid "Duo verification did not complete. It may have timed out, or the pasted address belongs to a different Duo sign-in. Open Duo again to retry."
 msgstr "Duo 驗證未完成。可能已逾時，或貼上的網址屬於另一次 Duo 登入。請重新開啟 Duo 再試一次。"
 
@@ -2884,8 +2895,8 @@ msgstr "尚無法編輯檔案 Send。"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:786
 #: src/renderer/src/components/LoginEditor.tsx:665
 #: src/renderer/src/components/LoginEditor.tsx:2368
-#: src/renderer/src/components/SyncDialog.tsx:549
-#: src/renderer/src/components/SyncDialog.tsx:1073
+#: src/renderer/src/components/SyncDialog.tsx:586
+#: src/renderer/src/components/SyncDialog.tsx:1160
 #: src/renderer/src/components/VaultItemDetailViews.tsx:254
 #: src/renderer/src/components/VaultItemDetailViews.tsx:383
 msgid "Email"
@@ -2903,7 +2914,7 @@ msgstr "用於接收驗證碼的電子郵件地址"
 msgid "Email cannot be changed here."
 msgstr "無法在此變更電子郵件地址。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1485
+#: src/renderer/src/components/SyncDialog.tsx:1615
 msgid "Email not verified"
 msgstr "電子郵件尚未驗證"
 
@@ -2919,7 +2930,7 @@ msgstr "電子郵件驗證"
 msgid "Email verification code"
 msgstr "電子郵件驗證碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1484
+#: src/renderer/src/components/SyncDialog.tsx:1614
 msgid "Email verified"
 msgstr "電子郵件已驗證"
 
@@ -2937,7 +2948,7 @@ msgid "Emergency Access is not configured"
 msgstr "尚未設定緊急存取"
 
 #. Privacy-safe sync diagnostic reason shown when a successful response has no body.
-#: src/renderer/src/components/SyncDialog.tsx:284
+#: src/renderer/src/components/SyncDialog.tsx:311
 msgid "Empty server response"
 msgstr "伺服器回應為空"
 
@@ -3031,9 +3042,9 @@ msgstr "請輸入有效的電子郵件地址，最多 254 個字元。"
 msgid "Enter a valid email address."
 msgstr "請輸入有效的電子郵件地址。"
 
-#: src/renderer/src/components/SyncDialog.tsx:184
-#: src/renderer/src/components/SyncDialog.tsx:776
-#: src/renderer/src/components/SyncDialog.tsx:801
+#: src/renderer/src/components/SyncDialog.tsx:211
+#: src/renderer/src/components/SyncDialog.tsx:859
+#: src/renderer/src/components/SyncDialog.tsx:884
 msgid "Enter a valid HTTPS server URL."
 msgstr "請輸入有效的 HTTPS 伺服器 URL。"
 
@@ -3132,11 +3143,11 @@ msgstr "請輸入目前的主密碼，以確認還原至此保管庫。"
 msgid "Enter your current master password."
 msgstr "請輸入目前的主密碼。"
 
-#: src/renderer/src/components/SyncDialog.tsx:805
+#: src/renderer/src/components/SyncDialog.tsx:888
 msgid "Enter your email and master password."
 msgstr "請輸入您的電子郵件地址和主密碼。"
 
-#: src/renderer/src/components/SyncDialog.tsx:355
+#: src/renderer/src/components/SyncDialog.tsx:382
 msgid "Enter your master password again and complete two-step verification if the server requests it."
 msgstr "請再次輸入主密碼；若伺服器要求，請完成兩步驟驗證。"
 
@@ -3176,8 +3187,8 @@ msgstr "請輸入主密碼以解鎖儲存在此裝置上的項目。"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:514
 #: src/renderer/src/components/AuthScreen.tsx:206
 #: src/renderer/src/components/Dialogs.tsx:489
-#: src/renderer/src/components/SyncDialog.tsx:843
-#: src/renderer/src/components/SyncDialog.tsx:898
+#: src/renderer/src/components/SyncDialog.tsx:926
+#: src/renderer/src/components/SyncDialog.tsx:981
 msgid "Enter your master password."
 msgstr "請輸入主密碼。"
 
@@ -3190,7 +3201,7 @@ msgstr "等效網域"
 msgid "Error code"
 msgstr "錯誤代碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:436
+#: src/renderer/src/components/SyncDialog.tsx:463
 msgid "Error code: {code}"
 msgstr "錯誤代碼：{code}"
 
@@ -3389,8 +3400,8 @@ msgstr "名字"
 msgid "Folder"
 msgstr "資料夾"
 
-#: src/renderer/src/components/SyncDialog.tsx:264
-#: src/renderer/src/components/SyncDialog.tsx:335
+#: src/renderer/src/components/SyncDialog.tsx:291
+#: src/renderer/src/components/SyncDialog.tsx:362
 msgid "Folder data"
 msgstr "資料夾資料"
 
@@ -3525,7 +3536,7 @@ msgstr "產生器"
 msgid "Generator history"
 msgstr "產生記錄"
 
-#: src/renderer/src/components/SyncDialog.tsx:360
+#: src/renderer/src/components/SyncDialog.tsx:387
 msgid "Get the verification code from the email sent by Bitwarden and enter it under advanced options."
 msgstr "從 Bitwarden 寄出的電子郵件取得驗證碼，並在進階選項中輸入。"
 
@@ -3544,7 +3555,7 @@ msgstr "GitHub"
 msgid "Given name"
 msgstr "名字"
 
-#: src/renderer/src/components/SyncDialog.tsx:1570
+#: src/renderer/src/components/SyncDialog.tsx:1700
 msgid "Go back"
 msgstr "返回"
 
@@ -3607,7 +3618,7 @@ msgstr "隱藏 {0}"
 msgid "Hide {label}"
 msgstr "隱藏 {label}"
 
-#: src/renderer/src/components/SyncDialog.tsx:1139
+#: src/renderer/src/components/SyncDialog.tsx:1254
 msgid "Hide advanced options"
 msgstr "隱藏進階選項"
 
@@ -3617,7 +3628,7 @@ msgstr "隱藏自訂欄位內容"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:76
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1115
+#: src/renderer/src/components/SyncDialog.tsx:1209
 msgid "Hide master password"
 msgstr "隱藏主密碼"
 
@@ -3914,7 +3925,7 @@ msgstr "KeePass 2 XML 是未加密的純文字，內含可直接讀取的密碼�
 msgid "Key"
 msgstr "金鑰"
 
-#: src/renderer/src/components/SyncDialog.tsx:383
+#: src/renderer/src/components/SyncDialog.tsx:410
 msgid "Key Connector accounts are not supported"
 msgstr "不支援 Key Connector 帳戶"
 
@@ -3960,11 +3971,11 @@ msgstr "姓氏"
 msgid "Last revised"
 msgstr "上次修訂"
 
-#: src/renderer/src/components/SyncDialog.tsx:1437
+#: src/renderer/src/components/SyncDialog.tsx:1567
 msgid "Last sync"
 msgstr "上次同步"
 
-#: src/renderer/src/components/SyncDialog.tsx:1019
+#: src/renderer/src/components/SyncDialog.tsx:1102
 msgid "Last synced: {lastSyncTime}"
 msgstr "上次同步：{lastSyncTime}"
 
@@ -3988,7 +3999,7 @@ msgstr "長度"
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "讓終端機與 Git 透過本機 socket 使用保管庫中的 SSH 金鑰。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1219
+#: src/renderer/src/components/SyncDialog.tsx:1336
 msgid "Let the server temporarily skip two-step verification on this device."
 msgstr "允許伺服器暫時略過此裝置的兩步驟驗證。"
 
@@ -4164,7 +4175,7 @@ msgstr "本機帳戶與雲端連線"
 msgid "Local generator"
 msgstr "本機產生器"
 
-#: src/renderer/src/components/SyncDialog.tsx:345
+#: src/renderer/src/components/SyncDialog.tsx:372
 msgid "Local sync snapshot limit"
 msgstr "本機同步快照限制"
 
@@ -4208,6 +4219,11 @@ msgstr "螢幕鎖定時鎖定"
 #: src/renderer/src/components/SettingsPage.tsx:398
 msgid "Locking and unlocking"
 msgstr "鎖定與解鎖"
+
+#. Button in the sync sign-in form that asks another signed-in device to approve this sign-in instead of entering the master password.
+#: src/renderer/src/components/SyncDialog.tsx:1230
+msgid "Log in with device"
+msgstr "使用裝置登入"
 
 #: src/renderer/src/components/LoginEditor.tsx:696
 #: src/renderer/src/hooks/use-item-type-meta.ts:17
@@ -4306,7 +4322,7 @@ msgstr "手動更新"
 #: src/renderer/src/components/Dialogs.tsx:518
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:95
 #: src/renderer/src/components/PendingImportWarning.tsx:61
-#: src/renderer/src/components/SyncDialog.tsx:1098
+#: src/renderer/src/components/SyncDialog.tsx:1192
 msgid "Master password"
 msgstr "主密碼"
 
@@ -4610,7 +4626,7 @@ msgstr "永不詢問（自動核准）"
 #~ msgid "Never match"
 #~ msgstr "永不相符"
 
-#: src/renderer/src/components/SyncDialog.tsx:491
+#: src/renderer/src/components/SyncDialog.tsx:518
 msgid "Never synced"
 msgstr "從未同步"
 
@@ -4622,11 +4638,11 @@ msgstr "從未使用"
 msgid "New backup password"
 msgstr "新備份密碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1341
+#: src/renderer/src/components/SyncDialog.tsx:1464
 msgid "New device verification code (optional)"
 msgstr "新裝置驗證碼（選填）"
 
-#: src/renderer/src/components/SyncDialog.tsx:359
+#: src/renderer/src/components/SyncDialog.tsx:386
 msgid "New device verification code required"
 msgstr "需要新的裝置驗證碼"
 
@@ -4809,7 +4825,7 @@ msgstr "已分析的登入項目中沒有項目共用相同密碼。"
 msgid "None of the valid personal login items use an http:// URI."
 msgstr "沒有有效的個人登入項目使用 http:// URI。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1198
+#: src/renderer/src/components/SyncDialog.tsx:1315
 msgid "None of the verification methods offered by this server are supported by BearWarden."
 msgstr "BearWarden 不支援此伺服器提供的任何驗證方式。"
 
@@ -4831,7 +4847,7 @@ msgstr "未設定"
 #~ msgid "Not directly assigned"
 #~ msgstr "未直接指派"
 
-#: src/renderer/src/components/SyncDialog.tsx:1432
+#: src/renderer/src/components/SyncDialog.tsx:1562
 msgid "Not provided"
 msgstr "未提供"
 
@@ -4919,17 +4935,17 @@ msgid "Open BearWarden"
 msgstr "開啟 BearWarden"
 
 #. Sign-in dialog submit button when Duo is the two-step method; it opens Duo in the system browser.
-#: src/renderer/src/components/SyncDialog.tsx:1403
+#: src/renderer/src/components/SyncDialog.tsx:1533
 msgid "Open Duo"
 msgstr "開啟 Duo"
 
 #. Sync error description for a failed Duo two-step verification; the user must restart Duo and paste the browser address of the final page.
-#: src/renderer/src/components/SyncDialog.tsx:374
+#: src/renderer/src/components/SyncDialog.tsx:401
 msgid "Open Duo again from the sign-in dialog and paste the address of the page Duo returns you to within five minutes."
 msgstr "請在登入對話框重新開啟 Duo，並在五分鐘內貼上 Duo 返回頁面的網址。"
 
 #. Instructions under the Duo result field. Open Duo is the submit button; the final page is the web vault page Duo redirects to after approval, which may say the user can close the window.
-#: src/renderer/src/components/SyncDialog.tsx:1252
+#: src/renderer/src/components/SyncDialog.tsx:1369
 msgid "Open Duo approves this sign-in in your browser. When Duo sends you to a page saying you may close the window, copy the full address of that page and paste it here."
 msgstr "「開啟 Duo」會在瀏覽器中核准這次登入。Duo 帶你到顯示可以關閉視窗的頁面後，請複製該頁面的完整網址並貼到這裡。"
 
@@ -4987,11 +5003,11 @@ msgctxt "shared-organization-activity"
 msgid "Organization and activity"
 msgstr "組織與活動"
 
-#: src/renderer/src/components/SyncDialog.tsx:341
+#: src/renderer/src/components/SyncDialog.tsx:368
 msgid "Organization collection data"
 msgstr "組織集合資料"
 
-#: src/renderer/src/components/SyncDialog.tsx:268
+#: src/renderer/src/components/SyncDialog.tsx:295
 msgid "Organization collection relationships"
 msgstr "組織收藏集關聯"
 
@@ -4999,7 +5015,7 @@ msgstr "組織收藏集關聯"
 msgid "Organization Duo"
 msgstr "組織 Duo"
 
-#: src/renderer/src/components/SyncDialog.tsx:331
+#: src/renderer/src/components/SyncDialog.tsx:358
 msgid "Organization encryption key"
 msgstr "組織加密金鑰"
 
@@ -5007,11 +5023,11 @@ msgstr "組織加密金鑰"
 msgid "Organization items"
 msgstr "組織項目"
 
-#: src/renderer/src/components/SyncDialog.tsx:262
+#: src/renderer/src/components/SyncDialog.tsx:289
 msgid "Organization keys and member data"
 msgstr "組織金鑰與成員資料"
 
-#: src/renderer/src/components/SyncDialog.tsx:329
+#: src/renderer/src/components/SyncDialog.tsx:356
 msgid "Organization profile data"
 msgstr "組織設定檔資料"
 
@@ -5382,7 +5398,7 @@ msgstr "私密備註"
 msgid "Problem section"
 msgstr "問題區段"
 
-#: src/renderer/src/components/SyncDialog.tsx:435
+#: src/renderer/src/components/SyncDialog.tsx:462
 msgid "Problem section: {detailLabel}"
 msgstr "問題區段：{detailLabel}"
 
@@ -5420,7 +5436,7 @@ msgstr "受保護的項目未經查詢"
 msgid "Provider {providerType}"
 msgstr "提供者 {providerType}"
 
-#: src/renderer/src/components/SyncDialog.tsx:333
+#: src/renderer/src/components/SyncDialog.tsx:360
 msgid "Provider-managed organization key"
 msgstr "服務提供者管理的組織金鑰"
 
@@ -5575,7 +5591,7 @@ msgid "Remember approvals until locked"
 msgstr "在鎖定前記住核准"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:117
-#: src/renderer/src/components/SyncDialog.tsx:1216
+#: src/renderer/src/components/SyncDialog.tsx:1333
 msgid "Remember this device"
 msgstr "記住此裝置"
 
@@ -5710,19 +5726,19 @@ msgstr "要求再次輸入主密碼"
 msgid "Required for password-protected JSON. Leave blank for unencrypted JSON or CSV."
 msgstr "密碼保護的 JSON 必須填寫。未加密的 JSON 或 CSV 請留空。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1331
+#: src/renderer/src/components/SyncDialog.tsx:1454
 msgid "Resend email code"
 msgstr "重新寄送電子郵件驗證碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1365
+#: src/renderer/src/components/SyncDialog.tsx:1488
 msgid "Resend verification code"
 msgstr "重新寄送驗證碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1506
+#: src/renderer/src/components/SyncDialog.tsx:1636
 msgid "Resend verification email"
 msgstr "重新傳送驗證電子郵件"
 
-#: src/renderer/src/components/SyncDialog.tsx:911
+#: src/renderer/src/components/SyncDialog.tsx:994
 msgid "Resending is now allowed. Select “Sync now” to retry."
 msgstr "現在可以重新傳送。選取「立即同步」以重試。"
 
@@ -5999,7 +6015,7 @@ msgstr "安全性與解鎖"
 msgid "Security code"
 msgstr "安全碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:551
+#: src/renderer/src/components/SyncDialog.tsx:588
 msgid "Security key"
 msgstr "安全金鑰"
 
@@ -6019,7 +6035,7 @@ msgstr "選取"
 msgid "Select a catalog face or upload your own card image."
 msgstr "選擇目錄卡面，或上傳自己的卡片圖片。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1184
+#: src/renderer/src/components/SyncDialog.tsx:1301
 msgid "Select a verification method"
 msgstr "選取驗證方式"
 
@@ -6063,8 +6079,8 @@ msgstr "已選取的項目"
 msgid "Send created"
 msgstr "傳送項目已建立"
 
-#: src/renderer/src/components/SyncDialog.tsx:270
-#: src/renderer/src/components/SyncDialog.tsx:343
+#: src/renderer/src/components/SyncDialog.tsx:297
+#: src/renderer/src/components/SyncDialog.tsx:370
 msgid "Send data"
 msgstr "傳送資料"
 
@@ -6072,7 +6088,7 @@ msgstr "傳送資料"
 msgid "Send deleted"
 msgstr "傳送項目已刪除"
 
-#: src/renderer/src/components/SyncDialog.tsx:1333
+#: src/renderer/src/components/SyncDialog.tsx:1456
 msgid "Send email code"
 msgstr "寄送電子郵件驗證碼"
 
@@ -6097,6 +6113,11 @@ msgstr "傳送驗證碼"
 #~ msgid "Sender email hidden"
 #~ msgstr "寄件者電子郵件已隱藏"
 
+#. Status while BearWarden creates a Login with device request on the server.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:42
+msgid "Sending the sign-in request…"
+msgstr "正在傳送登入要求…"
+
 #: src/renderer/src/components/SendsPage.tsx:337
 #: src/renderer/src/components/VaultShellSidebar.tsx:433
 msgid "Sends"
@@ -6111,7 +6132,7 @@ msgid "Separator"
 msgstr "分隔符號"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:230
-#: src/renderer/src/components/SyncDialog.tsx:1423
+#: src/renderer/src/components/SyncDialog.tsx:1553
 msgid "Server"
 msgstr "伺服器"
 
@@ -6120,20 +6141,20 @@ msgid "Server confirms master password was not changed"
 msgstr "伺服器確認主密碼未變更"
 
 #. Privacy-safe sync diagnostic reason shown when JSON was returned but the top-level sync value has the wrong type.
-#: src/renderer/src/components/SyncDialog.tsx:295
+#: src/renderer/src/components/SyncDialog.tsx:322
 msgid "Server response is not a JSON object"
 msgstr "伺服器回應不是 JSON 物件"
 
 #. Privacy-safe sync diagnostic reason shown when a successful server or proxy response cannot be parsed as JSON.
-#: src/renderer/src/components/SyncDialog.tsx:289
+#: src/renderer/src/components/SyncDialog.tsx:316
 msgid "Server response is not valid JSON"
 msgstr "伺服器回應不是有效的 JSON"
 
-#: src/renderer/src/components/SyncDialog.tsx:258
+#: src/renderer/src/components/SyncDialog.tsx:285
 msgid "Server sync response"
 msgstr "伺服器同步回應"
 
-#: src/renderer/src/components/SyncDialog.tsx:1051
+#: src/renderer/src/components/SyncDialog.tsx:1138
 msgid "Server URL"
 msgstr "伺服器 URL"
 
@@ -6142,7 +6163,7 @@ msgid "Service domains are compared with the static list only on this device."
 msgstr "服務網域只會與此裝置上的靜態清單比較。"
 
 #. Privacy-safe sync diagnostic reason for incompatible sign-in or access-token refresh metadata.
-#: src/renderer/src/components/SyncDialog.tsx:301
+#: src/renderer/src/components/SyncDialog.tsx:328
 msgid "Session refresh response"
 msgstr "工作階段更新回應"
 
@@ -6267,7 +6288,7 @@ msgstr "在 Finder 中顯示"
 
 #: src/renderer/src/components/PendingImportWarning.tsx:76
 #: src/renderer/src/components/PersonalVaultPurgeDialog.tsx:151
-#: src/renderer/src/components/SyncDialog.tsx:1115
+#: src/renderer/src/components/SyncDialog.tsx:1209
 msgid "Show master password"
 msgstr "顯示主密碼"
 
@@ -6279,7 +6300,7 @@ msgstr "以大字體顯示密碼"
 msgid "Show this historical password"
 msgstr "顯示此歷史密碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1139
+#: src/renderer/src/components/SyncDialog.tsx:1254
 msgid "Show two-step verification"
 msgstr "顯示兩步驟驗證"
 
@@ -6292,7 +6313,7 @@ msgid "Sign in with a passkey"
 msgstr "使用通行密鑰登入"
 
 #. Privacy-safe sync diagnostic stage for the password or two-factor token exchange response.
-#: src/renderer/src/components/SyncDialog.tsx:246
+#: src/renderer/src/components/SyncDialog.tsx:273
 msgid "Sign-in token response"
 msgstr "登入權杖回應"
 
@@ -6300,11 +6321,16 @@ msgstr "登入權杖回應"
 msgid "Signature approval"
 msgstr "簽章核准"
 
+#. Status after the Login with device request was approved and BearWarden is signing in and syncing.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:46
+msgid "Signing in…"
+msgstr "正在登入…"
+
 #: src/renderer/src/components/SettingsPage.tsx:462
 msgid "Simplified Chinese"
 msgstr "簡體中文"
 
-#: src/renderer/src/components/SyncDialog.tsx:364
+#: src/renderer/src/components/SyncDialog.tsx:391
 msgid "Single sign-on is required"
 msgstr "需要單一登入"
 
@@ -6441,7 +6467,7 @@ msgstr "切換至此本機帳戶 · 本機代碼 {code}"
 msgid "Symbols, numbers, and letters use different colors to make them easier to distinguish."
 msgstr "符號、數字與字母會使用不同顏色，以便區分。"
 
-#: src/renderer/src/components/SyncDialog.tsx:965
+#: src/renderer/src/components/SyncDialog.tsx:1048
 msgid "Sync"
 msgstr "同步"
 
@@ -6449,23 +6475,23 @@ msgstr "同步"
 msgid "Sync & accounts"
 msgstr "同步與帳戶"
 
-#: src/renderer/src/components/SyncDialog.tsx:888
+#: src/renderer/src/components/SyncDialog.tsx:971
 msgid "Sync complete. {summary}."
 msgstr "同步完成。{summary}。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1418
+#: src/renderer/src/components/SyncDialog.tsx:1548
 msgid "Sync connection information"
 msgstr "同步連線資訊"
 
-#: src/renderer/src/components/SyncDialog.tsx:418
+#: src/renderer/src/components/SyncDialog.tsx:445
 msgid "Sync did not complete"
 msgstr "同步未完成"
 
-#: src/renderer/src/components/SyncDialog.tsx:185
+#: src/renderer/src/components/SyncDialog.tsx:212
 msgid "Sync did not complete. Check your connection and sign-in information, then try again."
 msgstr "同步未完成。請檢查您的連線與登入資訊，然後再試一次。"
 
-#: src/renderer/src/components/SyncDialog.tsx:148
+#: src/renderer/src/components/SyncDialog.tsx:151
 msgid "Sync did not complete. Please try again later."
 msgstr "同步未完成。請稍後再試。"
 
@@ -6473,27 +6499,27 @@ msgstr "同步未完成。請稍後再試。"
 msgid "Sync error details"
 msgstr "同步錯誤詳細資訊"
 
-#: src/renderer/src/components/SyncDialog.tsx:1016
+#: src/renderer/src/components/SyncDialog.tsx:1099
 msgid "Sync failed: {lastErrorTime}"
 msgstr "同步失敗：{lastErrorTime}"
 
-#: src/renderer/src/components/SyncDialog.tsx:1011
+#: src/renderer/src/components/SyncDialog.tsx:1094
 msgid "Sync is not configured"
 msgstr "尚未設定同步"
 
-#: src/renderer/src/components/SyncDialog.tsx:1590
+#: src/renderer/src/components/SyncDialog.tsx:1720
 msgid "Sync now"
 msgstr "立即同步"
 
-#: src/renderer/src/components/SyncDialog.tsx:282
+#: src/renderer/src/components/SyncDialog.tsx:309
 msgid "Sync response structure"
 msgstr "同步回應結構"
 
-#: src/renderer/src/components/SyncDialog.tsx:272
+#: src/renderer/src/components/SyncDialog.tsx:299
 msgid "Sync state commit"
 msgstr "同步狀態提交"
 
-#: src/renderer/src/components/SyncDialog.tsx:1023
+#: src/renderer/src/components/SyncDialog.tsx:1106
 msgid "Syncing"
 msgstr "同步中"
 
@@ -6502,7 +6528,7 @@ msgid "Syncing attachment list"
 msgstr "正在同步附件清單"
 
 #: src/renderer/src/components/SettingsPage.tsx:478
-#: src/renderer/src/components/SyncDialog.tsx:1004
+#: src/renderer/src/components/SyncDialog.tsx:1087
 #: src/renderer/src/components/VaultShell.tsx:189
 msgid "Syncing…"
 msgstr "同步中…"
@@ -6628,7 +6654,7 @@ msgstr "備份密碼至少須包含 12 個字元。"
 msgid "The backup passwords do not match."
 msgstr "備份密碼不相符。"
 
-#: src/renderer/src/components/SyncDialog.tsx:168
+#: src/renderer/src/components/SyncDialog.tsx:195
 msgid "The Bitwarden vault must be signed in to or unlocked again."
 msgstr "必須重新登入或解鎖 Bitwarden 保管庫。"
 
@@ -6710,7 +6736,7 @@ msgstr "自訂閒置逾時不得超過 8,760 小時。"
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "自訂閒置逾時至少須為 1 分鐘。"
 
-#: src/renderer/src/components/SyncDialog.tsx:404
+#: src/renderer/src/components/SyncDialog.tsx:431
 msgid "The data returned by the server cannot be processed safely. Check the Bitwarden or Vaultwarden version and compatibility."
 msgstr "無法安全處理伺服器傳回的資料。請檢查 Bitwarden 或 Vaultwarden 的版本與相容性。"
 
@@ -6758,7 +6784,7 @@ msgstr "此項目仍保留在加密垃圾桶中，稍後可還原。"
 msgid "The key is shown only during this short-lived setup session."
 msgstr "此金鑰只會在這個短暫的設定工作階段中顯示。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1017
+#: src/renderer/src/components/SyncDialog.tsx:1100
 msgid "The last sync encountered a problem."
 msgstr "上次同步發生問題。"
 
@@ -6801,7 +6827,7 @@ msgstr "主程式正在本機比對服務網域，不會上傳任何保管庫資
 
 #: src/renderer/src/components/auth-screen-ui.ts:60
 #: src/renderer/src/components/SettingsPage.tsx:569
-#: src/renderer/src/components/SyncDialog.tsx:181
+#: src/renderer/src/components/SyncDialog.tsx:208
 msgid "The master password is incorrect."
 msgstr "主密碼不正確。"
 
@@ -6837,7 +6863,7 @@ msgstr "唯一可用的通行密鑰已自動選取。"
 msgid "The operation did not finish. Refresh and confirm the current state."
 msgstr "操作未完成。請重新整理並確認目前狀態。"
 
-#: src/renderer/src/components/SyncDialog.tsx:149
+#: src/renderer/src/components/SyncDialog.tsx:176
 msgid "The operation was canceled."
 msgstr "操作已取消。"
 
@@ -6981,19 +7007,19 @@ msgstr "伺服器套用隱藏密碼權限，因此敏感欄位會被遮蔽。"
 msgid "The server cannot currently report this provider’s actual status. Forcing it off may remove a sign-in method that is still in use. If it is the last method, your account will no longer be protected by two-factor authentication."
 msgstr "伺服器目前無法回報此提供者的實際狀態。強制停用可能移除仍在使用的登入方式。若這是最後一種方式，您的帳戶將不再受雙因素驗證保護。"
 
-#: src/renderer/src/components/SyncDialog.tsx:408
+#: src/renderer/src/components/SyncDialog.tsx:435
 msgid "The server contains an incomplete SSH key"
 msgstr "伺服器包含不完整的 SSH 金鑰"
 
-#: src/renderer/src/components/SyncDialog.tsx:176
+#: src/renderer/src/components/SyncDialog.tsx:203
 msgid "The server contains an incomplete SSH key. Repair or delete it in Bitwarden or Vaultwarden first."
 msgstr "伺服器包含不完整的 SSH 金鑰。請先在 Bitwarden 或 Vaultwarden 中修復或刪除它。"
 
-#: src/renderer/src/components/SyncDialog.tsx:178
+#: src/renderer/src/components/SyncDialog.tsx:205
 msgid "The server data changed, so this sync was not applied. Sync again to get the latest version."
 msgstr "伺服器資料已變更，因此未套用此次同步。請再次同步以取得最新版本。"
 
-#: src/renderer/src/components/SyncDialog.tsx:413
+#: src/renderer/src/components/SyncDialog.tsx:440
 msgid "The server data has changed"
 msgstr "伺服器資料已變更"
 
@@ -7009,15 +7035,20 @@ msgstr "伺服器未回傳任何帳戶裝置。"
 msgid "The server did not return any trusted contacts or grantors."
 msgstr "伺服器未回傳任何受信任聯絡人或授權者。"
 
+#. Sync dialog error when the server refuses a Login with device request because this installation is not registered as one of the account devices.
+#: src/renderer/src/components/SyncDialog.tsx:164
+msgid "The server does not recognize this device for this account. Sign in with your master password instead."
+msgstr "伺服器無法辨識此帳戶的這部裝置，請改用主密碼登入。"
+
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:490
 msgid "The server has multiple attachments with the same name, or their contents could not be verified. BearWarden stopped and saved progress to avoid duplicate uploads."
 msgstr "伺服器有多個同名附件，或無法驗證其內容。BearWarden 已停止並儲存進度，以避免重複上傳。"
 
-#: src/renderer/src/components/SyncDialog.tsx:151
+#: src/renderer/src/components/SyncDialog.tsx:178
 msgid "The server requires a new device verification code. Get the code from the email sent by Bitwarden, then enter it under advanced options."
 msgstr "伺服器需要新的裝置驗證碼。請從 Bitwarden 寄出的電子郵件取得驗證碼，然後在進階選項中輸入。"
 
-#: src/renderer/src/components/SyncDialog.tsx:403
+#: src/renderer/src/components/SyncDialog.tsx:430
 msgid "The server response is incompatible"
 msgstr "伺服器回應不相容"
 
@@ -7033,7 +7064,7 @@ msgstr "此批次匯入的伺服器結果不明"
 msgid "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 msgstr "伺服器回傳 API 金鑰未設定的通知，而非查詢結果。請要求伺服器管理員設定 HIBP API 金鑰後再試。"
 
-#: src/renderer/src/components/SyncDialog.tsx:174
+#: src/renderer/src/components/SyncDialog.tsx:201
 msgid "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 msgstr "伺服器回傳 BearWarden 無法安全處理的資料。請檢查伺服器版本與相容性。"
 
@@ -7056,6 +7087,16 @@ msgstr "已複製設定金鑰。剪貼簿將在 30 秒內清除。"
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:300
 msgid "The setup session has expired. Start again."
 msgstr "設定工作階段已過期。請重新開始。"
+
+#. Sync dialog error when a Login with device request was not approved in time, or was approved after the server stopped accepting it.
+#: src/renderer/src/components/SyncDialog.tsx:158
+msgid "The sign-in request expired before it could be used. Send a new request."
+msgstr "登入要求在使用前已過期，請重新傳送要求。"
+
+#. Sync dialog error when another device rejected the Login with device request.
+#: src/renderer/src/components/SyncDialog.tsx:153
+msgid "The sign-in request was denied on the other device."
+msgstr "另一部裝置拒絕了這項登入要求。"
 
 #: src/renderer/src/lib/ssh-agent-ui.ts:45
 #~ msgid "The signing purpose is not in an SSHSIG namespace recognized by BearWarden."
@@ -7121,7 +7162,7 @@ msgstr "找不到保管庫檔案。請確認檔案未被移動或刪除。"
 #~ msgid "The vault file was not found. Check that it has not been moved or deleted."
 #~ msgstr "找不到保管庫檔案。請確認檔案未被移動或刪除。"
 
-#: src/renderer/src/components/SyncDialog.tsx:180
+#: src/renderer/src/components/SyncDialog.tsx:207
 msgid "The vault is locked. Enter your master password and try again."
 msgstr "保管庫已鎖定。請輸入您的主密碼後再試。"
 
@@ -7162,7 +7203,7 @@ msgstr "驗證碼已傳送至 {emailAddress}。"
 msgid "The verification code will be sent to the specified address. The email address is retained only during this short-lived setup flow."
 msgstr "驗證碼將傳送至指定地址。電子郵件地址只會在這個短暫的設定流程中保留。"
 
-#: src/renderer/src/components/SyncDialog.tsx:633
+#: src/renderer/src/components/SyncDialog.tsx:670
 msgid "The verification email request was sent. If email is configured on the server, check your inbox to complete verification."
 msgstr "驗證電子郵件請求已傳送。若伺服器已設定電子郵件，請查看收件匣以完成驗證。"
 
@@ -7202,7 +7243,7 @@ msgstr "這些值只存在於此裝置的加密保管庫中。關閉或離開此
 msgid "Third-party email forwarding integrations that require API credentials are not available."
 msgstr "需要 API 認證資訊的第三方電子郵件轉寄整合功能無法使用。"
 
-#: src/renderer/src/components/SyncDialog.tsx:735
+#: src/renderer/src/components/SyncDialog.tsx:772
 msgid "This account requires a two-step verification method that BearWarden does not support."
 msgstr "此帳號需要使用 BearWarden 不支援的兩步驟驗證方式。"
 
@@ -7210,15 +7251,15 @@ msgstr "此帳號需要使用 BearWarden 不支援的兩步驟驗證方式。"
 #~ msgid "This account requires Duo two-step verification, which BearWarden does not support yet. Use another enabled verification method or the official Bitwarden client."
 #~ msgstr "此帳戶需要 Duo 兩步驟驗證，但 BearWarden 尚不支援。請改用其他已啟用的驗證方式，或使用官方 Bitwarden 用戶端。"
 
-#: src/renderer/src/components/SyncDialog.tsx:164
+#: src/renderer/src/components/SyncDialog.tsx:191
 msgid "This account requires trusted-device encryption. BearWarden cannot unlock it safely; use the official Bitwarden client."
 msgstr "此帳戶需要受信任裝置加密。BearWarden 無法安全解鎖；請使用官方 Bitwarden 用戶端。"
 
-#: src/renderer/src/components/SyncDialog.tsx:170
+#: src/renderer/src/components/SyncDialog.tsx:197
 msgid "This account uses a newer account encryption or sign-in method that is not yet supported. To prevent data loss, BearWarden will not write any changes to the server."
 msgstr "此帳戶使用尚未支援的較新帳戶加密或登入方式。為防止資料遺失，BearWarden 不會將任何變更寫入伺服器。"
 
-#: src/renderer/src/components/SyncDialog.tsx:393
+#: src/renderer/src/components/SyncDialog.tsx:420
 msgid "This account's encryption method is not supported"
 msgstr "不支援此帳戶的加密方式"
 
@@ -7262,7 +7303,7 @@ msgstr "此應用程式想要使用 SSH 金鑰簽署 Git 內容。"
 msgid "This attachment"
 msgstr "此附件"
 
-#: src/renderer/src/components/SyncDialog.tsx:414
+#: src/renderer/src/components/SyncDialog.tsx:441
 msgid "This change was not applied. Sync again to get the latest version, then retry."
 msgstr "未套用此變更。請再次同步以取得最新版本，然後重試。"
 
@@ -7296,7 +7337,7 @@ msgid "This is an account-level setting"
 msgstr "這是帳戶層級的設定"
 
 #. Error under the Duo result field when the pasted text is not a Duo result address for the waiting sign-in.
-#: src/renderer/src/components/SyncDialog.tsx:1260
+#: src/renderer/src/components/SyncDialog.tsx:1377
 msgid "This is not the address of the Duo result page. Copy the full address from the browser and try again."
 msgstr "這不是 Duo 結果頁面的網址。請從瀏覽器複製完整網址後再試一次。"
 
@@ -7336,20 +7377,20 @@ msgstr "這只會變更您的主密碼及其保護方式，不會建立新的帳
 msgid "This only deletes personal data for the currently synced account. Shared organization items are not deleted."
 msgstr "這只會刪除目前同步帳戶的個人資料，不會刪除共用的組織項目。"
 
-#: src/renderer/src/components/SyncDialog.tsx:166
+#: src/renderer/src/components/SyncDialog.tsx:193
 #: src/renderer/src/hooks/use-describe-vault-error.ts:13
 msgid "This operation is restricted by your organization's policy."
 msgstr "此操作受到貴組織的政策限制。"
 
-#: src/renderer/src/components/SyncDialog.tsx:153
+#: src/renderer/src/components/SyncDialog.tsx:180
 msgid "This organization requires single sign-on. Sign in with the official Bitwarden client because BearWarden does not support SSO sign-in yet."
 msgstr "此組織要求使用單一登入。BearWarden 尚不支援 SSO 登入，請使用官方 Bitwarden 用戶端登入。"
 
-#: src/renderer/src/components/SyncDialog.tsx:365
+#: src/renderer/src/components/SyncDialog.tsx:392
 msgid "This organization requires SSO sign-in, which BearWarden does not support yet. Use the official Bitwarden client to sign in."
 msgstr "此組織要求使用 SSO 登入，但 BearWarden 尚不支援。請使用官方 Bitwarden 用戶端登入。"
 
-#: src/renderer/src/components/SyncDialog.tsx:162
+#: src/renderer/src/components/SyncDialog.tsx:189
 msgid "This organization uses Key Connector. BearWarden cannot unlock this account safely; use the official Bitwarden client."
 msgstr "此組織使用 Key Connector。BearWarden 無法安全解鎖此帳戶；請使用官方 Bitwarden 用戶端。"
 
@@ -7414,6 +7455,11 @@ msgstr "此 Send 使用電子郵件驗證。BearWarden 尚未支援 OTP，因此
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "此 Send 使用電子郵件驗證。由於尚未支援 OTP，編輯功能已停用，以保留其安全要求。"
 
+#. Sync dialog error when the Bitwarden or Vaultwarden server has no Login with device endpoint.
+#: src/renderer/src/components/SyncDialog.tsx:171
+msgid "This server does not support logging in with a device."
+msgstr "此伺服器不支援使用裝置登入。"
+
 #: src/renderer/src/hooks/use-describe-vault-error.ts:25
 msgid "This server or account does not currently allow this attachment to be added."
 msgstr "此伺服器或帳戶目前不允許新增此附件。"
@@ -7472,7 +7518,7 @@ msgstr "本週"
 msgid "This will deauthorize all sessions"
 msgstr "這會取消所有工作階段的授權"
 
-#: src/renderer/src/components/SyncDialog.tsx:1562
+#: src/renderer/src/components/SyncDialog.tsx:1692
 msgid "This will not delete your local vault, but it will no longer sync with Bitwarden."
 msgstr "這不會刪除您的本機保管庫，但它將不再與 Bitwarden 同步。"
 
@@ -7487,7 +7533,7 @@ msgstr "無法取得時間"
 msgid "Title"
 msgstr "標題"
 
-#: src/renderer/src/components/SyncDialog.tsx:394
+#: src/renderer/src/components/SyncDialog.tsx:421
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "為防止資料遺失，BearWarden 已停止將變更寫入伺服器。請更新應用程式後再試一次。"
 
@@ -7570,7 +7616,7 @@ msgstr "信任狀態"
 msgid "Trusted"
 msgstr "已信任"
 
-#: src/renderer/src/components/SyncDialog.tsx:388
+#: src/renderer/src/components/SyncDialog.tsx:415
 msgid "Trusted-device encryption is not supported"
 msgstr "不支援受信任裝置加密"
 
@@ -7586,7 +7632,7 @@ msgstr "請嘗試較短的搜尋詞，或切換至「所有項目」。"
 msgid "Try again"
 msgstr "再試一次"
 
-#: src/renderer/src/components/SyncDialog.tsx:419
+#: src/renderer/src/components/SyncDialog.tsx:446
 msgid "Try again. If the problem persists, note the error code below for troubleshooting."
 msgstr "請再試一次。若問題持續發生，請記下下方的錯誤代碼以進行疑難排解。"
 
@@ -7607,40 +7653,40 @@ msgstr "雙因素驗證"
 msgid "Two-factor authentication not enabled"
 msgstr "未啟用雙因素驗證"
 
-#: src/renderer/src/components/SyncDialog.tsx:1302
+#: src/renderer/src/components/SyncDialog.tsx:1419
 msgid "Two-step verification code"
 msgstr "兩步驟驗證碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1304
+#: src/renderer/src/components/SyncDialog.tsx:1421
 msgid "Two-step verification code (optional)"
 msgstr "兩步驟驗證碼（選填）"
 
-#: src/renderer/src/components/SyncDialog.tsx:1491
+#: src/renderer/src/components/SyncDialog.tsx:1621
 msgid "Two-step verification enabled"
 msgstr "已啟用兩步驟驗證"
 
 #. Sign-in dialog notice when the server requires two-step login and Duo is the selected method; "Open Duo" is the submit button label.
-#: src/renderer/src/components/SyncDialog.tsx:724
+#: src/renderer/src/components/SyncDialog.tsx:761
 msgid "Two-step verification is required. Choose Open Duo to verify in your browser."
 msgstr "需要兩步驟驗證。請選擇「開啟 Duo」在瀏覽器中完成驗證。"
 
-#: src/renderer/src/components/SyncDialog.tsx:732
+#: src/renderer/src/components/SyncDialog.tsx:769
 msgid "Two-step verification is required. Enter a current verification code to continue."
 msgstr "需要進行兩步驟驗證。請輸入目前的驗證碼以繼續。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1162
+#: src/renderer/src/components/SyncDialog.tsx:1277
 msgid "Two-step verification method"
 msgstr "兩步驟驗證方式"
 
-#: src/renderer/src/components/SyncDialog.tsx:1164
+#: src/renderer/src/components/SyncDialog.tsx:1279
 msgid "Two-step verification method (optional)"
 msgstr "兩步驟驗證方式（選填）"
 
-#: src/renderer/src/components/SyncDialog.tsx:1492
+#: src/renderer/src/components/SyncDialog.tsx:1622
 msgid "Two-step verification not enabled"
 msgstr "未啟用兩步驟驗證"
 
-#: src/renderer/src/components/SyncDialog.tsx:183
+#: src/renderer/src/components/SyncDialog.tsx:210
 msgid "Two-step verification was invalid, expired, or canceled. Please try again."
 msgstr "兩步驟驗證無效、已過期或已取消。請再試一次。"
 
@@ -7996,7 +8042,7 @@ msgstr "未知的類型 ({0})"
 #~ msgid "Unknown type ({type})"
 #~ msgstr "未知的類型 ({type})"
 
-#: src/renderer/src/components/SyncDialog.tsx:1409
+#: src/renderer/src/components/SyncDialog.tsx:1539
 msgid "Unlock and sync"
 msgstr "解鎖並同步"
 
@@ -8030,7 +8076,8 @@ msgstr "使用 PIN 解鎖"
 msgid "Unlock your vault in BearWarden, then return to the browser to use autofill."
 msgstr "請在 BearWarden 中解鎖保管庫，再回到瀏覽器使用自動填寫功能。"
 
-#: src/renderer/src/components/SyncDialog.tsx:867
+#: src/renderer/src/components/SyncDialog.tsx:553
+#: src/renderer/src/components/SyncDialog.tsx:950
 msgid "Unlocked and synced. {summary}."
 msgstr "已解鎖並同步。{summary}。"
 
@@ -8060,7 +8107,7 @@ msgstr "未受保護的網站"
 msgid "Unsupported key format"
 msgstr "不支援的金鑰格式"
 
-#: src/renderer/src/components/SyncDialog.tsx:337
+#: src/renderer/src/components/SyncDialog.tsx:364
 msgid "Unsupported vault item type"
 msgstr "不支援的保管庫項目類型"
 
@@ -8131,7 +8178,7 @@ msgstr "大寫字母"
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "至少使用 4 個字元，並避免使用容易猜到的數字。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1066
+#: src/renderer/src/components/SyncDialog.tsx:1153
 msgid "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 msgstr "Bitwarden Cloud 請使用 bitwarden.com；Vaultwarden 請使用 HTTPS URL。"
 
@@ -8143,7 +8190,12 @@ msgstr "請改用密碼產生器建立的長密碼。"
 msgid "Use master password"
 msgstr "使用主密碼"
 
-#: src/renderer/src/components/SyncDialog.tsx:1352
+#. Button that abandons the Login with device request and returns to the master password field.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:65
+msgid "Use master password instead"
+msgstr "改用主密碼"
+
+#: src/renderer/src/components/SyncDialog.tsx:1475
 msgid "Use only when Bitwarden asks you to verify a new device."
 msgstr "僅在 Bitwarden 要求您驗證新裝置時使用。"
 
@@ -8210,8 +8262,8 @@ msgstr "保管庫分類"
 msgid "Vault health report"
 msgstr "保管庫健康報告"
 
-#: src/renderer/src/components/SyncDialog.tsx:266
-#: src/renderer/src/components/SyncDialog.tsx:339
+#: src/renderer/src/components/SyncDialog.tsx:293
+#: src/renderer/src/components/SyncDialog.tsx:366
 msgid "Vault item data"
 msgstr "保管庫項目資料"
 
@@ -8227,7 +8279,7 @@ msgstr "保管庫導覽"
 msgid "Vaultwarden does not have an HIBP API key configured"
 msgstr "Vaultwarden 尚未設定 HIBP API 金鑰"
 
-#: src/renderer/src/components/SyncDialog.tsx:409
+#: src/renderer/src/components/SyncDialog.tsx:436
 msgid "Vaultwarden returned an SSH key that is missing required key fields. Repair or delete it in the official web vault, then sync again."
 msgstr "Vaultwarden 回傳的 SSH 金鑰缺少必要的金鑰欄位。請在官方網頁保管庫中修復或刪除該金鑰，然後再次同步。"
 
@@ -8245,6 +8297,7 @@ msgstr "Vaultwarden 會在啟用期間再次驗證您的主密碼。"
 #~ msgstr "驗證碼剩餘時間"
 
 #: src/renderer/src/components/LoginApprovalDialog.tsx:88
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:18
 msgid "Verification phrase"
 msgstr "驗證片語"
 
@@ -8317,8 +8370,8 @@ msgstr "檢視 {findingName}"
 msgid "View {title}"
 msgstr "檢視 {title}"
 
-#: src/renderer/src/components/SyncDialog.tsx:453
-#: src/renderer/src/components/SyncDialog.tsx:482
+#: src/renderer/src/components/SyncDialog.tsx:480
+#: src/renderer/src/components/SyncDialog.tsx:509
 msgid "View details"
 msgstr "檢視詳細資訊"
 
@@ -8371,6 +8424,11 @@ msgstr "等待檔案"
 #: src/renderer/src/hooks/use-attachment-operations.ts:93
 msgid "Waiting for a save location"
 msgstr "等待儲存位置"
+
+#. Status while BearWarden waits for another signed-in device to approve the Login with device request.
+#: src/renderer/src/components/LoginWithDevicePanel.tsx:50
+msgid "Waiting for approval…"
+msgstr "正在等待核准…"
 
 #: src/renderer/src/components/LoginEditor.tsx:3251
 msgid "Waiting for private key password…"
@@ -8561,7 +8619,7 @@ msgstr "您目前的工作階段已過期。請重新登入。"
 msgid "Your master password and decrypted data never leave this device."
 msgstr "您的主密碼與已解密資料絕不會離開此裝置。"
 
-#: src/renderer/src/components/SyncDialog.tsx:1020
+#: src/renderer/src/components/SyncDialog.tsx:1103
 msgid "Your master password and verification codes are used only for this operation and are not stored on this device."
 msgstr "您的主密碼與驗證碼僅用於此操作，不會儲存在此裝置上。"
 
@@ -8602,7 +8660,7 @@ msgstr "您的遠端帳戶與本機加密保管庫已更新。請使用新的主
 msgid "Your server has not enabled bank account, driver's license, and passport items yet."
 msgstr "您的伺服器尚未啟用銀行帳戶、駕照與護照項目。"
 
-#: src/renderer/src/components/SyncDialog.tsx:354
+#: src/renderer/src/components/SyncDialog.tsx:381
 msgid "Your sign-in has expired"
 msgstr "您的登入已過期"
 
@@ -8615,6 +8673,6 @@ msgid "Your sync session has expired. Sign in again first."
 msgstr "您的同步工作階段已過期。請先重新登入。"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:115
-#: src/renderer/src/components/SyncDialog.tsx:550
+#: src/renderer/src/components/SyncDialog.tsx:587
 msgid "YubiKey OTP"
 msgstr "YubiKey OTP"
