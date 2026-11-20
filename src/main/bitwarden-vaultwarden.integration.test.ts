@@ -15,6 +15,8 @@ import {
   type BitwardenKdf
 } from './bitwarden-crypto'
 import { BitwardenDirectClient } from './bitwarden-direct'
+import { createAuthRequestResponseNudgeFactory } from './bitwarden-anonymous-hub'
+import { resolveBitwardenUrls } from './bitwarden-http'
 
 const serverUrl = process.env.BEARWARDEN_VAULTWARDEN_URL
 const EMAIL = 'bearwarden-integration@example.invalid'
@@ -76,25 +78,46 @@ async function registerTemporaryAccount(
   const publicKey = rsa.publicKey.export({ format: 'der', type: 'spki' })
   let registeredKeys: TemporaryAccountKeys | null = null
   try {
-    const response = await fetch(`${server}/identity/accounts/register`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        name,
-        masterPasswordHint: null,
-        kdf: kdf.type === 'pbkdf2' ? 0 : 1,
-        kdfIterations: kdf.iterations,
-        kdfMemory: kdf.type === 'argon2id' ? kdf.memoryMiB : null,
-        kdfParallelism: kdf.type === 'argon2id' ? kdf.parallelism : null,
-        key: encryptBitwardenBytes(userKey, stretched.combinedKey),
-        masterPasswordHash: passwordKey.toString('base64'),
-        keys: {
-          encryptedPrivateKey: encryptBitwardenBytes(privateKey, userKey),
-          publicKey: publicKey.toString('base64')
-        }
+    const fields = {
+      email,
+      name,
+      masterPasswordHint: null,
+      kdf: kdf.type === 'pbkdf2' ? 0 : 1,
+      kdfIterations: kdf.iterations,
+      kdfMemory: kdf.type === 'argon2id' ? kdf.memoryMiB : null,
+      kdfParallelism: kdf.type === 'argon2id' ? kdf.parallelism : null,
+      key: encryptBitwardenBytes(userKey, stretched.combinedKey),
+      masterPasswordHash: passwordKey.toString('base64'),
+      keys: {
+        encryptedPrivateKey: encryptBitwardenBytes(privateKey, userKey),
+        publicKey: publicKey.toString('base64')
+      }
+    }
+    const register = (path: string, extra: Record<string, string> = {}): Promise<Response> =>
+      fetch(`${server}/identity/accounts/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...fields, ...extra })
       })
-    })
+    // Vaultwarden 1.37 registers through register/finish with a verification token, which it
+    // returns directly when mail is disabled; older releases accept the legacy route.
+    let response = await register('register')
+    if (response.status === 404) {
+      const verification = await fetch(
+        `${server}/identity/accounts/register/send-verification-email`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'text/plain' },
+          body: JSON.stringify({ email, name })
+        }
+      )
+      if (!verification.ok) {
+        throw new Error(`Vaultwarden registration verification failed (${verification.status})`)
+      }
+      response = await register('register/finish', {
+        emailVerificationToken: await verification.text()
+      })
+    }
     if (!response.ok) {
       throw new Error(
         `Vaultwarden registration failed (${response.status}): ${await response.text()}`
@@ -597,5 +620,67 @@ describe.runIf(Boolean(serverUrl))('Vaultwarden direct integration', () => {
     await client.sync()
     expect(await client.listPersonalLogins()).toEqual([])
     expect(await client.listFolders()).toEqual([])
+  }, 60_000)
+
+  it('signs a registered device back in with Login with device', async () => {
+    const server = serverUrl!
+    const email = `bearwarden-device-login-${randomBytes(6).toString('hex')}@example.invalid`
+    const keys = await registerTemporaryAccount(server, email, PASSWORD, 'Device login', OWNER_KDF)
+    keys.userKey.fill(0)
+    keys.publicKey.fill(0)
+    const approving = new BitwardenDirectClient({ serverUrl: server, email })
+    await approving.login({ email, password: PASSWORD })
+    await approving.sync()
+
+    const unknown = new BitwardenDirectClient({ serverUrl: server, email })
+    await expect(unknown.requestDeviceLogin()).rejects.toMatchObject({
+      code: 'DEVICE_LOGIN_UNKNOWN_DEVICE'
+    })
+
+    // A password sign-in registers this installation's device identifier with the server.
+    const registered = new BitwardenDirectClient({ serverUrl: server, email })
+    await registered.login({ email, password: PASSWORD })
+    const state = registered.exportState()
+    await registered.logout()
+    const requester = new BitwardenDirectClient({
+      serverUrl: server,
+      email,
+      state: { ...state, session: null }
+    })
+
+    const denied = await requester.requestDeviceLogin()
+    await approving.respondLoginRequest(denied.id, denied.fingerprint, false)
+    await expect(requester.pollDeviceLogin(denied)).rejects.toMatchObject({
+      code: 'DEVICE_LOGIN_DENIED'
+    })
+    denied.dispose()
+
+    const request = await requester.requestDeviceLogin()
+    await expect(requester.pollDeviceLogin(request)).resolves.toBe(false)
+    const pending = await approving.listPendingLoginRequests()
+    expect(pending).toEqual([expect.objectContaining({ fingerprint: request.fingerprint })])
+    const nudge = createAuthRequestResponseNudgeFactory()(
+      resolveBitwardenUrls(server).notificationsUrl,
+      request.id
+    )
+    const pushed = nudge.next()
+    // Give the anonymous hub time to register the subscription before the answer is pushed.
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    await approving.respondLoginRequest(request.id, request.fingerprint, true)
+    await expect(
+      Promise.race([
+        pushed.then(() => 'pushed'),
+        new Promise((resolve) => setTimeout(() => resolve('timeout'), 5_000))
+      ])
+    ).resolves.toBe('pushed')
+    nudge.close()
+    await expect(requester.pollDeviceLogin(request)).resolves.toBe(true)
+    await requester.loginWithDevice({ request })
+    await requester.sync()
+    await expect(requester.status()).resolves.toEqual({ status: 'unlocked' })
+    await expect(requester.loginWithDevice({ request })).rejects.toMatchObject({
+      code: 'DEVICE_LOGIN_EXPIRED'
+    })
+    request.dispose()
   }, 60_000)
 })
