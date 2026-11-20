@@ -8,13 +8,7 @@ import type {
   VaultAttachmentView
 } from '../../../shared/vault-contract'
 import { Button } from '@renderer/components/ui/button'
-import {
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '@renderer/components/ui/card'
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Spinner } from '@renderer/components/ui/spinner'
@@ -26,7 +20,7 @@ import {
   type AttachmentDeleteTarget,
   type AttachmentOperationState
 } from './vault-attachment-ui'
-import { DetailCard, DetailRowGroup } from './VaultDetailSurface'
+import { DetailCard, DetailRowGroup, detailRowActionClassName } from './VaultDetailSurface'
 import { TooltipIconButton } from './VaultShell-primitives'
 
 interface VaultItemAttachmentsCardProps {
@@ -211,13 +205,7 @@ export function VaultItemTotpCard({
   const { t } = useLingui()
 
   return (
-    <DetailCard
-      tone="brand"
-      className="gap-2"
-      role="region"
-      aria-labelledby="totp-title"
-      aria-busy={!revealReady}
-    >
+    <DetailCard tone="brand" role="region" aria-labelledby="totp-title" aria-busy={!revealReady}>
       <CardHeader>
         <CardTitle id="totp-title">
           <Clock3 aria-hidden="true" />
@@ -228,75 +216,71 @@ export function VaultItemTotpCard({
             <Trans>Unsupported key format</Trans>
           </CardDescription>
         )}
+      </CardHeader>
+      <CardContent className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pr-2 pl-1.5 [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:font-semibold [&_strong]:tracking-widest">
         {!revealReady && (
           <span className="sr-only">
             <Trans>Generating…</Trans>
           </span>
         )}
-        {!generationError && showCountdown && (
-          <CardAction>
-            <TotpCountdownIndicator
-              key={codeCycle ?? 'loading'}
-              remainingSeconds={code?.remainingSeconds ?? null}
-              period={code?.period ?? defaultCountdownPeriodSeconds}
-              compact
-            />
-          </CardAction>
-        )}
-      </CardHeader>
-      <CardContent className="contents">
-        <div className="mx-(--card-spacing) grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-(--inset-surface) py-2 pr-2 pl-3.5 shadow-(--inset-shadow) [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:tracking-widest">
-          {code ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="-ml-2 h-8 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate"
-              data-field-copy-value=""
-              type="button"
-              aria-label={
-                copied ? t`One-time verification code copied` : t`Copy one-time verification code`
-              }
-              disabled={generationError !== null}
-              onClick={() => void onCopy()}
-            >
-              <strong>
-                {/^\d+$/.test(code.code) ? (
-                  <NumberFlow
-                    className="tabular-nums"
-                    value={Number(code.code)}
-                    format={{
-                      useGrouping: false,
-                      minimumIntegerDigits: code.code.length
-                    }}
-                    trend={0}
-                  />
-                ) : (
-                  code.code
-                )}
-              </strong>
-            </Button>
-          ) : (
-            <div className="flex h-8 min-w-0 items-center">
-              {generationError ? (
-                <strong>—</strong>
-              ) : showSkeleton ? (
-                <Skeleton className="h-8 w-36" aria-hidden="true" />
-              ) : null}
-            </div>
-          )}
-          <TooltipIconButton
-            variant="outline"
-            size="icon"
+        {code ? (
+          <Button
+            variant="ghost"
+            className="h-11 min-w-0 justify-start overflow-hidden rounded-xl px-2 [&>strong]:min-w-0 [&>strong]:truncate"
+            data-field-copy-value=""
             type="button"
-            label={
+            aria-label={
               copied ? t`One-time verification code copied` : t`Copy one-time verification code`
             }
-            disabled={!code || generationError !== null}
+            disabled={generationError !== null}
             onClick={() => void onCopy()}
           >
-            <CopyFeedbackIcon copied={copied} />
-          </TooltipIconButton>
-        </div>
+            <strong>
+              {/^\d+$/.test(code.code) ? (
+                <NumberFlow
+                  className="tabular-nums"
+                  value={Number(code.code)}
+                  format={{
+                    useGrouping: false,
+                    minimumIntegerDigits: code.code.length
+                  }}
+                  trend={0}
+                />
+              ) : (
+                code.code
+              )}
+            </strong>
+          </Button>
+        ) : (
+          <div className="flex h-11 min-w-0 items-center px-2">
+            {generationError ? (
+              <strong>—</strong>
+            ) : showSkeleton ? (
+              <Skeleton className="h-8 w-36" aria-hidden="true" />
+            ) : null}
+          </div>
+        )}
+        {!generationError && showCountdown ? (
+          <TotpCountdownIndicator
+            key={codeCycle ?? 'loading'}
+            remainingSeconds={code?.remainingSeconds ?? null}
+            period={code?.period ?? defaultCountdownPeriodSeconds}
+            compact
+          />
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <TooltipIconButton
+          className={detailRowActionClassName}
+          variant="outline"
+          size="icon"
+          type="button"
+          label={copied ? t`One-time verification code copied` : t`Copy one-time verification code`}
+          disabled={!code || generationError !== null}
+          onClick={() => void onCopy()}
+        >
+          <CopyFeedbackIcon copied={copied} />
+        </TooltipIconButton>
       </CardContent>
     </DetailCard>
   )

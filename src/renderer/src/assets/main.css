@@ -112,6 +112,7 @@
   --chart-4: oklch(0.38 0.01 260);
   --chart-5: oklch(0.28 0.008 260);
   --radius: 0.625rem;
+  --pane-radius: 1.75rem;
   --sidebar: oklch(0.965 0.003 260);
   --sidebar-foreground: oklch(0.2 0.006 265);
   --sidebar-primary: var(--brand);

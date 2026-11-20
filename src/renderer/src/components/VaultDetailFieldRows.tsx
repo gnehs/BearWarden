@@ -308,7 +308,7 @@ function VaultCustomFieldRow({
 
   return (
     <div className={cn(detailFieldClassName, !hidden && 'max-[430px]:grid-cols-[1fr_auto]')}>
-      <span>{label}</span>
+      <span title={label}>{label}</span>
       <Button
         variant="ghost"
         size="sm"

@@ -16,7 +16,8 @@ export function DetailCard({
     <Card
       variant="folder"
       className={cn(
-        'mx-auto w-full max-w-[720px] [--card-spacing:--spacing(2.5)]',
+        // Concentric with the detail pane: inner radius = pane radius - the inset between them.
+        'mx-auto w-full max-w-[720px] rounded-[calc(var(--pane-radius)-var(--detail-inset))] [--card-spacing:--spacing(2.5)]',
         '[&_[data-slot=card-description]]:ml-auto',
         variant === 'attachment' &&
           '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',
@@ -95,21 +96,21 @@ export function DetailMetaRow({
 }: DetailMetaRowProps): JSX.Element {
   return (
     <div className="grid min-h-10 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-      <dt className="text-muted-foreground text-xs leading-4">{label}</dt>
+      <dt className="text-muted-foreground min-w-0 text-xs leading-4 break-words">{label}</dt>
       <dd className={cn('m-0 min-w-0 text-xs leading-4', valueClassName)}>{children}</dd>
     </div>
   )
 }
 
 export const detailFieldClassName =
-  'grid min-h-10 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,auto)] items-center gap-1 border-b border-(--surface-ring) py-0.5 pr-1 pl-3 last:border-b-0 [&>span]:text-xs [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
+  'grid min-h-10 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,auto)] items-center gap-1 border-b border-(--surface-ring) py-0.5 pr-1 pl-3 last:border-b-0 [&>span]:min-w-0 [&>span]:truncate [&>span]:text-xs [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
 
 /** Row actions stay quiet inside the recessed well until hovered. */
 export const detailRowActionClassName =
   'size-7 min-w-7 rounded-lg border-transparent bg-transparent shadow-none dark:bg-transparent'
 
 export const detailScrollClassName =
-  'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-5 pt-1 pb-6 max-[680px]:px-3 max-[680px]:pb-5'
+  'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-(--detail-inset) pt-1 pb-(--detail-inset) [--detail-inset:--spacing(3)]'
 
 // Detail headers, the editor header, and the loading placeholder share one icon tile.
 // eslint-disable-next-line react-refresh/only-export-components
