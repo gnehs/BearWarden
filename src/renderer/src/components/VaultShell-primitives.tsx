@@ -114,7 +114,7 @@ export function SidebarCategoryTile({
       variant="sidebar"
       className={cn(
         sidebarToneClasses[tone],
-        'grid h-auto min-h-[4.5rem] grid-cols-[auto_1fr] grid-rows-[auto_auto] items-center gap-x-2 gap-y-2 rounded-[1.125rem] p-2.5 text-left whitespace-normal',
+        'rounded-pane grid h-auto min-h-[4.5rem] grid-cols-[auto_1fr] grid-rows-[auto_auto] items-center gap-x-2 gap-y-2 p-2.5 text-left whitespace-normal',
         active
           ? 'bg-(--tile) text-white hover:bg-(--tile) hover:text-white aria-expanded:bg-(--tile)'
           : 'bg-sidebar-overlay hover:bg-sidebar-overlay-hover'

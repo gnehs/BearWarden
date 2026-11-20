@@ -112,7 +112,7 @@ export const ItemRow = memo(function ItemRow({
       data-item-row=""
       data-selected={selected ? 'true' : 'false'}
       className={cn(
-        'group/item has-[[data-item-row-main]:focus-visible]:outline-ring/72 relative grid cursor-grab touch-none items-center rounded-2xl border-0 has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
+        'group/item has-[[data-item-row-main]:focus-visible]:outline-ring/72 rounded-nested relative grid cursor-grab touch-none items-center border-0 has-[[data-item-row-main]:focus-visible]:outline-3 has-[[data-item-row-main]:focus-visible]:outline-offset-2',
         shouldShowTotpCode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto] pr-3',
         !selected && 'hover:bg-sidebar-overlay active:bg-sidebar-overlay-hover',
         selected &&

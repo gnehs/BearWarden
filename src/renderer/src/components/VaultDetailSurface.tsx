@@ -16,8 +16,7 @@ export function DetailCard({
     <Card
       variant="folder"
       className={cn(
-        // Concentric with the detail pane: inner radius = pane radius - the inset between them.
-        'mx-auto w-full max-w-[720px] rounded-[calc(var(--pane-radius)-var(--detail-inset))] [--card-spacing:--spacing(2.5)]',
+        'mx-auto w-full max-w-[720px] [--card-spacing:--spacing(2.5)]',
         '[&_[data-slot=card-description]]:ml-auto',
         variant === 'attachment' &&
           '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',
@@ -110,7 +109,7 @@ export const detailRowActionClassName =
   'size-7 min-w-7 rounded-lg border-transparent bg-transparent shadow-none dark:bg-transparent'
 
 export const detailScrollClassName =
-  'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-(--detail-inset) pt-1 pb-(--detail-inset) [--detail-inset:--spacing(3)]'
+  'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-(--pane-content-inset) pt-1 pb-(--pane-content-inset)'
 
 // Detail headers, the editor header, and the loading placeholder share one icon tile.
 // eslint-disable-next-line react-refresh/only-export-components

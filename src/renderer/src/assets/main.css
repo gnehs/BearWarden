@@ -54,6 +54,9 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-window: var(--window-radius);
+  --radius-pane: var(--pane-radius);
+  --radius-nested: var(--nested-radius);
 }
 
 :root {
@@ -112,7 +115,20 @@
   --chart-4: oklch(0.38 0.01 260);
   --chart-5: oklch(0.28 0.008 260);
   --radius: 0.625rem;
-  --pane-radius: 1.75rem;
+  /* Container radii are concentric with the native window frame: each level subtracts the
+     inset to its parent, floored at 2px, then gains a shared optical bias so the nested
+     corners do not read as square. 16px is the measured macOS hiddenInset window corner. */
+  --window-radius: 16px;
+  --radius-optical-bias: 6px;
+  --pane-inset: 0.75rem;
+  --pane-content-inset: 0.75rem;
+  --pane-radius: calc(
+    max(2px, var(--window-radius) - var(--pane-inset)) + var(--radius-optical-bias)
+  );
+  --nested-radius: calc(
+    max(2px, var(--window-radius) - var(--pane-inset) - var(--pane-content-inset)) +
+      var(--radius-optical-bias)
+  );
   --sidebar: oklch(0.965 0.003 260);
   --sidebar-foreground: oklch(0.2 0.006 265);
   --sidebar-primary: var(--brand);
@@ -225,6 +241,18 @@
     opacity: 0.38;
     transform: scale(0.72);
   }
+}
+
+/* Derived radii resolve where they are declared, so a window override must restate them. */
+:root:has(.platform-windows) {
+  --window-radius: 8px;
+  --pane-radius: calc(
+    max(2px, var(--window-radius) - var(--pane-inset)) + var(--radius-optical-bias)
+  );
+  --nested-radius: calc(
+    max(2px, var(--window-radius) - var(--pane-inset) - var(--pane-content-inset)) +
+      var(--radius-optical-bias)
+  );
 }
 
 .dark,

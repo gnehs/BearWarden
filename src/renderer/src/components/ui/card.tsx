@@ -41,7 +41,7 @@ function Card({
           'group/card bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-3xl py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-3xl *:[img:last-child]:rounded-b-3xl',
           variant === 'default' && 'overflow-hidden',
           variant === 'folder' && [
-            'relative mt-12 rounded-2xl shadow-(--card-shadow)',
+            'rounded-nested relative mt-12 shadow-(--card-shadow)',
             folderToneClasses[tone]
           ],
           className
