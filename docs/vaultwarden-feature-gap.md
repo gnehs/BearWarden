@@ -26,15 +26,15 @@ Bitwarden 官方客戶端把「使用 WebAuthn 作為第二步驗證」與「以
 無密碼登入」視為不同登入策略；個人 API key 的檢視／輪替也不代表支援
 `client_credentials` API key 登入。BearWarden 的支援邊界如下：
 
-| 官方登入方式                                              | BearWarden 狀態  | 說明                                                                                                                         |
-| --------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Email＋主密碼                                             | 支援             | PBKDF2／Argon2id prelogin、可重新寄送的 new-device email OTP、V1 與 Account Encryption V2                                    |
-| 第二步驗證（Authenticator、Email、YubiKey OTP、WebAuthn） | 支援主要流程     | 支援伺服器記住第二步驗證 token，拒絕後自動清除；WebAuthn 是 provider 7 的第二步驗證，仍需實體金鑰 live fixture               |
-| Duo／Organization Duo 登入                                | 未實作           | 帳號設定可管理個人 Duo，但登入 challenge 不會假裝成一般 OTP；Organization Duo 也不支援                                       |
-| SSO／Key Connector／Trusted Device Encryption             | 未實作           | 偵測到不相容的解密模式時 fail closed，不降級使用 legacy key                                                                  |
-| Login with Device                                         | 僅支援 initiator | 已登入且已解鎖的 BearWarden 可檢視、比對 fingerprint 並核准／拒絕另一台裝置的登入請求；BearWarden 本身不能以此取代主密碼登入 |
-| API key 登入                                              | 未實作           | 可在重新驗證主密碼後安全複製／輪替個人 API key，但不以 API key 建立 BearWarden 同步 session                                  |
-| WebAuthn passwordless／PRF 登入                           | 未實作           | 不等同於已支援的 WebAuthn 第二步驗證，也不應由 passkey 網站登入流程推定為已支援                                              |
+| 官方登入方式                                              | BearWarden 狀態  | 說明                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Email＋主密碼                                             | 支援             | PBKDF2／Argon2id prelogin、可重新寄送的 new-device email OTP、V1 與 Account Encryption V2                                                                                                                                                                            |
+| 第二步驗證（Authenticator、Email、YubiKey OTP、WebAuthn） | 支援主要流程     | 支援伺服器記住第二步驗證 token，拒絕後自動清除；WebAuthn 是 provider 7 的第二步驗證，仍需實體金鑰 live fixture                                                                                                                                                       |
+| Duo／Organization Duo 登入                                | 支援主要流程     | provider 2／6 的 Duo Universal Prompt：只接受 `api-*.duosecurity.com`／`duofederal.com` 的 HTTPS AuthUrl，以系統瀏覽器開啟；redirect 由伺服器固定為 web vault `duo-redirect-connector.html`，因此使用者貼上結果頁網址，main 先比對 AuthUrl 內簽署的 state 再送 `code | state`；state 不符、5 分鐘逾時、取消、鎖定或切換帳號都 fail closed。Vaultwarden 1.37.5 不驗證 provider 6；仍需真實 Duo 帳號 live fixture |
+| SSO／Key Connector／Trusted Device Encryption             | 未實作           | 偵測到不相容的解密模式時 fail closed，不降級使用 legacy key                                                                                                                                                                                                          |
+| Login with Device                                         | 僅支援 initiator | 已登入且已解鎖的 BearWarden 可檢視、比對 fingerprint 並核准／拒絕另一台裝置的登入請求；BearWarden 本身不能以此取代主密碼登入                                                                                                                                         |
+| API key 登入                                              | 未實作           | 可在重新驗證主密碼後安全複製／輪替個人 API key，但不以 API key 建立 BearWarden 同步 session                                                                                                                                                                          |
+| WebAuthn passwordless／PRF 登入                           | 未實作           | 不等同於已支援的 WebAuthn 第二步驗證，也不應由 passkey 網站登入流程推定為已支援                                                                                                                                                                                      |
 
 完整同步目前以伺服器 snapshot 為權威，涵蓋個人 ciphers、folders、Sends、domains，
 以及 Organizations／Collections／共享 ciphers 的只讀鏡像；通知事件會合併成完整同步，
