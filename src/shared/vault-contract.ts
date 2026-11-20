@@ -976,6 +976,11 @@ export interface SyncStatus {
   lastSyncAt?: string
   /** Renderer-safe failure category. Raw connector and server details never cross IPC. */
   lastError?: SyncErrorCode
+  /**
+   * Set only when the server reported that the account lacks premium, which official clients
+   * require for archiving. Omitted when premium or when the server does not report it.
+   */
+  archiveRequiresPremium?: true
   /** Time of the latest failed attempt in the current application session. */
   lastErrorAt?: string
   /** Coarse, renderer-safe location for an incompatible sync snapshot. */

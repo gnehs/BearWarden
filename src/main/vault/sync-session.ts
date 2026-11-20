@@ -407,6 +407,9 @@ export class VaultSyncSession {
       email: sync.email,
       ...(sync.lastSyncAt ? { lastSyncAt: sync.lastSyncAt } : {}),
       ...this.syncErrorStatusFields(),
+      ...(sync.state.premiumFromAnySource === false
+        ? { archiveRequiresPremium: true as const }
+        : {}),
       ...(sync.pendingLoginImport?.phase === 'dispatched'
         ? {
             pendingImport: {

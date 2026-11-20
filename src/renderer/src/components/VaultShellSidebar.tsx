@@ -79,6 +79,8 @@ interface VaultSidebarNavigation {
     archive: number
     trash: number
   }
+  /** Archiving is unavailable, so the Archive entry is not a drop target. */
+  archiveRequiresPremium: boolean
   folderCounts: ReadonlyMap<string | null, number>
   organizations: OrganizationView[]
   collections: CollectionView[]
@@ -284,7 +286,11 @@ export function VaultShellSidebar({
                 label={t`Archive`}
                 count={navigation.specialFolderCounts.archive}
                 active={scope.kind === 'archive'}
-                dropTargetId={canDropIntoSpecialFolder ? quickAccessDropIds.archive : undefined}
+                dropTargetId={
+                  canDropIntoSpecialFolder && !navigation.archiveRequiresPremium
+                    ? quickAccessDropIds.archive
+                    : undefined
+                }
                 onClick={() => actions.onSelectScope({ kind: 'archive' })}
               />
             </li>

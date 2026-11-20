@@ -368,7 +368,8 @@ function VaultShellContent({
     clearItemSelection,
     clearEditorDirty,
     resetReveals,
-    resetRevealedCustomFields: secrets.resetRevealedCustomFields
+    resetRevealedCustomFields: secrets.resetRevealedCustomFields,
+    archiveRequiresPremium: syncStatus.archiveRequiresPremium === true
   })
   const selectedTotp = useSelectedItemTotp(authorization, itemAccess, clearItemSelection)
   const totpList = useTotpListCodes(authorization, scopedItems, typeFilter === 'totp')
@@ -1058,6 +1059,7 @@ function VaultShellContent({
                 archive: archivedItems.length,
                 trash: trashItems.length
               },
+              archiveRequiresPremium: actions.archiveRequiresPremium,
               folderCounts,
               organizations,
               collections,
@@ -1174,7 +1176,8 @@ function VaultShellContent({
                     totpCodes: totpList.codes,
                     totpCountdown: totpList.countdown,
                     trashItemCount: trashItems.length,
-                    readOnly: sharedScope
+                    readOnly: sharedScope,
+                    archiveRequiresPremium: actions.archiveRequiresPremium
                   }}
                   selection={{
                     selectedItemCount: selectedSummaries.length
@@ -1270,6 +1273,7 @@ function VaultShellContent({
                   showWebsiteIcons={settings?.showWebsiteIcons ?? false}
                   cardCoverPreview={cardCoverListPreviews.get(selectedLogin.id)}
                   syncReady={syncStatus.state === 'ready'}
+                  archiveRequiresPremium={actions.archiveRequiresPremium}
                   showTotpCountdown={typeFilter !== 'totp'}
                   secrets={secrets}
                   attachments={attachments}

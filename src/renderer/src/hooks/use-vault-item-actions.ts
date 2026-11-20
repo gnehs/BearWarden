@@ -31,6 +31,7 @@ import type {
   BulkSelectionState,
   MoveSnapshot
 } from '../components/VaultShell-model'
+import { useArchivePremiumMessage } from '@renderer/hooks/use-archive-premium-message'
 import { useDescribeVaultError } from './use-describe-vault-error'
 import { sortFoldersByPosition } from '@renderer/lib/vault-folder-tree'
 import { announce, announceError } from '@renderer/lib/vault-notices'
@@ -55,9 +56,12 @@ export interface VaultItemActionsOptions {
   clearEditorDirty: () => void
   resetReveals: () => void
   resetRevealedCustomFields: () => void
+  /** The server reported that the account lacks the premium that archiving requires. */
+  archiveRequiresPremium: boolean
 }
 
 export interface VaultItemActions {
+  archiveRequiresPremium: boolean
   toggleFavorite: (item: LoginSummary) => Promise<void>
   snapshotBulkAction: (action: BulkActionKind) => BulkActionSnapshot
   performBulkAction: (snapshot: BulkActionSnapshot) => Promise<boolean>
@@ -90,10 +94,12 @@ export function useVaultItemActions({
   clearItemSelection,
   clearEditorDirty,
   resetReveals,
-  resetRevealedCustomFields
+  resetRevealedCustomFields,
+  archiveRequiresPremium
 }: VaultItemActionsOptions): VaultItemActions {
   const { t } = useLingui()
   const describeVaultError = useDescribeVaultError()
+  const archivePremiumRequiredMessage = useArchivePremiumMessage()
   const session = useVaultSessionStoreApi()
   const api = window.bearwarden
   const {
@@ -204,6 +210,10 @@ export function useVaultItemActions({
     if (busy) return false
     if (snapshot.ids.length === 0) {
       announceError(t`Select at least one item first.`)
+      return false
+    }
+    if (snapshot.action === 'archive' && archiveRequiresPremium) {
+      announceError(archivePremiumRequiredMessage)
       return false
     }
     if (snapshot.ids.length > MAX_LOGIN_BATCH_IDS) {
@@ -676,6 +686,10 @@ export function useVaultItemActions({
 
   async function archiveLogin(): Promise<void> {
     if (!selectedLogin || selectedLogin.deletedAt || selectedLogin.archivedAt) return
+    if (archiveRequiresPremium) {
+      announceError(archivePremiumRequiredMessage)
+      return
+    }
     setBusy(true)
     try {
       const itemId = selectedLogin.id
@@ -800,6 +814,7 @@ export function useVaultItemActions({
   }
 
   return {
+    archiveRequiresPremium,
     toggleFavorite,
     snapshotBulkAction,
     performBulkAction,

@@ -1,3 +1,4 @@
+import { useArchivePremiumMessage } from '@renderer/hooks/use-archive-premium-message'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
   Archive,
@@ -191,6 +192,7 @@ interface SelectedItemDetailProps {
   showWebsiteIcons: boolean
   cardCoverPreview: string | undefined
   syncReady: boolean
+  archiveRequiresPremium: boolean
   showTotpCountdown: boolean
   secrets: SelectedItemSecrets
   attachments: AttachmentOperations
@@ -217,6 +219,7 @@ export function SelectedItemDetail({
   showWebsiteIcons,
   cardCoverPreview,
   syncReady,
+  archiveRequiresPremium,
   showTotpCountdown,
   secrets,
   attachments,
@@ -224,6 +227,8 @@ export function SelectedItemDetail({
   actions
 }: SelectedItemDetailProps): React.JSX.Element {
   const { t } = useLingui()
+  const archivePremiumMessage = useArchivePremiumMessage()
+  const archiveBlocked = archiveRequiresPremium && !login.archivedAt
   const itemTypeMeta = useItemTypeMeta()
   const detailFieldLabels = useMemo<Record<string, string>>(
     () => ({
@@ -411,13 +416,23 @@ export function SelectedItemDetail({
                     <Copy data-icon="inline-start" />
                     <Trans>Duplicate item</Trans>
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled={busy} onClick={actions.onToggleArchive}>
+                  <DropdownMenuItem
+                    disabled={busy || archiveBlocked}
+                    onClick={actions.onToggleArchive}
+                  >
                     {login.archivedAt ? (
                       <ArchiveRestore data-icon="inline-start" />
                     ) : (
                       <Archive data-icon="inline-start" />
                     )}
-                    {login.archivedAt ? t`Unarchive` : t`Archive item`}
+                    <span className="grid gap-0.5">
+                      {login.archivedAt ? t`Unarchive` : t`Archive item`}
+                      {archiveBlocked && (
+                        <span className="text-muted-foreground max-w-56 text-xs font-normal">
+                          {archivePremiumMessage}
+                        </span>
+                      )}
+                    </span>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

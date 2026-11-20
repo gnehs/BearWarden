@@ -379,6 +379,11 @@ export interface BitwardenDirectState {
   securityStamp: string | null
   /** Secret-free organization policy metadata from the latest committed sync snapshot. */
   policySet?: BitwardenPolicySet
+  /**
+   * Whether the account has premium personally or through an organization, from the latest
+   * sync profile. Absent when the server did not report it.
+   */
+  premiumFromAnySource?: boolean
 }
 
 export interface BitwardenPinUnlockMaterial {
@@ -748,6 +753,13 @@ function isSafePersistedPolicyData(value: JsonObject): boolean {
 }
 
 /** Persisted state is an input boundary. Restore only bounded, secret-free policy metadata. */
+/** Mirrors the official clients' `hasPremiumFromAnySource`; undefined when the profile omits it. */
+function syncedPremiumFromAnySource(profile: JsonObject): boolean | undefined {
+  const premium = readField(profile, 'premium')
+  if (typeof premium !== 'boolean') return undefined
+  return premium || readField(profile, 'premiumFromOrganization') === true
+}
+
 function restorePolicySet(value: unknown): BitwardenPolicySet {
   if (value === undefined) return { ...EMPTY_POLICY_SET, policies: [] }
   if (
@@ -1252,7 +1264,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           deviceIdentifier: options.state.deviceIdentifier,
           profileId: options.state.profileId,
           securityStamp: options.state.securityStamp,
-          policySet: restorePolicySet(options.state.policySet)
+          policySet: restorePolicySet(options.state.policySet),
+          ...(typeof options.state.premiumFromAnySource === 'boolean'
+            ? { premiumFromAnySource: options.state.premiumFromAnySource }
+            : {})
         }
       : {
           session: null,
@@ -1293,7 +1308,10 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       deviceIdentifier: this.state.deviceIdentifier,
       profileId: this.state.profileId,
       securityStamp: this.state.securityStamp,
-      policySet: restorePolicySet(this.state.policySet)
+      policySet: restorePolicySet(this.state.policySet),
+      ...(typeof this.state.premiumFromAnySource === 'boolean'
+        ? { premiumFromAnySource: this.state.premiumFromAnySource }
+        : {})
     }
   }
 
@@ -2609,6 +2627,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       this.state.profileId = profileId
       this.state.securityStamp = securityStamp
       this.state.policySet = snapshot.policySet
+      const premiumFromAnySource = syncedPremiumFromAnySource(profile)
+      if (premiumFromAnySource === undefined) delete this.state.premiumFromAnySource
+      else this.state.premiumFromAnySource = premiumFromAnySource
       const session = this.http.exportSession()
       this.state.session = session ? this.normalizedSession(session) : null
       await this.notifyStateChanged()

@@ -5044,6 +5044,24 @@ describe('BitwardenDirectClient', () => {
     ])
   })
 
+  it.each([
+    [{ premium: true, premiumFromOrganization: false }, true],
+    [{ premium: false, premiumFromOrganization: true }, true],
+    [{ premium: false, premiumFromOrganization: false }, false],
+    [{ premium: false }, false],
+    [{}, undefined]
+  ] as const)(
+    'exports premium entitlement from the sync profile %j as %s',
+    async (fields, expected) => {
+      const sync = await encryptedSync()
+      Object.assign(sync.profile as JsonObject, fields)
+      const client = await clientForSync(sync)
+      const state = client.exportState()
+      if (expected === undefined) expect(state).not.toHaveProperty('premiumFromAnySource')
+      else expect(state.premiumFromAnySource).toBe(expected)
+    }
+  )
+
   it('commits PoliciesNew with explicit policy membership and exports an isolated snapshot', async () => {
     const sync = await encryptedSync()
     const profile = sync.profile as JsonObject

@@ -164,7 +164,8 @@ function parseDirectState(value: unknown): BitwardenDirectState {
     !UUID_PATTERN.test(deviceIdentifier) ||
     (profileId !== null && (typeof profileId !== 'string' || !UUID_PATTERN.test(profileId))) ||
     (securityStamp !== null &&
-      (typeof securityStamp !== 'string' || securityStamp.length > MAX_SYNC_SECRET_LENGTH))
+      (typeof securityStamp !== 'string' || securityStamp.length > MAX_SYNC_SECRET_LENGTH)) ||
+    (value.premiumFromAnySource !== undefined && typeof value.premiumFromAnySource !== 'boolean')
   ) {
     throw new VaultError('CORRUPT_VAULT')
   }
@@ -198,7 +199,10 @@ function parseDirectState(value: unknown): BitwardenDirectState {
     deviceIdentifier,
     profileId,
     securityStamp,
-    policySet: { source: 'none', policies: [] }
+    policySet: { source: 'none', policies: [] },
+    ...(typeof value.premiumFromAnySource === 'boolean'
+      ? { premiumFromAnySource: value.premiumFromAnySource }
+      : {})
   }
 }
 

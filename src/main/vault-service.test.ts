@@ -3843,6 +3843,46 @@ describe('VaultService encrypted local data', () => {
     }
   })
 
+  it('reports that archiving needs premium only when the server said the account lacks it, and keeps that across reopen', async () => {
+    let fake: ReturnType<typeof createSyncFake> | null = null
+    const createSyncClient = (sync: { state: BitwardenDirectState }): BitwardenSyncClient => {
+      fake = createSyncFake(sync.state)
+      const exportState = fake.exportState.bind(fake)
+      fake.exportState = () => ({ ...exportState(), premiumFromAnySource: false })
+      return fake
+    }
+    const { filePath, service } = await createHarness({ createSyncClient })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await expect(service.syncStatus()).resolves.toMatchObject({ archiveRequiresPremium: true })
+    await service.lock()
+    service.dispose()
+    const reopened = new VaultService(
+      new EncryptedVaultStore<unknown>(filePath),
+      { copyText: vi.fn(), openExternal: vi.fn() },
+      { createSyncClient: (sync) => createSyncFake(sync.state) }
+    )
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.syncStatus()).resolves.toMatchObject({ archiveRequiresPremium: true })
+  })
+
+  it('does not restrict archiving when the server does not report premium', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await expect(service.syncStatus()).resolves.not.toHaveProperty('archiveRequiresPremium')
+  })
+
   it('reopens the vault after persisting a file Send', async () => {
     const { filePath, service } = await createHarness({
       createSyncClient: (sync) => {

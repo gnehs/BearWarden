@@ -14,6 +14,8 @@ import type { LoginSummary, TotpCodeView } from '../../../shared/vault-contract'
 import type { VaultSortMode } from '@renderer/lib/vault-sort'
 import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { useArchivePremiumMessage } from '@renderer/hooks/use-archive-premium-message'
 import {
   Empty,
   EmptyContent,
@@ -52,6 +54,7 @@ interface VaultItemListPaneList {
   totpCountdown: TotpCodeView | null
   trashItemCount: number
   readOnly: boolean
+  archiveRequiresPremium: boolean
 }
 
 interface VaultItemListPaneSelection {
@@ -83,6 +86,7 @@ export function VaultItemListPane({
   actions
 }: VaultItemListPaneProps): React.JSX.Element {
   const { t } = useLingui()
+  const archivePremiumMessage = useArchivePremiumMessage()
   const { scope, query, sortMode, typeFilter, activeId, selectedIds, busy, setSortMode, setQuery } =
     useVaultSessionStore(
       useShallow((state) => ({
@@ -97,6 +101,8 @@ export function VaultItemListPane({
         setQuery: state.setQuery
       }))
     )
+
+  const archiveBlocked = list.archiveRequiresPremium && scope.kind !== 'archive'
 
   return (
     <>
@@ -308,26 +314,38 @@ export function VaultItemListPane({
                         <FolderOpen data-icon="inline-start" />
                         <Trans>Move</Trans>
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void actions.onPerformBulkAction(
-                            actions.snapshotBulkAction(
-                              scope.kind === 'archive' ? 'unarchive' : 'archive'
-                            )
-                          )
-                        }
-                      >
-                        {scope.kind === 'archive' ? (
-                          <ArchiveRestore data-icon="inline-start" />
-                        ) : (
-                          <Archive data-icon="inline-start" />
-                        )}
-                        {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span
+                              tabIndex={archiveBlocked ? 0 : undefined}
+                              className="inline-flex"
+                            />
+                          }
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            disabled={busy || archiveBlocked}
+                            onClick={() =>
+                              void actions.onPerformBulkAction(
+                                actions.snapshotBulkAction(
+                                  scope.kind === 'archive' ? 'unarchive' : 'archive'
+                                )
+                              )
+                            }
+                          >
+                            {scope.kind === 'archive' ? (
+                              <ArchiveRestore data-icon="inline-start" />
+                            ) : (
+                              <Archive data-icon="inline-start" />
+                            )}
+                            {scope.kind === 'archive' ? t`Unarchive` : t`Archive`}
+                          </Button>
+                        </TooltipTrigger>
+                        {archiveBlocked && <TooltipContent>{archivePremiumMessage}</TooltipContent>}
+                      </Tooltip>
                     </div>
                   </>
                 )}
