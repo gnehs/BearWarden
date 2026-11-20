@@ -121,6 +121,30 @@ describe('stored Bitwarden policy parsing', () => {
     expect(parsed.sync?.state.policySet).toEqual({ source: 'none', policies: [] })
   })
 
+  it('reloads a persisted Send Controls policy and rejects tampered data', () => {
+    const sendControls = (data: Record<string, unknown>): BitwardenPolicySet => ({
+      ...policySet(),
+      policies: [
+        {
+          ...policySet().policies[0]!,
+          type: BITWARDEN_POLICY_TYPE.SendControls,
+          typeName: 'SendControls',
+          data: data as never
+        }
+      ]
+    })
+    const valid = sendControls({ kind: 'sendControls', disableSend: true })
+    expect(parseStoredBitwardenPolicySet(valid)).toEqual(valid)
+    for (const data of [
+      { kind: 'sendControls', disableSend: 'yes' },
+      { kind: 'sendControls' },
+      { kind: 'sendControls', disableSend: false, extra: true },
+      { kind: 'disableSend' }
+    ]) {
+      expect(() => parseStoredBitwardenPolicySet(sendControls(data))).toThrowError(VaultError)
+    }
+  })
+
   it('parses and clones policySet through encrypted vault data without sharing nested arrays', () => {
     const parsed = parseVaultData(vaultData({ policySet: policySet() }))
     const cloned = cloneData(parsed)

@@ -213,6 +213,13 @@ function parseStoredActionablePolicyData(
     }
     return { kind: 'restrictedItemTypes', cipherTypes }
   }
+  if (policyType === BITWARDEN_POLICY_TYPE.SendControls) {
+    const data = strictStoredRecord(value, ['kind', 'disableSend'])
+    if (data.kind !== 'sendControls' || typeof data.disableSend !== 'boolean') {
+      throw new VaultError('CORRUPT_VAULT')
+    }
+    return { kind: 'sendControls', disableSend: data.disableSend }
+  }
   const booleanKinds = new Map<
     number,
     | 'organizationDataOwnership'
@@ -283,7 +290,8 @@ function parseStoredPolicy(value: unknown): BitwardenPolicyMetadata {
     BITWARDEN_POLICY_TYPE.DisablePersonalVaultExport,
     BITWARDEN_POLICY_TYPE.RemoveUnlockWithPin,
     BITWARDEN_POLICY_TYPE.RestrictedItemTypes,
-    BITWARDEN_POLICY_TYPE.OrganizationUserNotification
+    BITWARDEN_POLICY_TYPE.OrganizationUserNotification,
+    BITWARDEN_POLICY_TYPE.SendControls
   ])
   const expectedExecution =
     expectedTypeName === null
