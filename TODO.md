@@ -66,7 +66,7 @@
 
 約束：
 
-- v23 磁碟格式與 `PersistedSyncData` 不變，`parseVaultData` 原樣沿用。
+- 重構期間 v23 磁碟格式與 `PersistedSyncData` 不變，`parseVaultData` 原樣沿用。重構完成後的功能變更依序升版：v24 組織通知橫幅關閉紀錄、v25 銀行帳戶／駕照／護照欄位。
 - 保留 copy-on-write `VaultData`、原子加密寫入、三方 fingerprint 合併與 journal、原始列 round-trip、損壞個人 cipher 隔離、trusted sender 檢查、每帳號一個 process、鎖定即 reload。
 - 錯誤碼、remote mutation 次數與 persist 時機若改變，必須有對應測試說明新行為。
 
