@@ -1800,6 +1800,55 @@ describe('BitwardenHttpClient', () => {
     })
   })
 
+  it('keeps Duo providers only with a validated Universal Prompt and retains no raw URL', async () => {
+    const state = 'S'.repeat(40)
+    const request = [
+      Buffer.from('{"alg":"HS512"}').toString('base64url'),
+      Buffer.from(
+        JSON.stringify({
+          state,
+          redirect_uri: 'https://vault.example.test/duo-redirect-connector.html?client=desktop'
+        })
+      ).toString('base64url'),
+      'sig'
+    ].join('.')
+    const authUrl = `https://api-1234abcd.duosecurity.com/oauth/v1/authorize?response_type=code&request=${request}`
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(
+      json(
+        {
+          error: 'invalid_grant',
+          error_description: 'Two factor required.',
+          TwoFactorProviders: ['0', '2', '6'],
+          TwoFactorProviders2: {
+            '0': null,
+            '2': { AuthUrl: authUrl },
+            '6': { AuthUrl: 'https://duo.evil.example/oauth/v1/authorize?request=x' }
+          }
+        },
+        400
+      )
+    )
+    const client = new BitwardenHttpClient({ server: 'us', fetch })
+
+    const error = await client
+      .passwordToken({ email: 'person@example.test', password: 'derived-secret' })
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      code: 'TWO_FACTOR',
+      details: undefined,
+      twoFactorProviders: [0, 2],
+      duoLoginPrompts: [
+        {
+          provider: 2,
+          authUrl,
+          state,
+          redirectBase: 'https://vault.example.test/duo-redirect-connector.html'
+        }
+      ]
+    })
+    expect(JSON.stringify(error)).not.toContain('duo.evil.example')
+  })
+
   it('ignores future providers when a known login alternative remains available', async () => {
     const fetch = vi.fn<FetchLike>().mockResolvedValue(
       json(

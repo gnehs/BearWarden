@@ -6,6 +6,13 @@
  */
 
 import {
+  DUO_LOGIN_PROVIDERS,
+  DuoLoginError,
+  parseDuoLoginPrompt,
+  type DuoLoginPrompt,
+  type DuoLoginProvider
+} from './duo-login'
+import {
   AccountWebAuthnCodecError,
   parseAccountWebAuthnChallengeFromTokenError,
   type AccountWebAuthnChallenge
@@ -415,7 +422,9 @@ export class BitwardenHttpError extends Error {
     /** Main-process-only, bounded provider ids; raw provider metadata is never retained. */
     readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[],
     /** Fixed, value-free response failure; raw response data is never retained. */
-    readonly invalidResponseReason?: BitwardenHttpInvalidResponseReason
+    readonly invalidResponseReason?: BitwardenHttpInvalidResponseReason,
+    /** Main-process-only, validated provider-2/6 Duo Universal Prompt challenges. */
+    readonly duoLoginPrompts?: readonly DuoLoginPrompt[]
   ) {
     super(`Bitwarden HTTP request failed (${code})`)
     this.name = 'BitwardenHttpError'
@@ -4678,6 +4687,30 @@ function parseLoginTwoFactorProviders(payload: JsonValue): readonly BitwardenTwo
   return Object.freeze([...providers].sort((left, right) => left - right))
 }
 
+function isDuoLoginProvider(provider: BitwardenTwoFactorProviderId): provider is DuoLoginProvider {
+  return (DUO_LOGIN_PROVIDERS as readonly number[]).includes(provider)
+}
+
+/** A Duo provider whose prompt is missing or unsafe is not actionable and is dropped. */
+function parseLoginDuoPrompts(
+  payload: JsonValue,
+  providers: readonly BitwardenTwoFactorProviderId[]
+): readonly DuoLoginPrompt[] {
+  if (!isJsonObject(payload)) return Object.freeze([])
+  const providerMap = payload.TwoFactorProviders2 ?? payload.twoFactorProviders2
+  if (!isJsonObject(providerMap)) return Object.freeze([])
+  return Object.freeze(
+    providers.filter(isDuoLoginProvider).flatMap((provider) => {
+      try {
+        return [parseDuoLoginPrompt(provider, providerMap[String(provider)])]
+      } catch (error) {
+        if (error instanceof DuoLoginError) return []
+        throw error
+      }
+    })
+  )
+}
+
 function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   const details = isJsonObject(payload) ? payload : undefined
   const message = [
@@ -4717,7 +4750,13 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
   }
   if (hasTwoFactorChallenge) {
     try {
-      const twoFactorProviders = parseLoginTwoFactorProviders(payload)
+      const parsedProviders = parseLoginTwoFactorProviders(payload)
+      const duoLoginPrompts = parseLoginDuoPrompts(payload, parsedProviders)
+      const twoFactorProviders = parsedProviders.filter(
+        (provider) =>
+          !isDuoLoginProvider(provider) ||
+          duoLoginPrompts.some((prompt) => prompt.provider === provider)
+      )
       try {
         const hasWebAuthnProviderMap = hasLoginTwoFactorProviderMap(payload)
         const actionableProviders = hasWebAuthnProviderMap
@@ -4732,7 +4771,9 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
           status,
           undefined,
           webAuthnChallenge ?? undefined,
-          actionableProviders
+          Object.freeze(actionableProviders),
+          undefined,
+          duoLoginPrompts
         )
       } catch (error) {
         if (error instanceof AccountWebAuthnCodecError) {
@@ -4745,7 +4786,9 @@ function toHttpError(status: number, payload: JsonValue): BitwardenHttpError {
               status,
               undefined,
               undefined,
-              Object.freeze(fallbackProviders)
+              Object.freeze(fallbackProviders),
+              undefined,
+              duoLoginPrompts
             )
           }
         }

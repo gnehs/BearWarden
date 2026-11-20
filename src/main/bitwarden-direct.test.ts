@@ -2087,6 +2087,48 @@ describe('BitwardenDirectClient', () => {
   )
 
   it.each([
+    { method: 2, remember: true },
+    { method: 6, remember: false }
+  ] as const)(
+    'sends Duo provider $method with the code|state token and remember=$remember',
+    async ({ method, remember }) => {
+      let tokenForm: URLSearchParams | null = null
+      const fetch = vi.fn<FetchLike>(async (url, init) => {
+        if (url.endsWith('/identity/accounts/prelogin/password')) {
+          return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
+        }
+        if (url.endsWith('/identity/connect/token')) {
+          tokenForm = new URLSearchParams(String(init?.body))
+          return jsonResponse({
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expires_in: 3600,
+            ...(remember ? { TwoFactorToken: 'remember-token' } : {})
+          })
+        }
+        return jsonResponse({ message: 'not found' }, 404)
+      })
+      const client = new BitwardenDirectClient({
+        serverUrl: 'https://vault.example.invalid',
+        email: EMAIL,
+        httpClient: new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
+      })
+
+      await client.login({
+        email: EMAIL,
+        password: PASSWORD,
+        twoFactor: { method, token: 'duo-code|duo-state', remember }
+      })
+      expect(tokenForm!.get('twoFactorProvider')).toBe(String(method))
+      expect(tokenForm!.get('twoFactorToken')).toBe('duo-code|duo-state')
+      expect(tokenForm!.get('twoFactorRemember')).toBe(remember ? '1' : '0')
+      expect(client.exportState().rememberedTwoFactorToken).toBe(
+        remember ? 'remember-token' : undefined
+      )
+    }
+  )
+
+  it.each([
     { httpCode: 'ABORTED' as const, directCode: 'ABORTED' },
     { httpCode: 'NETWORK' as const, directCode: 'NETWORK' }
   ])('does not retry a provider-7 request after $httpCode', async ({ httpCode, directCode }) => {

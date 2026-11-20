@@ -101,6 +101,7 @@ import { clonePasswordHistory } from './vault/password-history'
 import { readField } from './bitwarden-fields'
 import { UUID_PATTERN } from './validation-primitives'
 import { BitwardenDirectError } from './bitwarden-direct-error'
+import type { DuoLoginProvider } from './duo-login'
 import type { LoginRequestAccount } from './bitwarden-cipher-codec'
 import {
   USER_KEY_BYTES,
@@ -236,7 +237,15 @@ export interface BitwardenWebAuthnTwoFactor {
   remember: boolean
 }
 
-export type BitwardenLoginTwoFactor = BitwardenTwoFactor | BitwardenWebAuthnTwoFactor
+export interface BitwardenDuoTwoFactor {
+  method: DuoLoginProvider
+  /** `<authorization code>|<state>` from the Duo redirect, already checked against the prompt. */
+  token: string
+  remember: boolean
+}
+
+export type BitwardenLoginTwoFactor =
+  BitwardenTwoFactor | BitwardenWebAuthnTwoFactor | BitwardenDuoTwoFactor
 
 /**
  * A decrypted attachment returned only to main-process callers.  The caller owns
@@ -3752,6 +3761,12 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
             }
             twoFactorToken = serializeAccountWebAuthnAssertion(twoFactor.assertion)
             twoFactorRemember = twoFactor.remember
+          } else if (twoFactor.method === 2 || twoFactor.method === 6) {
+            if (typeof twoFactor.token !== 'string' || typeof twoFactor.remember !== 'boolean') {
+              throw new BitwardenDirectError('INVALID_RESPONSE')
+            }
+            twoFactorToken = twoFactor.token
+            twoFactorRemember = twoFactor.remember
           } else {
             if (
               (twoFactor.method !== 0 && twoFactor.method !== 1 && twoFactor.method !== 3) ||
@@ -4172,7 +4187,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           'TWO_FACTOR_REQUIRED',
           error.webAuthnChallenge,
           undefined,
-          error.twoFactorProviders
+          error.twoFactorProviders,
+          undefined,
+          error.duoLoginPrompts
         )
       }
       if (error.code === 'NEW_DEVICE') return new BitwardenDirectError('NEW_DEVICE_REQUIRED')

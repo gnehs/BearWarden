@@ -1,6 +1,7 @@
 import type { BitwardenTwoFactorProviderId } from './bitwarden-http'
 import type { SyncInvalidResponseReason, SyncInvalidResponseStage } from '../shared/vault-contract'
 import type { AccountWebAuthnChallenge } from './account-webauthn-codec'
+import type { DuoLoginPrompt } from './duo-login'
 
 export type BitwardenDirectErrorCode =
   | 'AUTH_REQUIRED'
@@ -43,7 +44,9 @@ export class BitwardenDirectError extends Error {
     /** Main-process-only, bounded provider ids from the token challenge. */
     readonly twoFactorProviders?: readonly BitwardenTwoFactorProviderId[],
     /** Fixed, value-free reason suitable for renderer diagnostics. */
-    readonly syncInvalidResponseReason?: SyncInvalidResponseReason
+    readonly syncInvalidResponseReason?: SyncInvalidResponseReason,
+    /** Main-process-only, validated Duo Universal Prompt challenges from the token challenge. */
+    readonly duoLoginPrompts?: readonly DuoLoginPrompt[]
   ) {
     super(`Bitwarden direct sync failed (${code})`)
     this.name = 'BitwardenDirectError'
