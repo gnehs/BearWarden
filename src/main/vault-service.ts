@@ -83,6 +83,8 @@ import type {
   SyncPurgePersonalVaultResult,
   SyncResult,
   SyncUnlockRequest,
+  SyncLoginWithDeviceCompleteRequest,
+  SyncLoginWithDeviceStart,
   VaultTimeoutPolicy,
   VaultStatus,
   PinUnlockStatus,
@@ -159,6 +161,8 @@ import { VaultSyncEngine } from './vault/sync-engine'
 import { VaultSyncService } from './vault/sync-service'
 import { VaultMasterPasswordChange } from './vault/master-password-change-service'
 import { VaultUnlock } from './vault/unlock'
+import { VaultLoginWithDevice } from './vault/login-with-device'
+import { createAuthRequestResponseNudgeFactory } from './bitwarden-anonymous-hub'
 
 export type {
   VaultAccountWebAuthnAssertionRequester,
@@ -192,6 +196,7 @@ export class VaultService {
   private readonly unlocking: VaultUnlock
   private readonly masterPasswordChange: VaultMasterPasswordChange
   private readonly sync: VaultSyncService
+  private readonly loginWithDevice: VaultLoginWithDevice
   private readonly accountSecurity: VaultAccountSecurity
   private readonly folders: VaultFolders
   private readonly listings: VaultListings
@@ -234,6 +239,9 @@ export class VaultService {
     this.unlocking = new VaultUnlock(core, store, syncSession, pinUnlock)
     this.masterPasswordChange = new VaultMasterPasswordChange(core, syncSession, pinUnlock)
     this.sync = new VaultSyncService(core, syncSession, syncEngine, pinUnlock, this.health)
+    this.loginWithDevice = new VaultLoginWithDevice(core, syncSession, syncEngine, {
+      nudges: options.authRequestResponseNudges ?? createAuthRequestResponseNudgeFactory()
+    })
     this.accountSecurity = new VaultAccountSecurity(
       core,
       syncSession,
@@ -397,6 +405,23 @@ export class VaultService {
 
   unlockAndSync(request: SyncUnlockRequest): Promise<SyncResult> {
     return this.sync.unlockAndSync(request)
+  }
+
+  beginSyncLoginWithDevice(): Promise<SyncLoginWithDeviceStart> {
+    return this.loginWithDevice.begin()
+  }
+
+  /** Waits for approval outside the vault mutex, then signs in and syncs under it. */
+  completeSyncLoginWithDevice(request: SyncLoginWithDeviceCompleteRequest): Promise<SyncResult> {
+    return this.loginWithDevice.complete(request)
+  }
+
+  sendSyncLoginWithDeviceEmailCode(): Promise<void> {
+    return this.loginWithDevice.sendEmailCode()
+  }
+
+  cancelSyncLoginWithDevice(): void {
+    this.loginWithDevice.cancel()
   }
 
   unlockSyncWithLocalPassword(masterPassword: string): Promise<SyncStatus> {

@@ -2044,6 +2044,12 @@ describe('registerVaultIpc reprompt gate', () => {
       resolvePendingLoginImport: vi.fn(async () => ({ configured: true, state: 'ready' })),
       submitSyncDuoCallback: vi.fn(),
       cancelSyncDuo: vi.fn(),
+      beginSyncLoginWithDevice: vi.fn(async () => ({ fingerprint: 'alpha-bravo-charlie' })),
+      completeSyncLoginWithDevice: vi.fn(async () => {
+        throw new SyncTwoFactorRequiredError(['0'])
+      }),
+      sendSyncLoginWithDeviceEmailCode: vi.fn(async () => undefined),
+      cancelSyncLoginWithDevice: vi.fn(),
       disconnectSync: vi.fn(async () => ({ configured: false, state: 'unconfigured' })),
       createLogin: vi.fn(async (request) => ({ id: 'created', ...request })),
       cloneLogin: vi.fn(async () => ({ id: 'clone' })),
@@ -2311,6 +2317,32 @@ describe('registerVaultIpc reprompt gate', () => {
     }
     await cancel(event, undefined)
     expect(vault.cancelSyncDuo).toHaveBeenCalledOnce()
+  })
+
+  it('relays Login with device without accepting a master password or key material', async () => {
+    const { event, vault } = harness()
+    const begin = electronMock.handlers.get('sync:begin-login-with-device')!
+    const complete = electronMock.handlers.get('sync:complete-login-with-device')!
+    const sendEmail = electronMock.handlers.get('sync:send-login-with-device-email-code')!
+    const cancel = electronMock.handlers.get('sync:cancel-login-with-device')!
+
+    await expect(begin(event, undefined)).resolves.toEqual({ fingerprint: 'alpha-bravo-charlie' })
+    await expect(complete(event, {})).resolves.toEqual({
+      kind: 'two-factor-required',
+      providers: ['0']
+    })
+    await complete(event, { twoFactorMethod: '0', twoFactorCode: '123456' })
+    expect(vault.completeSyncLoginWithDevice).toHaveBeenLastCalledWith({
+      twoFactorMethod: '0',
+      twoFactorCode: '123456'
+    })
+    for (const invalid of [{ masterPassword: 'x' }, { accessCode: 'x' }, { requestId: 'x' }]) {
+      await expect(complete(event, invalid)).rejects.toThrow('BEARWARDEN:INVALID_INPUT')
+    }
+    await sendEmail(event, undefined)
+    expect(vault.sendSyncLoginWithDeviceEmailCode).toHaveBeenCalledOnce()
+    await cancel(event, undefined)
+    expect(vault.cancelSyncLoginWithDevice).toHaveBeenCalledOnce()
   })
 
   it('accepts only the explicit WebAuthn remember flag for sync connect and unlock', async () => {

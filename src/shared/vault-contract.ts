@@ -49,6 +49,11 @@ export type VaultErrorCode =
   | 'SYNC_SSO_REQUIRED'
   | 'SYNC_DUO_FAILED'
   | 'SYNC_DUO_CANCELED'
+  | 'SYNC_LOGIN_WITH_DEVICE_DENIED'
+  | 'SYNC_LOGIN_WITH_DEVICE_EXPIRED'
+  | 'SYNC_LOGIN_WITH_DEVICE_UNSUPPORTED'
+  | 'SYNC_LOGIN_WITH_DEVICE_UNKNOWN_DEVICE'
+  | 'SYNC_LOGIN_WITH_DEVICE_CANCELED'
   | 'SYNC_KEY_CONNECTOR_UNSUPPORTED'
   | 'SYNC_TRUSTED_DEVICE_UNSUPPORTED'
   | 'SYNC_UNSUPPORTED_ACCOUNT'
@@ -1101,6 +1106,17 @@ export interface SyncUnlockRequest {
   duo?: SyncDuoTwoFactorRequest
   newDeviceOtp?: string
 }
+
+/**
+ * Login with device for the configured account: main holds the request's private key and access
+ * code; the renderer only ever sees the fingerprint phrase both devices display.
+ */
+export interface SyncLoginWithDeviceStart {
+  fingerprint: string
+}
+
+/** Waits for approval, then signs in; the two-step fields answer a challenge after approval. */
+export type SyncLoginWithDeviceCompleteRequest = Omit<SyncUnlockRequest, 'masterPassword'>
 
 /** What the browser shows after Duo: the redirected page address, or a `code|state` pair. */
 export interface SyncDuoCallbackRequest {

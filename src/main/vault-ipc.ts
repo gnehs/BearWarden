@@ -89,6 +89,7 @@ import {
   type VaultLoginUri,
   type VaultCopyField,
   type SyncConnectRequest,
+  type SyncLoginWithDeviceCompleteRequest,
   type SyncDuoCallbackRequest,
   type SyncDuoTwoFactorRequest,
   type SyncPurgePersonalVaultRequest,
@@ -2117,7 +2118,10 @@ function optionalDuoTwoFactor(record: RecordValue): SyncDuoTwoFactorRequest | un
   return { provider: duo.provider, remember }
 }
 
-function applySyncTwoFactorOptions(record: RecordValue, result: SyncUnlockRequest): void {
+function applySyncTwoFactorOptions(
+  record: RecordValue,
+  result: SyncLoginWithDeviceCompleteRequest
+): void {
   const twoFactorCode = optionalStringOrNull(record, 'twoFactorCode')
   const twoFactorMethod = optionalTwoFactorMethod(record)
   const webAuthnRemember = optionalBoolean(record, 'webAuthnRemember')
@@ -2171,6 +2175,19 @@ function parseSyncUnlock(value: unknown): SyncUnlockRequest {
   const result: SyncUnlockRequest = {
     masterPassword: requiredString(record, 'masterPassword')
   }
+  applySyncTwoFactorOptions(record, result)
+  return result
+}
+
+function parseSyncLoginWithDeviceComplete(value: unknown): SyncLoginWithDeviceCompleteRequest {
+  const record = exactRecord(value, [
+    'twoFactorMethod',
+    'twoFactorCode',
+    'webAuthnRemember',
+    'duo',
+    'newDeviceOtp'
+  ])
+  const result: SyncLoginWithDeviceCompleteRequest = {}
   applySyncTwoFactorOptions(record, result)
   return result
 }
@@ -3150,6 +3167,29 @@ export function registerVaultIpc(options: VaultIpcOptions): () => void {
       await refreshSyncStatus()
       throw error
     }
+  })
+  ipc.handle('sync:begin-login-with-device', parseNoInput, () => vault.beginSyncLoginWithDevice())
+  ipc.handle(
+    'sync:complete-login-with-device',
+    parseSyncLoginWithDeviceComplete,
+    async (request) => {
+      try {
+        const result = await vault.completeSyncLoginWithDevice(request)
+        options.afterSyncChanged?.(result)
+        return { kind: 'success' as const, result }
+      } catch (error) {
+        const challenge = syncTwoFactorChallenge(error)
+        if (challenge) return challenge
+        await refreshSyncStatus()
+        throw error
+      }
+    }
+  )
+  ipc.handle('sync:send-login-with-device-email-code', parseNoInput, () =>
+    vault.sendSyncLoginWithDeviceEmailCode()
+  )
+  ipc.handle('sync:cancel-login-with-device', parseNoInput, () => {
+    vault.cancelSyncLoginWithDevice()
   })
   ipc.handle('sync:submit-duo-callback', parseSyncDuoCallback, ({ callback }) => {
     vault.submitSyncDuoCallback(callback)

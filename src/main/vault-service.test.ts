@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { createHash, createPublicKey, verify } from 'node:crypto'
+import { constants, createHash, createPublicKey, publicEncrypt, verify } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -40,6 +40,8 @@ import type {
   AccountWebAuthnRegistrationChallenge
 } from './account-webauthn-registration-codec'
 import type { DuoLoginPrompt } from './duo-login'
+import { DeviceLoginRequest } from './bitwarden-device-login'
+import type { AuthRequestResponseNudgeFactory } from './bitwarden-anonymous-hub'
 import type { SyncResult } from '../shared/vault-contract'
 import {
   BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES,
@@ -13197,5 +13199,199 @@ describe('VaultService commit races with lock and dispose', () => {
     await expect(unlocking).resolves.toEqual({ state: 'unlocked' })
     await expect(locking).resolves.toEqual({ state: 'locked' })
     await expect(service.listLogins()).rejects.toMatchObject({ code: 'LOCKED' })
+  })
+})
+
+describe('VaultService Login with device', () => {
+  const REQUEST_ID = '93000000-0000-4000-8000-000000000001'
+
+  interface DeviceLoginFake {
+    service: VaultService
+    requests: DeviceLoginRequest[]
+    logins: Parameters<NonNullable<BitwardenSyncClient['loginWithDevice']>>[0][]
+    emailCodes: DeviceLoginRequest[]
+    answers: Array<boolean | BitwardenDirectError>
+    nudgeUrls: string[]
+    nudge: () => void
+    beginError?: BitwardenDirectError
+    loginErrors: BitwardenDirectError[]
+  }
+
+  async function deviceLoginHarness(): Promise<DeviceLoginFake> {
+    let wake: (() => void) | null = null
+    const fake: Omit<DeviceLoginFake, 'service'> = {
+      requests: [],
+      logins: [],
+      emailCodes: [],
+      answers: [],
+      nudgeUrls: [],
+      nudge: () => wake?.(),
+      loginErrors: []
+    }
+    const nudges: AuthRequestResponseNudgeFactory = (url, id) => {
+      fake.nudgeUrls.push(`${url}#${id}`)
+      return {
+        next: () =>
+          new Promise<void>((resolve) => {
+            wake = resolve
+          }),
+        close: () => undefined
+      }
+    }
+    const { service } = await createHarness({
+      authRequestResponseNudges: nudges,
+      createSyncClient: (sync) => {
+        const client = createSyncFake(sync.state)
+        client.requestDeviceLogin = async () => {
+          if (fake.beginError) throw fake.beginError
+          const request = DeviceLoginRequest.create(sync.email, Date.now())
+          request.accept(REQUEST_ID)
+          fake.requests.push(request)
+          return request
+        }
+        client.pollDeviceLogin = async (request) => {
+          const answer = fake.answers.shift() ?? false
+          if (answer instanceof BitwardenDirectError) throw answer
+          if (answer) request.approve(approvalEnvelope(request))
+          return answer
+        }
+        client.loginWithDevice = async (request) => {
+          fake.logins.push(request)
+          const error = fake.loginErrors.shift()
+          if (error) throw error
+          await client.unlock({ password: 'unused' })
+        }
+        client.sendEmailTwoFactorDeviceLoginCode = async (request) => {
+          fake.emailCodes.push(request)
+        }
+        return client
+      }
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: 'remote master password'
+    })
+    await service.remoteLogoutSync()
+    return Object.assign(fake, { service })
+  }
+
+  function approvalEnvelope(request: DeviceLoginRequest): string {
+    const encrypted = publicEncrypt(
+      {
+        key: createPublicKey({
+          key: Buffer.from(request.publicKey, 'base64'),
+          format: 'der',
+          type: 'spki'
+        }),
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha1'
+      },
+      Buffer.alloc(64, 7)
+    )
+    return `4.${encrypted.toString('base64')}`
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows the fingerprint, waits for approval, then signs in and syncs', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await deviceLoginHarness()
+    fake.answers.push(false, false, true)
+
+    const start = await fake.service.beginSyncLoginWithDevice()
+    expect(start).toEqual({ fingerprint: fake.requests[0]!.fingerprint })
+    expect(Object.keys(start)).toEqual(['fingerprint'])
+    expect(fake.nudgeUrls).toEqual([`https://vault.example.invalid/notifications#${REQUEST_ID}`])
+
+    const completing = fake.service.completeSyncLoginWithDevice({})
+    await vi.advanceTimersByTimeAsync(4_000)
+    fake.nudge()
+    await expect(completing).resolves.toMatchObject({ pulled: expect.any(Number) })
+    expect(fake.logins).toHaveLength(1)
+    expect(fake.logins[0]!.request).toBe(fake.requests[0])
+    await expect(fake.service.syncStatus()).resolves.toMatchObject({ state: 'ready' })
+    expect(() => fake.requests[0]!.accessCode).toThrow()
+    await expect(fake.service.completeSyncLoginWithDevice({})).rejects.toMatchObject({
+      code: 'INVALID_INPUT'
+    })
+  })
+
+  it('reports a denied request without recording a sync error', async () => {
+    const fake = await deviceLoginHarness()
+    fake.answers.push(new BitwardenDirectError('DEVICE_LOGIN_DENIED'))
+    await fake.service.beginSyncLoginWithDevice()
+    await expect(fake.service.completeSyncLoginWithDevice({})).rejects.toMatchObject({
+      code: 'SYNC_LOGIN_WITH_DEVICE_DENIED'
+    })
+    const status = await fake.service.syncStatus()
+    expect(status.lastError).toBeUndefined()
+    expect(fake.logins).toEqual([])
+    expect(() => fake.requests[0]!.accessCode).toThrow()
+  })
+
+  it('expires once the request lifetime passes without an answer', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const fake = await deviceLoginHarness()
+    await fake.service.beginSyncLoginWithDevice()
+    const completing = fake.service.completeSyncLoginWithDevice({})
+    completing.catch(() => undefined)
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1_000)
+    await expect(completing).rejects.toMatchObject({ code: 'SYNC_LOGIN_WITH_DEVICE_EXPIRED' })
+  })
+
+  it.each([
+    ['DEVICE_LOGIN_UNKNOWN_DEVICE', 'SYNC_LOGIN_WITH_DEVICE_UNKNOWN_DEVICE'],
+    ['DEVICE_LOGIN_UNSUPPORTED', 'SYNC_LOGIN_WITH_DEVICE_UNSUPPORTED']
+  ] as const)('maps a %s request failure to %s', async (direct, code) => {
+    const fake = await deviceLoginHarness()
+    fake.beginError = new BitwardenDirectError(direct)
+    await expect(fake.service.beginSyncLoginWithDevice()).rejects.toMatchObject({ code })
+  })
+
+  it('cancels a waiting request and discards its key pair', async () => {
+    const fake = await deviceLoginHarness()
+    await fake.service.beginSyncLoginWithDevice()
+    const completing = fake.service.completeSyncLoginWithDevice({})
+    fake.service.cancelSyncLoginWithDevice()
+    await expect(completing).rejects.toMatchObject({ code: 'SYNC_LOGIN_WITH_DEVICE_CANCELED' })
+    expect(() => fake.requests[0]!.accessCode).toThrow()
+    expect(fake.logins).toEqual([])
+  })
+
+  it('aborts a waiting request when the vault locks', async () => {
+    const fake = await deviceLoginHarness()
+    await fake.service.beginSyncLoginWithDevice()
+    const completing = fake.service.completeSyncLoginWithDevice({})
+    completing.catch(() => undefined)
+    await fake.service.lock()
+    await expect(completing).rejects.toMatchObject({ code: 'LOCKED' })
+    expect(() => fake.requests[0]!.accessCode).toThrow()
+  })
+
+  it('keeps the approved request through a two-step challenge', async () => {
+    const fake = await deviceLoginHarness()
+    fake.answers.push(true)
+    fake.loginErrors.push(
+      new BitwardenDirectError('TWO_FACTOR_REQUIRED', undefined, undefined, [0, 1])
+    )
+    await fake.service.beginSyncLoginWithDevice()
+    await expect(fake.service.completeSyncLoginWithDevice({})).rejects.toMatchObject({
+      providers: ['0', '1']
+    })
+    await fake.service.sendSyncLoginWithDeviceEmailCode()
+    expect(fake.emailCodes).toEqual([fake.requests[0]])
+
+    await expect(
+      fake.service.completeSyncLoginWithDevice({ twoFactorMethod: '1', twoFactorCode: '123456' })
+    ).resolves.toMatchObject({ pulled: expect.any(Number) })
+    expect(fake.logins.map((login) => login.twoFactor)).toEqual([
+      undefined,
+      { method: 1, code: '123456' }
+    ])
+    expect(fake.logins[1]!.request).toBe(fake.requests[0])
   })
 })

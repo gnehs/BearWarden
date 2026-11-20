@@ -138,6 +138,8 @@ import type {
   SshKeyUpdateImportedRequest,
   SyncConnectRequest,
   SyncDuoCallbackRequest,
+  SyncLoginWithDeviceCompleteRequest,
+  SyncLoginWithDeviceStart,
   SyncConnectResponse,
   SyncEmailTwoFactorCodeRequest,
   SyncPurgePersonalVaultRequest,
@@ -553,6 +555,15 @@ export const IPC_API = {
       (callback: string): SyncDuoCallbackRequest => ({ callback })
     ).returns(),
     cancelDuo: invoke('sync:cancel-duo').returns(),
+    beginLoginWithDevice: invoke(
+      'sync:begin-login-with-device'
+    ).returns<SyncLoginWithDeviceStart>(),
+    completeLoginWithDevice: invoke(
+      'sync:complete-login-with-device',
+      forward<SyncLoginWithDeviceCompleteRequest>
+    ).returns<SyncUnlockResponse>(),
+    sendLoginWithDeviceEmailCode: invoke('sync:send-login-with-device-email-code').returns(),
+    cancelLoginWithDevice: invoke('sync:cancel-login-with-device').returns(),
     sendEmailTwoFactorCode: invoke(
       'sync:send-email-two-factor-code',
       forward<SyncEmailTwoFactorCodeRequest>

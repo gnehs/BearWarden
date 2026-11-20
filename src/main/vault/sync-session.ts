@@ -4,10 +4,12 @@ import type {
   SyncInvalidResponseReason,
   SyncInvalidResponseStage,
   SyncStatus,
-  SyncTwoFactorProvider
+  SyncTwoFactorProvider,
+  VaultErrorCode
 } from '../../shared/vault-contract'
 import {
   BitwardenDirectError,
+  type BitwardenDirectErrorCode,
   type BitwardenLoginTwoFactor,
   type BitwardenSyncClient,
   type BitwardenTwoFactor
@@ -26,6 +28,13 @@ import type {
   VaultPlatform
 } from './types'
 import { DuoLoginCallbacks, DuoLoginError, type DuoLoginProvider } from '../duo-login'
+
+const DEVICE_LOGIN_ERRORS = {
+  DEVICE_LOGIN_DENIED: 'SYNC_LOGIN_WITH_DEVICE_DENIED',
+  DEVICE_LOGIN_EXPIRED: 'SYNC_LOGIN_WITH_DEVICE_EXPIRED',
+  DEVICE_LOGIN_UNSUPPORTED: 'SYNC_LOGIN_WITH_DEVICE_UNSUPPORTED',
+  DEVICE_LOGIN_UNKNOWN_DEVICE: 'SYNC_LOGIN_WITH_DEVICE_UNKNOWN_DEVICE'
+} as const satisfies Partial<Record<BitwardenDirectErrorCode, VaultErrorCode>>
 
 /** Server-driven second factors that need a ceremony after the first token challenge. */
 export type SyncInteractiveTwoFactor =
@@ -310,6 +319,9 @@ export class VaultSyncSession {
       return error
     }
     if (error instanceof BitwardenDirectError) {
+      // Login with device outcomes answer one attempt; they are not account sync errors.
+      const deviceLoginCode = DEVICE_LOGIN_ERRORS[error.code as keyof typeof DEVICE_LOGIN_ERRORS]
+      if (deviceLoginCode) return new VaultError(deviceLoginCode)
       const directCode: string = error.code
       if (directCode === 'SSO_REQUIRED') {
         this.recordSyncError('SYNC_SSO_REQUIRED')

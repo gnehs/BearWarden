@@ -1,3 +1,4 @@
+import type { AuthRequestResponseNudgeFactory } from '../bitwarden-anonymous-hub'
 import type {
   CollectionView,
   FolderView,
@@ -220,6 +221,8 @@ export interface VaultServiceOptions {
   requestAccountWebAuthnAssertion?: VaultAccountWebAuthnAssertionRequester
   /** Main-process-only bridge to the isolated WebAuthn credential-creation window. */
   requestAccountWebAuthnRegistration?: VaultAccountWebAuthnRegistrationRequester
+  /** Anonymous-hub wake-ups for Login with device polls; defaults to a SignalR connection. */
+  authRequestResponseNudges?: AuthRequestResponseNudgeFactory
 }
 
 export interface VaultExportSnapshot {
