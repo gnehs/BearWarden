@@ -38,7 +38,11 @@ import type {
   VaultNativeAttachmentRestoreSummary
 } from './types'
 import { uniqueImportedFolderName } from './data-lookup'
-import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './policy'
+import {
+  assertBitwardenPolicyDoesNotBlock,
+  assertPersonalItemTypeAllowed,
+  assertServerAcceptsNewItemType
+} from './policy'
 import { localSyncSnapshot, reconcileServerAuthoritativeAttachments } from './sync-snapshots'
 import { createLocalLogin } from './local-records'
 import type {
@@ -378,7 +382,10 @@ export class VaultPortability {
         const accountFingerprint = nativeAttachmentRestoreAccountFingerprint(sync, client)
         const parsed = parseBitwardenJson(preview.vaultJson)
         if (parsed.skippedTrashItems !== 0) throw new VaultError('INVALID_INPUT')
-        for (const item of parsed.snapshot.items) assertPersonalItemTypeAllowed(item.type, current)
+        for (const item of parsed.snapshot.items) {
+          assertPersonalItemTypeAllowed(item.type, current)
+          assertServerAcceptsNewItemType(item.type, current)
+        }
         const next = cloneData(this.core.requireData())
         const imported = this.appendPortableSnapshot(next, parsed.snapshot)
         const sourceItemIds = new Set(parsed.snapshot.items.map((item) => item.id))
@@ -669,7 +676,10 @@ export class VaultPortability {
         return { importedFolders: 0, importedItems: 0, skippedTrashItems }
       }
 
-      for (const item of snapshot.items) assertPersonalItemTypeAllowed(item.type, current)
+      for (const item of snapshot.items) {
+        assertPersonalItemTypeAllowed(item.type, current)
+        assertServerAcceptsNewItemType(item.type, current)
+      }
 
       const next = cloneData(current)
       const generation = this.core.generation

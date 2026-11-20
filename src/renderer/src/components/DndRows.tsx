@@ -170,7 +170,9 @@ export const ItemRow = memo(function ItemRow({
               'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
             item.type === 'identity' && 'bg-accent text-brand',
             item.type === 'secureNote' && 'text-chart-3',
-            item.type === 'sshKey' && 'bg-accent text-chart-2'
+            item.type === 'sshKey' && 'bg-accent text-chart-2',
+            item.type === 'bankAccount' && 'text-chart-1',
+            (item.type === 'driversLicense' || item.type === 'passport') && 'bg-accent text-chart-5'
           )}
           aria-hidden="true"
         >

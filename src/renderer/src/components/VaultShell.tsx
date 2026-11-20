@@ -99,6 +99,7 @@ import { DetailPlaceholder, type SidebarTone } from './VaultShell-primitives'
 import { VaultShellSidebar } from './VaultShellSidebar'
 import { SelectedItemDetail, TrashedItemDetail } from './VaultItemDetailViews'
 import { useItemTypeMeta } from '@renderer/hooks/use-item-type-meta'
+import { itemTypeIcons } from './vault-item-type-icons'
 import {
   type BulkActionSnapshot,
   type MoveSnapshot,
@@ -120,8 +121,18 @@ const categoryDefinitions: Array<{
   { id: 'card', icon: CreditCard, tone: 'cyan' },
   { id: 'identity', icon: ContactRound, tone: 'red' },
   { id: 'secureNote', icon: NotebookPen, tone: 'orange' },
-  { id: 'sshKey', icon: FileKey2, tone: 'gray' }
+  { id: 'sshKey', icon: FileKey2, tone: 'gray' },
+  { id: 'bankAccount', icon: itemTypeIcons.bankAccount, tone: 'green' },
+  { id: 'driversLicense', icon: itemTypeIcons.driversLicense, tone: 'indigo' },
+  { id: 'passport', icon: itemTypeIcons.passport, tone: 'blue' }
 ]
+
+/** Newer item types get a sidebar tile only once the vault holds one, keeping the grid compact. */
+const categoriesShownWhenPresent: ReadonlySet<TypeFilter> = new Set([
+  'bankAccount',
+  'driversLicense',
+  'passport'
+])
 
 const syncStateIcons = {
   unconfigured: CloudCog,
@@ -155,7 +166,19 @@ function VaultShellContent({
       card: t`Cards`,
       identity: t`Identities`,
       secureNote: t`Notes`,
-      sshKey: t`SSH keys`
+      sshKey: t`SSH keys`,
+      bankAccount: t({
+        message: 'Bank accounts',
+        comment: 'Sidebar category that filters the vault to bank account items.'
+      }),
+      driversLicense: t({
+        message: "Driver's licenses",
+        comment: "Sidebar category that filters the vault to driver's license items."
+      }),
+      passport: t({
+        message: 'Passports',
+        comment: 'Sidebar category that filters the vault to passport items.'
+      })
     }
     return categoryDefinitions.map((category) => ({ ...category, label: labels[category.id] }))
   }, [t])
@@ -666,6 +689,16 @@ function VaultShellContent({
     }
     return counts
   }, [activeItems, categoryMeta])
+  const visibleCategories = useMemo(
+    () =>
+      categoryMeta.filter(
+        (category) =>
+          !categoriesShownWhenPresent.has(category.id) ||
+          typeFilter === category.id ||
+          (categoryCounts.get(category.id) ?? 0) > 0
+      ),
+    [categoryCounts, categoryMeta, typeFilter]
+  )
   const healthRevision = useMemo(() => vaultHealthRevision(items), [items])
 
   const scopeTitle = useMemo(() => {
@@ -1052,7 +1085,7 @@ function VaultShellContent({
           <VaultShellSidebar
             appearance={{ isMac, isWindows, open: sidebarOpen }}
             navigation={{
-              categories: categoryMeta,
+              categories: visibleCategories,
               categoryCounts,
               specialFolderCounts: {
                 favorites: activeItems.filter((item) => item.favorite).length,

@@ -190,6 +190,9 @@ function parseDirectState(value: unknown): BitwardenDirectState {
     }
   }
   const rememberedTwoFactorToken = storedRememberedTwoFactorToken ?? legacyRememberedTwoFactorToken
+  if (value.newItemTypesEnabled !== undefined && typeof value.newItemTypesEnabled !== 'boolean') {
+    throw new VaultError('CORRUPT_VAULT')
+  }
 
   // parseVaultData replaces this migration-safe default with the strictly parsed stored policy
   // snapshot. Keeping the default here also covers legacy and CLI-imported state.
@@ -202,7 +205,8 @@ function parseDirectState(value: unknown): BitwardenDirectState {
     policySet: { source: 'none', policies: [] },
     ...(typeof value.premiumFromAnySource === 'boolean'
       ? { premiumFromAnySource: value.premiumFromAnySource }
-      : {})
+      : {}),
+    ...(value.newItemTypesEnabled === true ? { newItemTypesEnabled: true } : {})
   }
 }
 

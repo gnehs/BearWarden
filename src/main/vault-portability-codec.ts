@@ -19,7 +19,13 @@ import {
 import type { StoredPasskeyCredential } from './passkey'
 import type { SyncLogin } from './sync-merge'
 import { VaultError } from './vault-errors'
-import { emptyItemFields } from './vault/item-fields'
+import {
+  ITEM_TYPE_BY_WIRE_TYPE,
+  WIRE_TYPE_BY_ITEM_TYPE,
+  emptyItemFields,
+  isBitwardenCipherWireType,
+  itemFieldsForType
+} from './vault/item-fields'
 import { LOOSE_UUID_PATTERN, isRecord } from './validation-primitives'
 
 export interface PortableVaultFolder {
@@ -65,22 +71,6 @@ const MAX_ARGON2_ITERATIONS = 100
 const MIN_ARGON2_MEMORY_MIB = 16
 const MAX_ARGON2_MEMORY_MIB = 1_024
 const MAX_ARGON2_PARALLELISM = 64
-
-const WIRE_TYPE_BY_ITEM_TYPE = {
-  login: 1,
-  secureNote: 2,
-  card: 3,
-  identity: 4,
-  sshKey: 5
-} as const satisfies Record<VaultItemType, number>
-
-const ITEM_TYPE_BY_WIRE_TYPE = {
-  1: 'login',
-  2: 'secureNote',
-  3: 'card',
-  4: 'identity',
-  5: 'sshKey'
-} as const
 
 const WIRE_TYPE_BY_CUSTOM_FIELD_TYPE = {
   text: 0,
@@ -313,6 +303,11 @@ function parseTypeData(
   } else if (type === 'secureNote') {
     const secureNote = record(raw.secureNote)
     if (secureNote.type !== undefined && secureNote.type !== 0) invalidInput()
+  } else if (type === 'bankAccount' || type === 'driversLicense' || type === 'passport') {
+    const typed = record(raw[type])
+    for (const name of itemFieldsForType(type)) {
+      fields[name] = optionalString(typed[name], MAX_ITEM_FIELD_LENGTH)
+    }
   } else {
     const sshKey = record(raw.sshKey)
     fields.privateKey = optionalString(sshKey.privateKey, MAX_SSH_PRIVATE_KEY_LENGTH)
@@ -326,9 +321,7 @@ function parseItem(rawValue: unknown, folderIds: ReadonlySet<string>): PortableV
   const raw = record(rawValue)
   const deletedAt = nullableIsoDate(raw.deletedDate)
   if (deletedAt !== null) return null
-  if (raw.type !== 1 && raw.type !== 2 && raw.type !== 3 && raw.type !== 4 && raw.type !== 5) {
-    invalidInput()
-  }
+  if (!isBitwardenCipherWireType(raw.type)) invalidInput()
   const type = ITEM_TYPE_BY_WIRE_TYPE[raw.type]
   const id = string(raw.id, MAX_ID_LENGTH, false)
   const folderId = nullableString(raw.folderId, MAX_ID_LENGTH)
@@ -423,6 +416,9 @@ const BITWARDEN_CSV_CURRENT_COLUMNS = [
 ] as const
 type BitwardenCsvColumn = (typeof BITWARDEN_CSV_REQUIRED_COLUMNS)[number] | 'archivedDate'
 
+/** Bitwarden's CSV format carries only logins and secure notes. */
+type CsvSkippedItemType = Exclude<VaultItemType, 'login' | 'secureNote'>
+
 export interface BitwardenCsvExport {
   csv: string
   exportedFolders: number
@@ -430,6 +426,9 @@ export interface BitwardenCsvExport {
   skippedCards: number
   skippedIdentities: number
   skippedSshKeys: number
+  skippedBankAccounts: number
+  skippedDriversLicenses: number
+  skippedPassports: number
   skippedUnsupportedItems: number
   skippedPasskeys: number
   /** Number of attachment metadata records whose files and metadata CSV cannot carry. */
@@ -810,9 +809,14 @@ export function buildBitwardenCsv(snapshot: PortableVaultSnapshot): BitwardenCsv
   const foldersById = new Map(validated.folders.map((folder) => [folder.id, folder.name]))
   const representedFolders = new Set<string>()
   const rows: string[][] = []
-  let skippedCards = 0
-  let skippedIdentities = 0
-  let skippedSshKeys = 0
+  const skippedByType: Record<CsvSkippedItemType, number> = {
+    card: 0,
+    identity: 0,
+    sshKey: 0,
+    bankAccount: 0,
+    driversLicense: 0,
+    passport: 0
+  }
   let skippedPasskeys = 0
   let skippedPasswordHistoryEntries = 0
   let simplifiedUriMatches = 0
@@ -826,16 +830,8 @@ export function buildBitwardenCsv(snapshot: PortableVaultSnapshot): BitwardenCsv
 
   for (const item of validated.items) {
     skippedPasswordHistoryEntries += item.passwordHistory.length
-    if (item.type === 'card') {
-      skippedCards += 1
-      continue
-    }
-    if (item.type === 'identity') {
-      skippedIdentities += 1
-      continue
-    }
-    if (item.type === 'sshKey') {
-      skippedSshKeys += 1
+    if (item.type !== 'login' && item.type !== 'secureNote') {
+      skippedByType[item.type] += 1
       continue
     }
 
@@ -874,15 +870,17 @@ export function buildBitwardenCsv(snapshot: PortableVaultSnapshot): BitwardenCsv
     ])
   }
 
-  const skippedUnsupportedItems = skippedCards + skippedIdentities + skippedSshKeys
   return {
     csv: `${[BITWARDEN_CSV_CURRENT_COLUMNS, ...rows].map(encodeCsvRow).join('\r\n')}\r\n`,
     exportedFolders: representedFolders.size,
     exportedItems: rows.length,
-    skippedCards,
-    skippedIdentities,
-    skippedSshKeys,
-    skippedUnsupportedItems,
+    skippedCards: skippedByType.card,
+    skippedIdentities: skippedByType.identity,
+    skippedSshKeys: skippedByType.sshKey,
+    skippedBankAccounts: skippedByType.bankAccount,
+    skippedDriversLicenses: skippedByType.driversLicense,
+    skippedPassports: skippedByType.passport,
+    skippedUnsupportedItems: Object.values(skippedByType).reduce((sum, count) => sum + count, 0),
     skippedPasskeys,
     skippedAttachments,
     skippedPasswordHistoryEntries,
@@ -976,6 +974,14 @@ function exportTypeData(item: PortableVaultItem, includeLoginWireMetadata: boole
           publicKey: item.publicKey,
           keyFingerprint: item.fingerprint
         }
+      }
+    case 'bankAccount':
+    case 'driversLicense':
+    case 'passport':
+      return {
+        [item.type]: Object.fromEntries(
+          itemFieldsForType(item.type).map((name) => [name, item[name]])
+        )
       }
   }
 }

@@ -454,6 +454,7 @@ const MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 const MAX_SYNC_RESPONSE_BYTES = 512 * 1024 * 1024
 const MAX_HIBP_BREACH_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_ACCOUNT_PROFILE_RESPONSE_BYTES = 256 * 1024
+const NEW_ITEM_TYPES_FEATURE_FLAG = 'pm-32009-new-item-types'
 const MAX_ACCOUNT_DEVICES_RESPONSE_BYTES = 4 * 1024 * 1024
 const MAX_ACCOUNT_DEVICES = 10_000
 const MAX_DEVICE_STRING_BYTES = 256
@@ -948,6 +949,28 @@ export class BitwardenHttpClient {
         throw modernError
       }
       throw error
+    }
+  }
+
+  /**
+   * Whether the server's `/api/config` turns on Bitwarden's `pm-32009-new-item-types` flag,
+   * which official clients require before creating bank account, driver's license, and passport
+   * items. Vaultwarden 1.37.4+ reports it only when an administrator enables it. Any failure
+   * reads as disabled so creation stays closed on servers that would reject the cipher type.
+   */
+  async newItemTypesEnabled(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const response = await this.requestJson('GET', `${this.urls.apiUrl}/config`, {
+        signal,
+        authenticate: false,
+        maxResponseBytes: MAX_ACCOUNT_PROFILE_RESPONSE_BYTES
+      })
+      if (!isJsonObject(response)) return false
+      const featureStates = readField(response, 'featureStates')
+      return isJsonObject(featureStates) && featureStates[NEW_ITEM_TYPES_FEATURE_FLAG] === true
+    } catch (error) {
+      if (error instanceof BitwardenHttpError && error.code === 'ABORTED') throw error
+      return false
     }
   }
 

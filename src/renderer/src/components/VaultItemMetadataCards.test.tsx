@@ -2,11 +2,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { LoginView } from '../../../shared/vault-contract'
 import { VaultItemMetadataCards } from './VaultItemMetadataCards'
+import { emptyDocumentViewFields } from './vault-detail-test-fixtures'
 
 vi.mock('./PaymentCardBrandMark', () => ({ default: () => <span /> }))
 vi.mock('./WebsiteIcon', () => ({ default: () => <span /> }))
 
 const login: LoginView = {
+  ...emptyDocumentViewFields,
   id: 'shared-login',
   type: 'login',
   name: 'Router',

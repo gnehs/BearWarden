@@ -26,6 +26,7 @@ import {
 } from './views'
 import { validateRemotePasskeys } from './passkey-parsing'
 import { cloneCustomFields } from './custom-fields'
+import { pickBankAccountAndDocumentFields } from './item-fields'
 import { cloneLoginUris, uriAlias } from './login-uris'
 import { cloneEquivalentDomainSettings } from './equivalent-domains'
 import { cloneAttachments, validateRemoteAttachments } from './attachments-parsing'
@@ -305,6 +306,7 @@ export function remoteDraft(login: SyncLogin, folderId: string | null): Bitwarde
     privateKey: login.privateKey,
     publicKey: login.publicKey,
     fingerprint: login.fingerprint,
+    ...pickBankAccountAndDocumentFields(login),
     notes: login.notes,
     folderId,
     favorite: login.favorite,

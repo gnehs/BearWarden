@@ -19,6 +19,7 @@ import {
 } from './bitwarden-policy'
 import type { SyncInvalidResponseStage } from '../shared/vault-contract'
 import { MAX_REMOTE_ENTITIES } from './vault/limits'
+import { isBitwardenCipherWireType } from './vault/item-fields'
 import { readField } from './bitwarden-fields'
 import { UUID_PATTERN } from './validation-primitives'
 import { BitwardenDirectError, invalidResponse } from './bitwarden-direct-error'
@@ -39,7 +40,6 @@ import {
   remoteCipherType,
   repromptProperty,
   requiredStringProperty,
-  isSupportedCipherType,
   stringProperty,
   type BitwardenCollection,
   type BitwardenLoginItem,
@@ -255,7 +255,7 @@ function preflightCipherRows(
     ) {
       throw new BitwardenDirectError('INVALID_RESPONSE')
     }
-    if (!isSupportedCipherType(type)) {
+    if (!isBitwardenCipherWireType(type)) {
       if (organizationId === null || organizationId === undefined) {
         isolatedPersonalCiphers.add(id)
         continue
@@ -418,7 +418,7 @@ export function decodeSyncPayload(
       aggregateRows = addAggregateRemoteRows(aggregateRows, rawNestedRows)
       // The preflight validated organization ids, isolated unsupported personal rows, and
       // rejected unsupported shared rows.
-      if (!isSupportedCipherType(type)) continue
+      if (!isBitwardenCipherWireType(type)) continue
       if (typeof organizationId === 'string') {
         const organizationKey = organizationKeys.get(organizationId)
         if (

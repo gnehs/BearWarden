@@ -120,6 +120,8 @@ export function detailIconClassName(type?: VaultItemType): string {
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-brand',
     type === 'secureNote' && 'bg-muted text-chart-3',
-    type === 'sshKey' && 'bg-accent text-chart-2'
+    type === 'sshKey' && 'bg-accent text-chart-2',
+    type === 'bankAccount' && 'bg-muted text-chart-1',
+    (type === 'driversLicense' || type === 'passport') && 'bg-accent text-chart-5'
   )
 }

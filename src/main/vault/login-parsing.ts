@@ -11,6 +11,7 @@ import {
 } from './limits'
 import { assertIsoDate, parseNullableString } from './parse-primitives'
 import {
+  BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES,
   ITEM_FIELD_NAMES,
   emptyItemFields,
   isVaultItemType,
@@ -57,6 +58,10 @@ export function cloneItemName(name: string): string {
   return `${codePoints.join('')}${suffix}`
 }
 
+const BANK_ACCOUNT_AND_DOCUMENT_FIELDS: ReadonlySet<string> = new Set(
+  BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES
+)
+
 export function parseStoredLogin(
   value: unknown,
   legacyItemType = false,
@@ -69,7 +74,8 @@ export function parseStoredLogin(
   allowMissingPasswordHistory = false,
   allowMissingAttachments = false,
   allowMissingLoginWireMetadata = false,
-  allowMissingUsageCount = false
+  allowMissingUsageCount = false,
+  allowMissingBankAccountAndDocumentFields = false
 ): StoredLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   if (
@@ -141,6 +147,13 @@ export function parseStoredLogin(
   const fields = emptyItemFields()
   for (const field of ITEM_FIELD_NAMES) {
     if (allowMissingExtendedFields && !(field in value)) continue
+    if (
+      allowMissingBankAccountAndDocumentFields &&
+      BANK_ACCOUNT_AND_DOCUMENT_FIELDS.has(field) &&
+      !(field in value)
+    ) {
+      continue
+    }
     const raw = value[field]
     if (field === 'uri') {
       fields.uri = parseNullableString(raw, MAX_URI_LENGTH)
@@ -225,7 +238,8 @@ export function parseStoredLogin(
 export function parseStoredSharedLogin(
   value: unknown,
   allowMissingLoginWireMetadata = false,
-  allowMissingUsageCount = false
+  allowMissingUsageCount = false,
+  allowMissingBankAccountAndDocumentFields = false
 ): StoredSharedLogin {
   if (!isRecord(value)) throw new VaultError('CORRUPT_VAULT')
   const login = parseStoredLogin(
@@ -240,7 +254,8 @@ export function parseStoredSharedLogin(
     false,
     false,
     allowMissingLoginWireMetadata,
-    allowMissingUsageCount
+    allowMissingUsageCount,
+    allowMissingBankAccountAndDocumentFields
   )
   const {
     organizationId,

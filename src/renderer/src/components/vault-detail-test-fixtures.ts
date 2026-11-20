@@ -1,7 +1,31 @@
 import type { LoginView } from '../../../shared/vault-contract'
 
+/** Blank bank account, driver's license, and passport view fields for LoginView fixtures. */
+export const emptyDocumentViewFields = {
+  bankName: '',
+  nameOnAccount: '',
+  accountType: '',
+  routingNumber: '',
+  branchNumber: '',
+  bankContactPhone: '',
+  dateOfBirth: '',
+  issuingCountry: '',
+  issuingState: '',
+  issueDate: '',
+  expirationDate: '',
+  issuingAuthority: '',
+  licenseClass: '',
+  surname: '',
+  givenName: '',
+  sex: '',
+  birthPlace: '',
+  nationality: '',
+  passportType: ''
+} satisfies Partial<LoginView>
+
 export function makeLoginView(overrides: Partial<LoginView> = {}): LoginView {
   return {
+    ...emptyDocumentViewFields,
     id: 'item-id',
     type: 'login',
     name: 'Sample item',

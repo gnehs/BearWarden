@@ -419,6 +419,7 @@ export class VaultSyncSession {
       ...(sync.state.premiumFromAnySource === false
         ? { archiveRequiresPremium: true as const }
         : {}),
+      ...(sync.state.newItemTypesEnabled ? { newItemTypesEnabled: true as const } : {}),
       ...(sync.pendingLoginImport?.phase === 'dispatched'
         ? {
             pendingImport: {

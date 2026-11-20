@@ -11,6 +11,7 @@ import {
   type SyncMetadata,
   type SyncSnapshot
 } from './sync-merge'
+import { emptyItemFields } from './vault/item-fields'
 
 function login(
   id: string,
@@ -19,6 +20,7 @@ function login(
   folderId: string | null = null
 ): SyncLogin {
   return {
+    ...emptyItemFields(),
     type: 'login',
     id,
     name,

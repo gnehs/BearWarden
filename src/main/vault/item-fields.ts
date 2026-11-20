@@ -15,6 +15,66 @@ import {
 } from './limits'
 import { normalizeNullableString, normalizeString } from './parse-primitives'
 
+/** Bitwarden `CipherType` wire values. */
+export const WIRE_TYPE_BY_ITEM_TYPE = {
+  login: 1,
+  secureNote: 2,
+  card: 3,
+  identity: 4,
+  sshKey: 5,
+  bankAccount: 6,
+  driversLicense: 7,
+  passport: 8
+} as const satisfies Record<VaultItemType, number>
+
+export type BitwardenCipherWireType = (typeof WIRE_TYPE_BY_ITEM_TYPE)[VaultItemType]
+
+export const ITEM_TYPE_BY_WIRE_TYPE = Object.fromEntries(
+  Object.entries(WIRE_TYPE_BY_ITEM_TYPE).map(([itemType, wireType]) => [wireType, itemType])
+) as Readonly<Record<BitwardenCipherWireType, VaultItemType>>
+
+export function isBitwardenCipherWireType(value: unknown): value is BitwardenCipherWireType {
+  return typeof value === 'number' && Object.hasOwn(ITEM_TYPE_BY_WIRE_TYPE, value)
+}
+
+/** Fields introduced with Bitwarden cipher types 6-8; vaults before v24 omit them. */
+export const BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES = [
+  'bankName',
+  'nameOnAccount',
+  'accountType',
+  'accountNumber',
+  'routingNumber',
+  'branchNumber',
+  'pin',
+  'swiftCode',
+  'iban',
+  'bankContactPhone',
+  'dateOfBirth',
+  'issuingCountry',
+  'issuingState',
+  'issueDate',
+  'expirationDate',
+  'issuingAuthority',
+  'licenseClass',
+  'surname',
+  'givenName',
+  'sex',
+  'birthPlace',
+  'nationality',
+  'passportType',
+  'nationalIdentificationNumber'
+] as const satisfies readonly (keyof VaultItemFields)[]
+
+export type BankAccountAndDocumentFieldName = (typeof BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES)[number]
+
+export function pickBankAccountAndDocumentFields(
+  fields: VaultItemFields
+): Pick<VaultItemFields, BankAccountAndDocumentFieldName> {
+  return Object.fromEntries(
+    BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES.map((name) => [name, fields[name]])
+  ) as Pick<VaultItemFields, BankAccountAndDocumentFieldName>
+}
+
 export const ITEM_FIELD_NAMES = [
   'username',
   'password',
@@ -46,7 +106,8 @@ export const ITEM_FIELD_NAMES = [
   'licenseNumber',
   'privateKey',
   'publicKey',
-  'fingerprint'
+  'fingerprint',
+  ...BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES
 ] as const satisfies readonly (keyof VaultItemFields)[]
 
 export type ItemFieldName = (typeof ITEM_FIELD_NAMES)[number]
@@ -75,7 +136,47 @@ const ITEM_FIELDS_BY_TYPE: Record<VaultItemType, readonly ItemFieldName[]> = {
     'licenseNumber'
   ],
   secureNote: [],
-  sshKey: ['privateKey', 'publicKey', 'fingerprint']
+  sshKey: ['privateKey', 'publicKey', 'fingerprint'],
+  bankAccount: [
+    'bankName',
+    'nameOnAccount',
+    'accountType',
+    'accountNumber',
+    'routingNumber',
+    'branchNumber',
+    'pin',
+    'swiftCode',
+    'iban',
+    'bankContactPhone'
+  ],
+  driversLicense: [
+    'firstName',
+    'middleName',
+    'lastName',
+    'dateOfBirth',
+    'licenseNumber',
+    'issuingCountry',
+    'issuingState',
+    'issueDate',
+    'expirationDate',
+    'issuingAuthority',
+    'licenseClass'
+  ],
+  passport: [
+    'surname',
+    'givenName',
+    'dateOfBirth',
+    'sex',
+    'birthPlace',
+    'nationality',
+    'issuingCountry',
+    'passportNumber',
+    'passportType',
+    'nationalIdentificationNumber',
+    'issuingAuthority',
+    'issueDate',
+    'expirationDate'
+  ]
 }
 
 const SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultSecretField[]> = {
@@ -83,7 +184,10 @@ const SECRET_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultSecretField[]> 
   card: ['number', 'code'],
   identity: ['ssn', 'passportNumber', 'licenseNumber'],
   secureNote: [],
-  sshKey: ['privateKey']
+  sshKey: ['privateKey'],
+  bankAccount: ['accountNumber', 'pin', 'swiftCode', 'iban'],
+  driversLicense: ['licenseNumber'],
+  passport: ['passportNumber', 'nationalIdentificationNumber']
 }
 
 export const EDITOR_SECRET_FIELDS_BY_TYPE: Record<
@@ -99,7 +203,23 @@ const COPY_FIELDS_BY_TYPE: Record<VaultItemType, readonly VaultCopyField[]> = {
   card: ['number', 'code', 'cardholderName', 'brand', 'cardExpiration'],
   identity: ['email', 'phone', 'ssn', 'identityUsername', 'passportNumber', 'licenseNumber'],
   secureNote: [],
-  sshKey: ['privateKey', 'publicKey', 'fingerprint']
+  sshKey: ['privateKey', 'publicKey', 'fingerprint'],
+  bankAccount: [
+    'nameOnAccount',
+    'accountNumber',
+    'routingNumber',
+    'branchNumber',
+    'pin',
+    'swiftCode',
+    'iban'
+  ],
+  driversLicense: ['firstName', 'middleName', 'lastName', 'licenseNumber'],
+  passport: ['givenName', 'surname', 'passportNumber', 'nationalIdentificationNumber']
+}
+
+/** Plain string fields owned by each typed payload. Login and SSH key have bespoke codecs. */
+export function itemFieldsForType(type: VaultItemType): readonly ItemFieldName[] {
+  return ITEM_FIELDS_BY_TYPE[type]
 }
 
 export function emptyItemFields(): VaultItemFields {
@@ -134,7 +254,31 @@ export function emptyItemFields(): VaultItemFields {
     licenseNumber: '',
     privateKey: '',
     publicKey: '',
-    fingerprint: ''
+    fingerprint: '',
+    bankName: '',
+    nameOnAccount: '',
+    accountType: '',
+    accountNumber: '',
+    routingNumber: '',
+    branchNumber: '',
+    pin: '',
+    swiftCode: '',
+    iban: '',
+    bankContactPhone: '',
+    dateOfBirth: '',
+    issuingCountry: '',
+    issuingState: '',
+    issueDate: '',
+    expirationDate: '',
+    issuingAuthority: '',
+    licenseClass: '',
+    surname: '',
+    givenName: '',
+    sex: '',
+    birthPlace: '',
+    nationality: '',
+    passportType: '',
+    nationalIdentificationNumber: ''
   }
 }
 
@@ -159,13 +303,7 @@ export function maxLengthForItemField(field: ItemFieldName): number {
 }
 
 export function isVaultItemType(value: unknown): value is VaultItemType {
-  return (
-    value === 'login' ||
-    value === 'card' ||
-    value === 'identity' ||
-    value === 'secureNote' ||
-    value === 'sshKey'
-  )
+  return typeof value === 'string' && Object.hasOwn(ITEM_FIELDS_BY_TYPE, value)
 }
 
 export function normalizeItemType(value: unknown): VaultItemType {

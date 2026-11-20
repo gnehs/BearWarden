@@ -36,6 +36,7 @@ import {
   POLICY_BANNER_DATA_VERSION,
   MAX_POLICY_BANNER_DISMISSALS,
   MAX_POLICY_BANNER_KEY_LENGTH,
+  BANK_ACCOUNT_AND_DOCUMENT_DATA_VERSION,
   DATA_VERSION,
   MAX_REMOTE_ENTITIES,
   MAX_SENDS
@@ -501,7 +502,8 @@ export function parseVaultData(value: unknown): VaultData {
         dataVersion < PASSWORD_HISTORY_DATA_VERSION,
         dataVersion < ATTACHMENTS_DATA_VERSION,
         dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
-        dataVersion < USAGE_COUNT_DATA_VERSION
+        dataVersion < USAGE_COUNT_DATA_VERSION,
+        dataVersion < BANK_ACCOUNT_AND_DOCUMENT_DATA_VERSION
       )
     )
   )
@@ -589,7 +591,8 @@ export function parseVaultData(value: unknown): VaultData {
               parseStoredSharedLogin(
                 login,
                 dataVersion < LOGIN_WIRE_METADATA_DATA_VERSION,
-                dataVersion < USAGE_COUNT_DATA_VERSION
+                dataVersion < USAGE_COUNT_DATA_VERSION,
+                dataVersion < BANK_ACCOUNT_AND_DOCUMENT_DATA_VERSION
               )
             )
           )

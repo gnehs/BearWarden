@@ -192,6 +192,24 @@ describe('BitwardenHttpClient', () => {
     await expect(client.passwordChangeContract()).resolves.toBe('official')
   })
 
+  it('reads the new item types flag only from an explicit true feature state', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(json({ featureStates: { 'pm-32009-new-item-types': true } }))
+      .mockResolvedValueOnce(json({ FeatureStates: { 'pm-32009-new-item-types': true } }))
+      .mockResolvedValueOnce(json({ featureStates: { 'pm-32009-new-item-types': 'true' } }))
+      .mockResolvedValueOnce(json({ featureStates: {} }))
+      .mockResolvedValueOnce(json({ message: 'unavailable' }, 503))
+    const client = new BitwardenHttpClient({ server: 'us', fetch, maxRetries: 0 })
+
+    await expect(client.newItemTypesEnabled()).resolves.toBe(true)
+    await expect(client.newItemTypesEnabled()).resolves.toBe(true)
+    await expect(client.newItemTypesEnabled()).resolves.toBe(false)
+    await expect(client.newItemTypesEnabled()).resolves.toBe(false)
+    await expect(client.newItemTypesEnabled()).resolves.toBe(false)
+    expect(fetch.mock.calls.every(([url]) => String(url).endsWith('/config'))).toBe(true)
+  })
+
   it('posts the exact official and Vaultwarden password-change contracts without retrying', async () => {
     const fetch = vi
       .fn<FetchLike>()

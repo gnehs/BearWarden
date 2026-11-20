@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { VaultItemType } from '../shared/vault-contract'
+import type { VaultItemFields, VaultItemType } from '../shared/vault-contract'
 import { deriveMasterKey, encryptBitwardenString, stretchMasterKey } from './bitwarden-crypto'
 import type { StoredPasskeyCredential } from './passkey'
 import {
@@ -13,6 +13,7 @@ import {
   type PortableVaultSnapshot
 } from './vault-portability-codec'
 import { VaultError } from './vault-errors'
+import { emptyItemFields } from './vault/item-fields'
 
 const CREATED_AT = '2026-07-01T00:00:00.000Z'
 const UPDATED_AT = '2026-07-02T00:00:00.000Z'
@@ -34,8 +35,45 @@ const passkey: StoredPasskeyCredential = {
   creationDate: CREATED_AT
 }
 
+const DOCUMENT_FIELDS: Partial<Record<VaultItemType, Partial<VaultItemFields>>> = {
+  bankAccount: {
+    bankName: 'Example Bank',
+    nameOnAccount: 'Test Person',
+    accountType: 'savings',
+    accountNumber: '000123456789',
+    routingNumber: '021000021',
+    branchNumber: '001',
+    pin: '2468',
+    swiftCode: 'EXAMPLEXXX',
+    iban: 'GB33BUKB20201555555555',
+    bankContactPhone: '+1 555 0100'
+  },
+  driversLicense: {
+    firstName: 'Test',
+    lastName: 'Driver',
+    dateOfBirth: '1990-01-31',
+    licenseNumber: 'D1234567',
+    issuingCountry: 'US',
+    issuingState: 'CA',
+    expirationDate: '2028-02-01',
+    licenseClass: 'C'
+  },
+  passport: {
+    surname: 'Person',
+    givenName: 'Test',
+    sex: 'X',
+    nationality: 'Taiwanese',
+    issuingCountry: 'TW',
+    passportNumber: 'P1234567',
+    nationalIdentificationNumber: 'A123456789',
+    issueDate: '2021-03-04'
+  }
+}
+
 function item(type: VaultItemType, id = `${type}-id`): PortableVaultItem {
   return {
+    ...emptyItemFields(),
+    ...DOCUMENT_FIELDS[type],
     id,
     type,
     name: `${type} item`,
@@ -65,9 +103,9 @@ function item(type: VaultItemType, id = `${type}-id`): PortableVaultItem {
     expYear: type === 'card' ? '2030' : '',
     code: type === 'card' ? '123' : '',
     title: type === 'identity' ? 'Mx' : '',
-    firstName: type === 'identity' ? 'Test' : '',
+    firstName: type === 'identity' ? 'Test' : (DOCUMENT_FIELDS[type]?.firstName ?? ''),
     middleName: '',
-    lastName: type === 'identity' ? 'Person' : '',
+    lastName: type === 'identity' ? 'Person' : (DOCUMENT_FIELDS[type]?.lastName ?? ''),
     address1: type === 'identity' ? 'Example address' : '',
     address2: '',
     address3: '',
@@ -80,8 +118,8 @@ function item(type: VaultItemType, id = `${type}-id`): PortableVaultItem {
     phone: '',
     ssn: '',
     identityUsername: type === 'identity' ? 'identity-user' : '',
-    passportNumber: '',
-    licenseNumber: '',
+    passportNumber: DOCUMENT_FIELDS[type]?.passportNumber ?? '',
+    licenseNumber: DOCUMENT_FIELDS[type]?.licenseNumber ?? '',
     privateKey:
       type === 'sshKey' ? '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----' : '',
     publicKey: type === 'sshKey' ? 'ssh-ed25519 AAAATEST' : '',
@@ -106,9 +144,18 @@ function item(type: VaultItemType, id = `${type}-id`): PortableVaultItem {
 function snapshot(): PortableVaultSnapshot {
   return {
     folders: [{ id: 'folder:untrusted-but-bounded', name: 'Portable folder' }],
-    items: (['login', 'secureNote', 'card', 'identity', 'sshKey'] as const).map((type) =>
-      item(type)
-    )
+    items: (
+      [
+        'login',
+        'secureNote',
+        'card',
+        'identity',
+        'sshKey',
+        'bankAccount',
+        'driversLicense',
+        'passport'
+      ] as const
+    ).map((type) => item(type))
   }
 }
 
@@ -151,13 +198,31 @@ describe('Bitwarden plaintext JSON portability', () => {
     })
   })
 
-  it('round-trips all five supported item types and private metadata', () => {
+  it('round-trips all eight supported item types and private metadata', () => {
     const original = snapshot()
     const json = buildBitwardenJson(original)
     const wire = JSON.parse(json) as { encrypted: boolean; items: Array<Record<string, unknown>> }
 
     expect(wire.encrypted).toBe(false)
-    expect(wire.items.map((entry) => entry.type)).toEqual([1, 2, 3, 4, 5])
+    expect(wire.items.map((entry) => entry.type)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(wire.items[5]).toMatchObject({ bankAccount: DOCUMENT_FIELDS.bankAccount })
+    expect(wire.items[6]).toMatchObject({ driversLicense: DOCUMENT_FIELDS.driversLicense })
+    expect(wire.items[7]).toMatchObject({ passport: DOCUMENT_FIELDS.passport })
+    expect(Object.keys(wire.items[7]!.passport as object)).toEqual([
+      'surname',
+      'givenName',
+      'dateOfBirth',
+      'sex',
+      'birthPlace',
+      'nationality',
+      'issuingCountry',
+      'passportNumber',
+      'passportType',
+      'nationalIdentificationNumber',
+      'issuingAuthority',
+      'issueDate',
+      'expirationDate'
+    ])
     expect(wire.items[0]).toMatchObject({
       reprompt: 1,
       login: {
@@ -299,7 +364,7 @@ describe('Bitwarden and Chromium CSV portability', () => {
       skippedCards: 1,
       skippedIdentities: 1,
       skippedSshKeys: 1,
-      skippedUnsupportedItems: 3,
+      skippedUnsupportedItems: 6,
       skippedPasskeys: 1,
       skippedAttachments: 0,
       skippedPasswordHistoryEntries: 1,
@@ -356,6 +421,13 @@ describe('Bitwarden and Chromium CSV portability', () => {
 
     expect(buildBitwardenCsv(original)).toMatchObject({
       exportedItems: 2,
+      skippedUnsupportedItems: 6,
+      skippedCards: 1,
+      skippedIdentities: 1,
+      skippedSshKeys: 1,
+      skippedBankAccounts: 1,
+      skippedDriversLicenses: 1,
+      skippedPassports: 1,
       skippedAttachments: 2,
       skippedPasswordHistoryEntries: 2,
       simplifiedUriMatches: 2,

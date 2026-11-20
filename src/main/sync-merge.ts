@@ -9,6 +9,7 @@ import type {
 } from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
 import { cloneCustomFields } from './vault/custom-fields'
+import { BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES } from './vault/item-fields'
 
 export interface SyncFolder {
   id: string
@@ -224,7 +225,15 @@ function loginFingerprintContent(
       licenseNumber: login.licenseNumber,
       privateKey: login.privateKey,
       publicKey: login.publicKey,
-      fingerprint: login.fingerprint
+      fingerprint: login.fingerprint,
+      // Fields added with cipher types 6-8 join only when set, so fingerprints recorded before
+      // they existed still match the same unchanged items.
+      ...Object.fromEntries(
+        BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES.filter((name) => login[name] !== '').map((name) => [
+          name,
+          login[name]
+        ])
+      )
     },
     passkeys: login.passkeys
   }

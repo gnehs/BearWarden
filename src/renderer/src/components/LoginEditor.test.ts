@@ -10,8 +10,10 @@ import {
   uriMatchRecognizedParts,
   type EditorLoginUri
 } from './login-editor-ui'
+import { emptyDocumentViewFields } from './vault-detail-test-fixtures'
 
 const loginFixture: LoginView = {
+  ...emptyDocumentViewFields,
   id: 'login-fixture',
   type: 'login',
   name: '範例登入',

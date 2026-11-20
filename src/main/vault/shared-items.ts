@@ -35,6 +35,7 @@ import {
   assertSecretField,
   assertCopyField
 } from './item-fields'
+import { assertServerAcceptsNewItemType } from './policy'
 import type { StoredSharedLogin, VaultPlatform } from './types'
 import { remoteDraft } from './sync-snapshots'
 import { sharedLoginFromRemote } from './local-records'
@@ -73,6 +74,7 @@ export class VaultSharedItems {
       if (!client.createOrganizationCipher) throw new VaultError('SYNC_FAILED')
 
       const type = normalizeItemType(request.type ?? 'login')
+      assertServerAcceptsNewItemType(type, current)
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
       const uris = createRequestUris(request, type)

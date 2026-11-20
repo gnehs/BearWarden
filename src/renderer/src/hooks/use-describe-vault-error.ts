@@ -11,6 +11,12 @@ export function useDescribeVaultError(): (error: unknown) => string {
       NOT_FOUND: t`The requested item could not be found.`,
       INVALID_INPUT: t`The input is invalid. Check it and try again.`,
       POLICY_RESTRICTED: t`This operation is restricted by your organization's policy.`,
+      ITEM_TYPE_UNSUPPORTED: t({
+        message:
+          "Your server has not enabled bank account, driver's license, and passport items yet.",
+        comment:
+          'Error shown when creating or importing one of these item types on a server whose new item types feature flag is off.'
+      }),
       DUPLICATE_NAME: t`That name is already in use. Choose another name.`,
       INVALID_URL: t`The website URL is invalid.`,
       ATTACHMENT_FAILED: t`The attachment operation failed. The server content may have changed; sync and try again.`,

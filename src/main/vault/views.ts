@@ -3,7 +3,8 @@ import type {
   LoginView,
   SharedLoginSummary,
   SharedLoginView,
-  VaultCustomFieldView
+  VaultCustomFieldView,
+  VaultItemType
 } from '../../shared/vault-contract'
 import { toLoginSummary, toSharedLoginSummary } from '../../shared/login-summary'
 import { toPasskeyView } from '../passkey'
@@ -31,21 +32,26 @@ export function toSharedSummary(login: StoredSharedLogin): SharedLoginSummary {
   })
 }
 
+/** Mirrors the official clients' per-type `subTitle`; secrets never appear beyond a card's last four. */
+const SUBTITLE_BY_TYPE: Record<VaultItemType, (login: StoredLogin) => string> = {
+  login: (login) => login.username || login.uri || '',
+  card: (login) => (login.number.length >= 4 ? `•••• ${login.number.slice(-4)}` : login.brand),
+  identity: (login) => joinPresent([login.firstName, login.lastName], ' '),
+  secureNote: (login) => summarizeSecureNote(login.notes),
+  sshKey: (login) => login.fingerprint || 'SSH key',
+  bankAccount: (login) => login.bankName,
+  driversLicense: (login) =>
+    joinPresent([joinPresent([login.firstName, login.lastName], ' '), login.issuingState], ', '),
+  passport: (login) =>
+    joinPresent([joinPresent([login.givenName, login.surname], ' '), login.issuingCountry], ', ')
+}
+
+function joinPresent(parts: readonly string[], separator: string): string {
+  return parts.filter(Boolean).join(separator)
+}
+
 function describeLogin(login: StoredLogin): LoginSummary {
-  const subtitle =
-    login.type === 'login'
-      ? login.username || login.uri || ''
-      : login.type === 'card'
-        ? login.number.length >= 4
-          ? `•••• ${login.number.slice(-4)}`
-          : login.brand
-        : login.type === 'identity'
-          ? [login.firstName, login.lastName].filter(Boolean).join(' ')
-          : login.type === 'secureNote'
-            ? summarizeSecureNote(login.notes)
-            : login.type === 'sshKey'
-              ? login.fingerprint || 'SSH key'
-              : ''
+  const subtitle = SUBTITLE_BY_TYPE[login.type](login)
   return {
     id: login.id,
     type: login.type,
@@ -153,7 +159,26 @@ export function toView(login: StoredLogin): LoginView {
     phone: login.phone,
     identityUsername: login.identityUsername,
     publicKey: login.publicKey,
-    fingerprint: login.fingerprint
+    fingerprint: login.fingerprint,
+    bankName: login.bankName,
+    nameOnAccount: login.nameOnAccount,
+    accountType: login.accountType,
+    routingNumber: login.routingNumber,
+    branchNumber: login.branchNumber,
+    bankContactPhone: login.bankContactPhone,
+    dateOfBirth: login.dateOfBirth,
+    issuingCountry: login.issuingCountry,
+    issuingState: login.issuingState,
+    issueDate: login.issueDate,
+    expirationDate: login.expirationDate,
+    issuingAuthority: login.issuingAuthority,
+    licenseClass: login.licenseClass,
+    surname: login.surname,
+    givenName: login.givenName,
+    sex: login.sex,
+    birthPlace: login.birthPlace,
+    nationality: login.nationality,
+    passportType: login.passportType
   }
 }
 

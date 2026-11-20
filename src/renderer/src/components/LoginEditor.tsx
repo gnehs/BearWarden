@@ -244,7 +244,31 @@ const emptyFields: VaultItemFields = {
   licenseNumber: '',
   privateKey: '',
   publicKey: '',
-  fingerprint: ''
+  fingerprint: '',
+  bankName: '',
+  nameOnAccount: '',
+  accountType: '',
+  accountNumber: '',
+  routingNumber: '',
+  branchNumber: '',
+  pin: '',
+  swiftCode: '',
+  iban: '',
+  bankContactPhone: '',
+  dateOfBirth: '',
+  issuingCountry: '',
+  issuingState: '',
+  issueDate: '',
+  expirationDate: '',
+  issuingAuthority: '',
+  licenseClass: '',
+  surname: '',
+  givenName: '',
+  sex: '',
+  birthPlace: '',
+  nationality: '',
+  passportType: '',
+  nationalIdentificationNumber: ''
 }
 
 const noCardCoverSelection = {

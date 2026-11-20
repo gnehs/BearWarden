@@ -7,6 +7,7 @@ import {
   type PolicyEnforcementDecision
 } from '../bitwarden-policy'
 import { VaultError } from '../vault-errors'
+import { WIRE_TYPE_BY_ITEM_TYPE } from './item-fields'
 import type { VaultData } from './types'
 
 /** Returns only the safe, encrypted-at-rest policy snapshot for the active Bitwarden account. */
@@ -54,13 +55,6 @@ export function assertSendMutationAllowed(data: VaultData): void {
 }
 
 export function assertPersonalItemTypeAllowed(type: VaultItemType, data: VaultData): void {
-  const wireType: Record<VaultItemType, number> = {
-    login: 1,
-    secureNote: 2,
-    card: 3,
-    identity: 4,
-    sshKey: 5
-  }
   const decision = bitwardenPolicyDecision(BITWARDEN_POLICY_TYPE.RestrictedItemTypes, data)
   if (decision.state === 'not-applicable') return
   if (decision.state === 'fail-closed') throw new VaultError('POLICY_RESTRICTED')
@@ -68,10 +62,32 @@ export function assertPersonalItemTypeAllowed(type: VaultItemType, data: VaultDa
     decision.policies.some(
       (policy) =>
         policy.data?.kind !== 'restrictedItemTypes' ||
-        policy.data.cipherTypes.includes(wireType[type])
+        policy.data.cipherTypes.includes(WIRE_TYPE_BY_ITEM_TYPE[type])
     )
   ) {
     throw new VaultError('POLICY_RESTRICTED')
+  }
+}
+
+/** Cipher types that official clients create only behind the `pm-32009-new-item-types` flag. */
+const FLAGGED_ITEM_TYPES: ReadonlySet<VaultItemType> = new Set([
+  'bankAccount',
+  'driversLicense',
+  'passport'
+])
+
+/**
+ * Creation gate for item types an older server would reject on push. Synced items of these types
+ * stay readable and editable; only adding new ones waits for the server flag. A local vault that
+ * has never connected has no server to reject them.
+ */
+export function newItemTypesAvailable(data: VaultData): boolean {
+  return data.sync === null || data.sync.state.newItemTypesEnabled === true
+}
+
+export function assertServerAcceptsNewItemType(type: VaultItemType, data: VaultData): void {
+  if (FLAGGED_ITEM_TYPES.has(type) && !newItemTypesAvailable(data)) {
+    throw new VaultError('ITEM_TYPE_UNSUPPORTED')
   }
 }
 

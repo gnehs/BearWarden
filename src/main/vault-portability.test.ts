@@ -18,44 +18,13 @@ import {
 } from './vault-portability'
 import type { VaultService } from './vault-service'
 import { inspectNativeAttachmentBackup } from './native-attachment-backup'
+import { emptyItemFields } from './vault/item-fields'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const BACKUP_PASSWORD = 'portable backup password'
 const temporaryDirectories: string[] = []
 
-const emptyItemFields: VaultItemFields = {
-  username: '',
-  password: '',
-  totp: '',
-  uri: null,
-  cardholderName: '',
-  brand: '',
-  number: '',
-  expMonth: '',
-  expYear: '',
-  code: '',
-  title: '',
-  firstName: '',
-  middleName: '',
-  lastName: '',
-  address1: '',
-  address2: '',
-  address3: '',
-  city: '',
-  state: '',
-  postalCode: '',
-  country: '',
-  company: '',
-  email: '',
-  phone: '',
-  ssn: '',
-  identityUsername: '',
-  passportNumber: '',
-  licenseNumber: '',
-  privateKey: '',
-  publicKey: '',
-  fingerprint: ''
-}
+const emptyFields: VaultItemFields = emptyItemFields()
 
 function portableSnapshot(): PortableVaultSnapshot {
   return {
@@ -68,7 +37,7 @@ function portableSnapshot(): PortableVaultSnapshot {
     ],
     items: [
       {
-        ...emptyItemFields,
+        ...emptyFields,
         id: '00000000-0000-4000-8000-000000000002',
         type: 'login',
         name: 'Portable login',
@@ -346,6 +315,9 @@ describe('VaultPortabilityService', () => {
       skippedCards: 0,
       skippedIdentities: 0,
       skippedSshKeys: 0,
+      skippedBankAccounts: 0,
+      skippedDriversLicenses: 0,
+      skippedPassports: 0,
       skippedPasskeys: 0,
       skippedAttachments: 0,
       skippedPasswordHistoryEntries: 0,

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { StoredSharedLogin } from './types'
 import { toSharedSummary, toSharedView } from './views'
+import { emptyItemFields } from './item-fields'
 
 function sharedLogin(overrides: Partial<StoredSharedLogin> = {}): StoredSharedLogin {
   return {
+    ...emptyItemFields(),
     id: '80000000-0000-4000-8000-000000000001',
     type: 'login',
     name: 'Shared login',

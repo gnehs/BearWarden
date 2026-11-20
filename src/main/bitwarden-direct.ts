@@ -393,6 +393,8 @@ export interface BitwardenDirectState {
    * sync profile. Absent when the server did not report it.
    */
   premiumFromAnySource?: boolean
+  /** Server `pm-32009-new-item-types` flag from the latest committed sync. Missing means off. */
+  newItemTypesEnabled?: boolean
 }
 
 export interface BitwardenPinUnlockMaterial {
@@ -1276,7 +1278,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
           policySet: restorePolicySet(options.state.policySet),
           ...(typeof options.state.premiumFromAnySource === 'boolean'
             ? { premiumFromAnySource: options.state.premiumFromAnySource }
-            : {})
+            : {}),
+          ...(options.state.newItemTypesEnabled ? { newItemTypesEnabled: true } : {})
         }
       : {
           session: null,
@@ -1320,7 +1323,8 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       policySet: restorePolicySet(this.state.policySet),
       ...(typeof this.state.premiumFromAnySource === 'boolean'
         ? { premiumFromAnySource: this.state.premiumFromAnySource }
-        : {})
+        : {}),
+      ...(this.state.newItemTypesEnabled ? { newItemTypesEnabled: true } : {})
     }
   }
 
@@ -2570,6 +2574,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       await this.http.activeAccessToken(signal)
       invalidResponseStage = 'response'
       const payload = await this.http.sync(signal)
+      const newItemTypesEnabled = await this.http.newItemTypesEnabled(signal)
       invalidResponseStage = 'account'
       const profile = recordProperty(payload, 'profile')
       if (!profile) throw new BitwardenDirectError('INVALID_RESPONSE')
@@ -2639,6 +2644,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       const premiumFromAnySource = syncedPremiumFromAnySource(profile)
       if (premiumFromAnySource === undefined) delete this.state.premiumFromAnySource
       else this.state.premiumFromAnySource = premiumFromAnySource
+      this.state.newItemTypesEnabled = newItemTypesEnabled
       const session = this.http.exportSession()
       this.state.session = session ? this.normalizedSession(session) : null
       await this.notifyStateChanged()

@@ -24,7 +24,28 @@ export function useItemTypeMeta(): Record<VaultItemType, ItemTypeMeta> {
       },
       identity: { label: t`Identity`, icon: itemTypeIcons.identity },
       secureNote: { label: t`Secure note`, icon: itemTypeIcons.secureNote },
-      sshKey: { label: t`SSH key`, icon: itemTypeIcons.sshKey }
+      sshKey: { label: t`SSH key`, icon: itemTypeIcons.sshKey },
+      bankAccount: {
+        label: t({
+          message: 'Bank account',
+          comment: 'Vault item category label for bank account records.'
+        }),
+        icon: itemTypeIcons.bankAccount
+      },
+      driversLicense: {
+        label: t({
+          message: "Driver's license",
+          comment: "Vault item category label for driver's license records."
+        }),
+        icon: itemTypeIcons.driversLicense
+      },
+      passport: {
+        label: t({
+          message: 'Passport',
+          comment: 'Vault item category label for passport records.'
+        }),
+        icon: itemTypeIcons.passport
+      }
     }),
     [t]
   )

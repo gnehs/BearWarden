@@ -41,6 +41,11 @@ import type {
 } from './account-webauthn-registration-codec'
 import type { DuoLoginPrompt } from './duo-login'
 import type { SyncResult } from '../shared/vault-contract'
+import {
+  BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES,
+  ITEM_FIELD_NAMES,
+  emptyItemFields
+} from './vault/item-fields'
 
 const MASTER_PASSWORD = 'correct horse battery staple'
 const ATTACHMENT_OPERATION_ID = '70000000-0000-4000-8000-000000000001'
@@ -61,39 +66,7 @@ const IDS = [
 
 const temporaryDirectories: string[] = []
 
-const emptyItemFields: VaultItemFields = {
-  username: '',
-  password: '',
-  totp: '',
-  uri: null,
-  cardholderName: '',
-  brand: '',
-  number: '',
-  expMonth: '',
-  expYear: '',
-  code: '',
-  title: '',
-  firstName: '',
-  middleName: '',
-  lastName: '',
-  address1: '',
-  address2: '',
-  address3: '',
-  city: '',
-  state: '',
-  postalCode: '',
-  country: '',
-  company: '',
-  email: '',
-  phone: '',
-  ssn: '',
-  identityUsername: '',
-  passportNumber: '',
-  licenseNumber: '',
-  privateKey: '',
-  publicKey: '',
-  fingerprint: ''
-}
+const emptyFields: VaultItemFields = emptyItemFields()
 
 function customFieldRequest(login: LoginView, index: number): CustomFieldRequest {
   const field = login.customFields[index]
@@ -257,7 +230,7 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   const remoteFolders = [{ id: '90000000-0000-4000-8000-000000000001', name: 'Remote folder' }]
   const remoteLogins: BitwardenLoginItem[] = [
     {
-      ...emptyItemFields,
+      ...emptyFields,
       id: '90000000-0000-4000-8000-000000000002',
       type: 'login',
       organizationId: null,
@@ -306,7 +279,8 @@ function createSyncFake(initialState: BitwardenDirectState): BitwardenSyncClient
   ]
   const isolatedPersonalIds: string[] = []
   const fromDraft = (id: string, draft: BitwardenLoginDraft): BitwardenLoginItem => ({
-    ...emptyItemFields,
+    ...emptyFields,
+    ...Object.fromEntries(ITEM_FIELD_NAMES.map((name) => [name, draft[name] ?? emptyFields[name]])),
     id,
     type: draft.type ?? 'login',
     organizationId: null,
@@ -854,6 +828,56 @@ describe('VaultService encrypted local data', () => {
       username: 'protected-user',
       password: 'protected-secret'
     })
+  })
+
+  it('gates bank account, license, and passport creation on the server flag', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake(sync.state)
+    })
+    await service.setup(MASTER_PASSWORD)
+    const localPassport = await service.createLogin({
+      type: 'passport',
+      name: 'Local passport',
+      passportNumber: 'P1234567'
+    })
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+
+    await expect(service.syncStatus()).resolves.not.toHaveProperty('newItemTypesEnabled')
+    for (const type of ['bankAccount', 'driversLicense', 'passport'] as const) {
+      await expect(service.createLogin({ type, name: `New ${type}` })).rejects.toMatchObject({
+        code: 'ITEM_TYPE_UNSUPPORTED'
+      })
+    }
+    await expect(service.cloneLogin({ id: localPassport.id })).rejects.toMatchObject({
+      code: 'ITEM_TYPE_UNSUPPORTED'
+    })
+    await expect(
+      service.updateLogin({ id: localPassport.id, name: 'Edited passport', issuingCountry: 'TW' })
+    ).resolves.toMatchObject({ type: 'passport', name: 'Edited passport', issuingCountry: 'TW' })
+    await expect(
+      service.createLogin({ type: 'card', name: 'Still allowed' })
+    ).resolves.toMatchObject({ type: 'card' })
+  })
+
+  it('creates bank account items once the server enables new item types', async () => {
+    const { service } = await createHarness({
+      createSyncClient: (sync) => createSyncFake({ ...sync.state, newItemTypesEnabled: true })
+    })
+    await service.setup(MASTER_PASSWORD)
+    await service.connectSync({
+      serverUrl: 'https://vault.example.invalid',
+      email: 'sync@example.invalid',
+      masterPassword: MASTER_PASSWORD
+    })
+
+    await expect(service.syncStatus()).resolves.toMatchObject({ newItemTypesEnabled: true })
+    await expect(
+      service.createLogin({ type: 'bankAccount', name: 'Checking', bankName: 'Example Bank' })
+    ).resolves.toMatchObject({ type: 'bankAccount', subtitle: 'Example Bank' })
   })
 
   it('changes remote then local master password, invalidates PIN, and clears sync session', async () => {
@@ -6300,7 +6324,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const verified = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(verified.data).toMatchObject({
-      version: 24,
+      version: 25,
       sync: { pendingLoginImport: null }
     })
     verified.key.fill(0)
@@ -11090,7 +11114,7 @@ describe('VaultService encrypted local data', () => {
   it('ignores empty fields from other item types while preserving active field clears', async () => {
     const { service } = await createHarness()
     await service.setup(MASTER_PASSWORD)
-    const editorFields = { ...emptyItemFields }
+    const editorFields = { ...emptyFields }
     const itemTypes = ['login', 'card', 'identity', 'secureNote', 'sshKey'] as const
     const created: LoginView[] = []
 
@@ -11790,7 +11814,7 @@ describe('VaultService encrypted local data', () => {
         folders: [],
         logins: [
           {
-            ...emptyItemFields,
+            ...emptyFields,
             id: IDS[0],
             type: 'login',
             name: `Legacy V${version}`,
@@ -11872,7 +11896,7 @@ describe('VaultService encrypted local data', () => {
       expect(await service.revealPassword({ id: migrated.id })).toBe('legacy-secret')
       await service.lock()
       const unlocked = await store.unlock(MASTER_PASSWORD)
-      expect((unlocked.data as { version: number }).version).toBe(24)
+      expect((unlocked.data as { version: number }).version).toBe(25)
       unlocked.key.fill(0)
       unlocked.salt.fill(0)
     }
@@ -12082,7 +12106,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       logins: [{ passwordRevisionDate: null, autofillOnPageLoad: null }]
     })
     migrated.key.fill(0)
@@ -12114,11 +12138,73 @@ describe('VaultService encrypted local data', () => {
 
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       logins: [expect.objectContaining({ usageCount: 0 })]
     })
     migrated.key.fill(0)
     migrated.salt.fill(0)
+  })
+
+  it('migrates V23 items to empty bank account, license, and passport fields', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    const identity = await service.createLogin({
+      type: 'identity',
+      name: 'Pre-document identity',
+      passportNumber: 'P1234567'
+    })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as {
+      version: number
+      logins: Array<Record<string, unknown>>
+    }
+    data.version = 23
+    for (const name of BANK_ACCOUNT_AND_DOCUMENT_FIELD_NAMES) delete data.logins[0]![name]
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopenedStore = new EncryptedVaultStore<unknown>(filePath)
+    const reopened = new VaultService(reopenedStore, { copyText: vi.fn(), openExternal: vi.fn() })
+    await reopened.unlock(MASTER_PASSWORD)
+    await expect(reopened.getLogin({ id: identity.id })).resolves.toMatchObject({
+      type: 'identity',
+      bankName: '',
+      issuingCountry: ''
+    })
+    await reopened.lock()
+
+    const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
+    expect(migrated.data).toMatchObject({
+      version: 25,
+      logins: [
+        expect.objectContaining({ passportNumber: 'P1234567', accountNumber: '', givenName: '' })
+      ]
+    })
+    migrated.key.fill(0)
+    migrated.salt.fill(0)
+  })
+
+  it('rejects a current item that omits a bank account field', async () => {
+    const { filePath, service, store } = await createHarness()
+    await service.setup(MASTER_PASSWORD)
+    await service.createLogin({ name: 'Current login' })
+    await service.lock()
+
+    const unlocked = await store.unlock(MASTER_PASSWORD)
+    const data = unlocked.data as { logins: Array<Record<string, unknown>> }
+    delete data.logins[0]!.iban
+    await store.write(data, unlocked.key, unlocked.salt)
+    unlocked.key.fill(0)
+    unlocked.salt.fill(0)
+
+    const reopened = new VaultService(new EncryptedVaultStore<unknown>(filePath), {
+      copyText: vi.fn(),
+      openExternal: vi.fn()
+    })
+    await expect(reopened.unlock(MASTER_PASSWORD)).rejects.toMatchObject({ code: 'CORRUPT_VAULT' })
   })
 
   it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
@@ -12178,7 +12264,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       sync: { pendingLoginImport: null }
     })
     migrated.key.fill(0)
@@ -12213,7 +12299,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       sync: { pendingPersonalVaultPurge: null }
     })
     migrated.key.fill(0)
@@ -12377,7 +12463,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       generatorHistory: [],
       sends: [],
       nativeAttachmentRestore: null
@@ -12415,7 +12501,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       logins: [expect.objectContaining({ attachments: [] })],
       sends: []
     })
@@ -12454,7 +12540,7 @@ describe('VaultService encrypted local data', () => {
     await reopened.lock()
     const migrated = await reopenedStore.unlock(MASTER_PASSWORD)
     expect(migrated.data).toMatchObject({
-      version: 24,
+      version: 25,
       sync: { domainSettings: null }
     })
     migrated.key.fill(0)

@@ -42,6 +42,7 @@ export type VaultErrorCode =
   | 'DUPLICATE_NAME'
   | 'INVALID_INPUT'
   | 'POLICY_RESTRICTED'
+  | 'ITEM_TYPE_UNSUPPORTED'
   | 'INVALID_URL'
   | 'SYNC_AUTH_REQUIRED'
   | 'SYNC_NEW_DEVICE_REQUIRED'
@@ -264,6 +265,9 @@ export interface VaultExportResult {
   skippedCards?: number
   skippedIdentities?: number
   skippedSshKeys?: number
+  skippedBankAccounts?: number
+  skippedDriversLicenses?: number
+  skippedPassports?: number
   /** Number of Login-attached passkeys that CSV cannot represent. */
   skippedPasskeys?: number
   /** Number of attachment metadata records whose files and metadata CSV cannot carry. */
@@ -379,7 +383,15 @@ export interface FolderReorderRequest {
   orderedIds: string[]
 }
 
-export type VaultItemType = 'login' | 'card' | 'identity' | 'secureNote' | 'sshKey'
+export type VaultItemType =
+  | 'login'
+  | 'card'
+  | 'identity'
+  | 'secureNote'
+  | 'sshKey'
+  | 'bankAccount'
+  | 'driversLicense'
+  | 'passport'
 
 /** Matches Bitwarden's CipherRepromptType wire values. */
 export type VaultReprompt = 0 | 1
@@ -393,7 +405,10 @@ export const VAULT_LINKED_FIELD_IDS_BY_TYPE = {
     400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418
   ],
   secureNote: [],
-  sshKey: []
+  sshKey: [],
+  bankAccount: [],
+  driversLicense: [],
+  passport: []
 } as const satisfies Record<VaultItemType, readonly number[]>
 
 /** Decrypted custom field stored only inside the encrypted vault and main process. */
@@ -463,6 +478,32 @@ export interface VaultItemFields {
   privateKey: string
   publicKey: string
   fingerprint: string
+  bankName: string
+  nameOnAccount: string
+  /** Bitwarden BankAccountType wire value, or any unrecognized string from another client. */
+  accountType: string
+  accountNumber: string
+  routingNumber: string
+  branchNumber: string
+  pin: string
+  swiftCode: string
+  iban: string
+  bankContactPhone: string
+  /** Driver's license and passport dates use Bitwarden's `YYYY-MM-DD` string form. */
+  dateOfBirth: string
+  issuingCountry: string
+  issuingState: string
+  issueDate: string
+  expirationDate: string
+  issuingAuthority: string
+  licenseClass: string
+  surname: string
+  givenName: string
+  sex: string
+  birthPlace: string
+  nationality: string
+  passportType: string
+  nationalIdentificationNumber: string
 }
 
 /** Bitwarden URI match detection values. Null inherits the account default. */
@@ -988,6 +1029,11 @@ export interface SyncStatus {
   lastErrorDetail?: SyncInvalidResponseStage
   /** Fixed, value-free reason set only for an incompatible sync response. */
   lastErrorReason?: SyncInvalidResponseReason
+  /**
+   * Set when the connected server enables bank account, driver's license, and passport items.
+   * A configured account without it cannot create those types; existing ones stay editable.
+   */
+  newItemTypesEnabled?: true
   pendingImport?: {
     count: number
     startedAt: string
@@ -1373,6 +1419,25 @@ export interface LoginView extends LoginSummary {
   identityUsername: string
   publicKey: string
   fingerprint: string
+  bankName: string
+  nameOnAccount: string
+  accountType: string
+  routingNumber: string
+  branchNumber: string
+  bankContactPhone: string
+  dateOfBirth: string
+  issuingCountry: string
+  issuingState: string
+  issueDate: string
+  expirationDate: string
+  issuingAuthority: string
+  licenseClass: string
+  surname: string
+  givenName: string
+  sex: string
+  birthPlace: string
+  nationality: string
+  passportType: string
 }
 
 /** Renderer-safe attachment metadata. Wrapped keys, URLs, paths, and bytes remain in main. */
@@ -1414,7 +1479,18 @@ export interface LoginOpenUriRequest extends LoginIdRequest {
 }
 
 export type VaultSecretField =
-  'password' | 'number' | 'code' | 'ssn' | 'passportNumber' | 'licenseNumber' | 'privateKey'
+  | 'password'
+  | 'number'
+  | 'code'
+  | 'ssn'
+  | 'passportNumber'
+  | 'licenseNumber'
+  | 'privateKey'
+  | 'accountNumber'
+  | 'pin'
+  | 'swiftCode'
+  | 'iban'
+  | 'nationalIdentificationNumber'
 export type VaultEditorSecretField = VaultSecretField | 'totp'
 export type VaultCopyField =
   | VaultSecretField
@@ -1428,6 +1504,14 @@ export type VaultCopyField =
   | 'cardholderName'
   | 'brand'
   | 'cardExpiration'
+  | 'nameOnAccount'
+  | 'routingNumber'
+  | 'branchNumber'
+  | 'firstName'
+  | 'middleName'
+  | 'lastName'
+  | 'givenName'
+  | 'surname'
 
 export interface ItemFieldRequest extends LoginIdRequest {
   field: VaultCopyField

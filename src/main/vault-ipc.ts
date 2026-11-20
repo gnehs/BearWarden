@@ -87,7 +87,7 @@ import {
   type VaultCustomFieldType,
   type VaultCustomFieldUpdate,
   type VaultLoginUri,
-  type VaultItemType,
+  type VaultCopyField,
   type SyncConnectRequest,
   type SyncDuoCallbackRequest,
   type SyncDuoTwoFactorRequest,
@@ -126,7 +126,7 @@ import {
 import { exactKeys, plainRecord } from './plain-record'
 import { createTrustedIpc, parseNoInput, sendIpcEvent } from './typed-ipc'
 import { UUID_PATTERN, isPlainObjectRecord } from './validation-primitives'
-import { ITEM_FIELD_NAMES } from './vault/item-fields'
+import { ITEM_FIELD_NAMES, isVaultItemType } from './vault/item-fields'
 import {
   MAX_CUSTOM_FIELDS,
   MAX_EQUIVALENT_DOMAIN_GROUPS,
@@ -1528,16 +1528,8 @@ function parseLoginCreate(
     name: requiredString(record, 'name')
   }
   const type = record.type
-  if (
-    type !== undefined &&
-    type !== 'login' &&
-    type !== 'card' &&
-    type !== 'identity' &&
-    type !== 'secureNote' &&
-    type !== 'sshKey'
-  )
-    throw new VaultError('INVALID_INPUT')
-  if (type !== undefined) result.type = type as VaultItemType
+  if (type !== undefined && !isVaultItemType(type)) throw new VaultError('INVALID_INPUT')
+  if (type !== undefined) result.type = type
   applyItemDraftFields(record, result)
   return result
 }
@@ -1665,35 +1657,51 @@ function parseLoginUris(value: unknown): VaultLoginUri[] {
   })
 }
 
+const COPY_FIELDS: ReadonlySet<string> = new Set(
+  Object.keys({
+    password: true,
+    number: true,
+    code: true,
+    ssn: true,
+    passportNumber: true,
+    licenseNumber: true,
+    privateKey: true,
+    accountNumber: true,
+    pin: true,
+    swiftCode: true,
+    iban: true,
+    nationalIdentificationNumber: true,
+    username: true,
+    identityUsername: true,
+    uri: true,
+    email: true,
+    phone: true,
+    publicKey: true,
+    fingerprint: true,
+    cardholderName: true,
+    brand: true,
+    cardExpiration: true,
+    nameOnAccount: true,
+    routingNumber: true,
+    branchNumber: true,
+    firstName: true,
+    middleName: true,
+    lastName: true,
+    givenName: true,
+    surname: true
+  } satisfies Record<VaultCopyField, true>)
+)
+
 function parseItemField(value: unknown): ItemFieldRequest {
   const record = exactRecord(value, ['id', 'field', 'uriIndex', 'authorizationToken'])
   const field = record.field
-  if (
-    field !== 'password' &&
-    field !== 'number' &&
-    field !== 'code' &&
-    field !== 'ssn' &&
-    field !== 'passportNumber' &&
-    field !== 'licenseNumber' &&
-    field !== 'privateKey' &&
-    field !== 'username' &&
-    field !== 'identityUsername' &&
-    field !== 'uri' &&
-    field !== 'email' &&
-    field !== 'phone' &&
-    field !== 'publicKey' &&
-    field !== 'fingerprint' &&
-    field !== 'cardholderName' &&
-    field !== 'brand' &&
-    field !== 'cardExpiration'
-  )
-    throw new VaultError('INVALID_INPUT')
+  if (typeof field !== 'string' || !COPY_FIELDS.has(field)) throw new VaultError('INVALID_INPUT')
   const authorizationToken = optionalAuthorizationToken(record)
   const uriIndex = optionalUriIndex(record.uriIndex)
   if (uriIndex !== undefined && field !== 'uri') throw new VaultError('INVALID_INPUT')
   return {
     id: requiredString(record, 'id'),
-    field,
+    field: field as VaultCopyField,
     ...(authorizationToken ? { authorizationToken } : {}),
     ...(uriIndex === undefined ? {} : { uriIndex })
   }

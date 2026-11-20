@@ -6,6 +6,7 @@ import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
 import { itemListIcons } from './vault-item-type-icons'
+import { useItemTypeMeta } from '../hooks/use-item-type-meta'
 
 interface ItemDragPreviewProps {
   item: LoginSummary
@@ -22,13 +23,7 @@ export function ItemDragPreview({
 }: ItemDragPreviewProps): React.JSX.Element {
   const { t } = useLingui()
   const ItemIcon = itemListIcons[item.type]
-  const itemTypeLabel = {
-    login: t`Login`,
-    card: t`Card`,
-    identity: t`Identity`,
-    secureNote: t`Secure note`,
-    sshKey: t`SSH key`
-  }[item.type]
+  const itemTypeLabel = useItemTypeMeta()[item.type].label
   const stackDepth = Math.min(Math.max(count - 1, 0), 2)
 
   return (

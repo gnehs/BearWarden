@@ -42,7 +42,11 @@ import {
 } from './login-uris'
 import type { StoredLogin, VaultPlatform } from './types'
 import { findLogin, assertActiveLogin, resolveLoginBatch, normalizeFolderId } from './data-lookup'
-import { assertBitwardenPolicyDoesNotBlock, assertPersonalItemTypeAllowed } from './policy'
+import {
+  assertBitwardenPolicyDoesNotBlock,
+  assertPersonalItemTypeAllowed,
+  assertServerAcceptsNewItemType
+} from './policy'
 import { MAX_LOGIN_BATCH_IDS } from '../../shared/vault-contract'
 import { generateTotp } from '../totp'
 import { MAX_NAME_LENGTH, MAX_NOTES_LENGTH, MAX_ITEM_FIELD_LENGTH } from './limits'
@@ -76,6 +80,7 @@ export class VaultItems {
       const type = normalizeItemType(request.type ?? 'login')
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
       assertPersonalItemTypeAllowed(type, data)
+      assertServerAcceptsNewItemType(type, data)
       const fields = emptyItemFields()
       applyItemFields(fields, request, type)
       const uris = createRequestUris(request, type)
@@ -117,6 +122,7 @@ export class VaultItems {
       assertActiveLogin(source)
       assertBitwardenPolicyDoesNotBlock(BITWARDEN_POLICY_TYPE.OrganizationDataOwnership, data)
       assertPersonalItemTypeAllowed(source.type, data)
+      assertServerAcceptsNewItemType(source.type, data)
       const clone: StoredLogin = {
         id: this.core.validatedNewId(),
         type: source.type,

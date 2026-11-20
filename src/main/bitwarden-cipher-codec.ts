@@ -27,7 +27,14 @@ import type {
   VaultUriMatch
 } from '../shared/vault-contract'
 import type { StoredPasskeyCredential } from './passkey'
-import { emptyItemFields, type ItemFieldName } from './vault/item-fields'
+import {
+  ITEM_TYPE_BY_WIRE_TYPE,
+  WIRE_TYPE_BY_ITEM_TYPE,
+  emptyItemFields,
+  isBitwardenCipherWireType,
+  type BitwardenCipherWireType,
+  type ItemFieldName
+} from './vault/item-fields'
 import {
   MAX_ATTACHMENTS,
   MAX_ATTACHMENT_FILE_NAME_LENGTH,
@@ -55,27 +62,16 @@ const MAX_PASSKEYS_PER_ITEM = 1_000
 const MAX_PASSKEY_FIELD_LENGTH = 4_096
 const MAX_AGGREGATE_REMOTE_ROWS = 1_000_000
 
-type BitwardenCipherType = 1 | 2 | 3 | 4 | 5
+/** Item types whose payload is a flat object of optional encrypted strings. */
+type TypedStringItemType = 'card' | 'identity' | 'bankAccount' | 'driversLicense' | 'passport'
 
-const WIRE_TYPE_BY_ITEM_TYPE = {
-  login: 1,
-  secureNote: 2,
-  card: 3,
-  identity: 4,
-  sshKey: 5
-} as const satisfies Record<VaultItemType, BitwardenCipherType>
-
-const ITEM_TYPE_BY_WIRE_TYPE: Record<BitwardenCipherType, VaultItemType> = {
-  1: 'login',
-  2: 'secureNote',
-  3: 'card',
-  4: 'identity',
-  5: 'sshKey'
+function isTypedStringItemType(type: VaultItemType): type is TypedStringItemType {
+  return Object.hasOwn(TYPED_STRING_FIELDS, type)
 }
 
-/** Plain string fields of card and identity payloads, as item field and wire property. */
+/** Plain string fields of flat typed payloads, as item field and wire property. */
 const TYPED_STRING_FIELDS: Record<
-  'card' | 'identity',
+  TypedStringItemType,
   ReadonlyArray<readonly [Exclude<ItemFieldName, 'uri'>, string]>
 > = {
   card: [
@@ -105,7 +101,53 @@ const TYPED_STRING_FIELDS: Record<
     ['identityUsername', 'username'],
     ['passportNumber', 'passportNumber'],
     ['licenseNumber', 'licenseNumber']
-  ]
+  ],
+  bankAccount: sameWireNames([
+    'bankName',
+    'nameOnAccount',
+    'accountType',
+    'accountNumber',
+    'routingNumber',
+    'branchNumber',
+    'pin',
+    'swiftCode',
+    'iban',
+    'bankContactPhone'
+  ]),
+  driversLicense: sameWireNames([
+    'firstName',
+    'middleName',
+    'lastName',
+    'dateOfBirth',
+    'licenseNumber',
+    'issuingCountry',
+    'issuingState',
+    'issueDate',
+    'expirationDate',
+    'issuingAuthority',
+    'licenseClass'
+  ]),
+  passport: sameWireNames([
+    'surname',
+    'givenName',
+    'dateOfBirth',
+    'sex',
+    'birthPlace',
+    'nationality',
+    'issuingCountry',
+    'passportNumber',
+    'passportType',
+    'nationalIdentificationNumber',
+    'issuingAuthority',
+    'issueDate',
+    'expirationDate'
+  ])
+}
+
+function sameWireNames(
+  fields: ReadonlyArray<Exclude<ItemFieldName, 'uri'>>
+): ReadonlyArray<readonly [Exclude<ItemFieldName, 'uri'>, string]> {
+  return fields.map((field) => [field, field] as const)
 }
 
 export interface BitwardenFolder {
@@ -318,13 +360,9 @@ export function remoteCipherType(record: JsonObject): number {
   return value
 }
 
-export function isSupportedCipherType(value: number): value is BitwardenCipherType {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5
-}
-
-function bitwardenCipherType(record: JsonObject): BitwardenCipherType {
+function bitwardenCipherType(record: JsonObject): BitwardenCipherWireType {
   const value = remoteCipherType(record)
-  if (!isSupportedCipherType(value)) {
+  if (!isBitwardenCipherWireType(value)) {
     throw invalidResponse('unsupported-cipher-type')
   }
   return value
@@ -1213,7 +1251,7 @@ export function decryptLogin(
         decryptBitwardenString(value, key)
       )
       item.uri = item.uris[0]?.uri ?? null
-    } else if (itemType === 'card' || itemType === 'identity') {
+    } else if (isTypedStringItemType(itemType)) {
       const typed = recordProperty(raw, itemType)
       if (!typed) throw new BitwardenDirectError('INVALID_RESPONSE')
       for (const [field, wireName] of TYPED_STRING_FIELDS[itemType]) {
@@ -1244,7 +1282,7 @@ export function decryptLogin(
 function decryptBlobLogin(
   raw: JsonObject,
   content: JsonObject,
-  wireType: BitwardenCipherType,
+  wireType: BitwardenCipherWireType,
   attachments: BitwardenAttachment[]
 ): BitwardenLoginItem {
   const itemType = ITEM_TYPE_BY_WIRE_TYPE[wireType]
@@ -1287,7 +1325,7 @@ function decryptBlobLogin(
     item.passkeys = parseBlobFido2Credentials(typeData)
     item.uris = parseRemoteUris(readField(typeData, 'uris'), (value) => value)
     item.uri = item.uris[0]?.uri ?? null
-  } else if (itemType === 'card' || itemType === 'identity') {
+  } else if (isTypedStringItemType(itemType)) {
     for (const [field, wireName] of TYPED_STRING_FIELDS[itemType]) {
       item[field] = nullableStringProperty(typeData, wireName) ?? ''
     }
@@ -1360,6 +1398,9 @@ export function encryptLoginRequest(
     card: null,
     identity: null,
     sshKey: null,
+    bankAccount: null,
+    driversLicense: null,
+    passport: null,
     passwordHistory: draft.passwordHistoryChanged
       ? encryptLegacyPasswordHistory(draft.passwordHistory, key)
       : null
@@ -1388,7 +1429,7 @@ export function encryptLoginRequest(
       (value) => decryptBitwardenString(value, key),
       (entry) => ({ uri: encryptBitwardenString(entry.uri, key), match: entry.match })
     )
-  } else if (draft.type === 'card' || draft.type === 'identity') {
+  } else if (isTypedStringItemType(draft.type)) {
     for (const [field, wireName] of TYPED_STRING_FIELDS[draft.type]) {
       typeData[wireName] = encryptBitwardenString(draft[field], key)
     }
@@ -1459,7 +1500,7 @@ function encryptBlobLoginRequest(
     )
     if (!Object.hasOwn(typeData, 'totp')) typeData.totp = null
     if (!Object.hasOwn(typeData, 'fido2Credentials')) typeData.fido2Credentials = []
-  } else if (draft.type === 'card' || draft.type === 'identity') {
+  } else if (isTypedStringItemType(draft.type)) {
     for (const [field, wireName] of TYPED_STRING_FIELDS[draft.type]) {
       typeData[wireName] = draft[field]
     }
@@ -1496,6 +1537,9 @@ function encryptBlobLoginRequest(
     card: null,
     identity: null,
     sshKey: null,
+    bankAccount: null,
+    driversLicense: null,
+    passport: null,
     passwordHistory: null,
     data: encryptBitwardenCipherBlob(content as BitwardenCipherBlobValue, key)
   }

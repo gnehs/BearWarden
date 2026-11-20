@@ -657,6 +657,7 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 /** Answers the prelogin and password-token requests that precede every synced test client. */
 function passwordLoginResponse(url: string): Response | null {
+  if (url.endsWith('/api/config')) return jsonResponse({ featureStates: {} })
   if (url.endsWith('/identity/accounts/prelogin/password')) {
     return jsonResponse({ kdf: 0, kdfIterations: 5_000, salt: EMAIL })
   }
@@ -4923,8 +4924,8 @@ describe('BitwardenDirectClient', () => {
     const unsupportedPersonal = {
       ...cipher,
       id: '90000000-0000-4000-8000-000000000006',
-      type: 6,
-      bankAccount: { accountNumber: 'opaque-encrypted-bank-account' }
+      type: 9,
+      futureType: { value: 'opaque-encrypted-future-type' }
     }
     sync.ciphers = [cipher, unsupportedPersonal]
 
@@ -4936,13 +4937,42 @@ describe('BitwardenDirectClient', () => {
     expect(client.isolatedPersonalCipherIds()).toEqual(['90000000-0000-4000-8000-000000000006'])
   })
 
+  it('records the server new item types flag in exported state on each sync', async () => {
+    const sync = await encryptedSync()
+    let enabled = true
+    const http = new BitwardenHttpClient({
+      server: 'https://vault.example.invalid',
+      fetch: async (url) => {
+        if (url.endsWith('/api/config')) {
+          return jsonResponse({ featureStates: { 'pm-32009-new-item-types': enabled } })
+        }
+        const auth = passwordLoginResponse(url)
+        if (auth) return auth
+        if (url.endsWith('/api/sync')) return jsonResponse(sync)
+        return jsonResponse({ message: 'not found' }, 404)
+      }
+    })
+    const client = new BitwardenDirectClient({
+      serverUrl: 'https://vault.example.invalid',
+      email: EMAIL,
+      httpClient: http
+    })
+    await client.login({ email: EMAIL, password: PASSWORD })
+    await client.sync()
+    expect(client.exportState().newItemTypesEnabled).toBe(true)
+
+    enabled = false
+    await client.sync()
+    expect(client.exportState()).not.toHaveProperty('newItemTypesEnabled')
+  })
+
   it('rejects unsupported future organization cipher types', async () => {
     const sync = await encryptedSync()
     const cipher = (sync.ciphers as JsonObject[])[0]!
     const unsupportedOrganization = {
       ...cipher,
       id: '90000000-0000-4000-8000-000000000007',
-      type: 7,
+      type: 9,
       organizationId: '90000000-0000-4000-8000-000000000099',
       driversLicense: { number: 'opaque-encrypted-license' }
     }
