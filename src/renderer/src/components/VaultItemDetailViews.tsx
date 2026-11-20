@@ -35,6 +35,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import type { AttachmentOperations } from '@renderer/hooks/use-attachment-operations'
 import { useItemTypeMeta } from '@renderer/hooks/use-item-type-meta'
+import { useBankAccountTypeLabels } from '@renderer/hooks/use-bank-account-type-labels'
+import { formatDocumentDate, isBankAccountType } from '@renderer/lib/document-item-fields'
 import type { SelectedItemSecrets } from '@renderer/hooks/use-selected-item-secrets'
 import type { SelectedItemTotp } from '@renderer/hooks/use-totp-codes'
 import { normalizeBitwardenCardBrand } from '@renderer/lib/payment-card'
@@ -257,10 +259,108 @@ export function SelectedItemDetail({
       licenseNumber: t`Driver's license number`,
       privateKey: t`Private key`,
       publicKey: t`Public key`,
-      keyFingerprint: t`Key fingerprint`
+      keyFingerprint: t`Key fingerprint`,
+      bankName: t({
+        message: 'Bank name',
+        comment: 'Field label for the bank of a bank account item.'
+      }),
+      nameOnAccount: t({
+        message: 'Name on account',
+        comment: 'Field label for the account holder name of a bank account item.'
+      }),
+      accountType: t({
+        message: 'Account type',
+        comment: 'Field label for choosing a bank account kind, such as checking or savings.'
+      }),
+      accountNumber: t({
+        message: 'Account number',
+        comment: 'Masked field label for the bank account number.'
+      }),
+      routingNumber: t({
+        message: 'Routing number',
+        comment: 'Field label for the bank routing or sort code of a bank account item.'
+      }),
+      branchNumber: t({
+        message: 'Branch number',
+        comment: 'Field label for the bank branch number of a bank account item.'
+      }),
+      bankPin: t({
+        message: 'PIN',
+        context: 'bank-account-pin',
+        comment:
+          'Masked field label for the PIN of a bank account or its card, not the app unlock PIN.'
+      }),
+      swiftCode: t({
+        message: 'SWIFT code',
+        comment: 'Masked field label for the SWIFT/BIC code of a bank account item.'
+      }),
+      iban: t({
+        message: 'IBAN',
+        comment: 'Masked field label for the International Bank Account Number.'
+      }),
+      bankContactPhone: t({
+        message: 'Bank contact phone',
+        comment: 'Field label for the phone number of the bank in a bank account item.'
+      }),
+      firstName: t`First name`,
+      middleName: t`Middle name`,
+      lastName: t`Last name`,
+      dateOfBirth: t({
+        message: 'Date of birth',
+        comment: "Date field for the holder's birth date on a driver's license or passport."
+      }),
+      issuingCountry: t({
+        message: 'Issuing country',
+        comment: "Field label for the country that issued a driver's license or passport."
+      }),
+      issuingState: t({
+        message: 'Issuing state / province',
+        comment: "Field label for the state or province that issued a driver's license."
+      }),
+      issuingAuthority: t({
+        message: 'Issuing authority',
+        comment: "Field label for the agency that issued a driver's license or passport."
+      }),
+      issueDate: t({
+        message: 'Issue date',
+        comment: "Date field for when a driver's license or passport was issued."
+      }),
+      licenseClass: t({
+        message: 'License class',
+        comment: "Field label for the vehicle class on a driver's license, such as C or B."
+      }),
+      givenName: t({
+        message: 'Given name',
+        comment: 'Field label for the given names printed on a passport.'
+      }),
+      surname: t({
+        message: 'Surname',
+        comment: 'Field label for the surname printed on a passport.'
+      }),
+      sex: t({
+        message: 'Sex',
+        comment: 'Field label for the sex marker printed on a passport, such as F, M, or X.'
+      }),
+      birthPlace: t({
+        message: 'Place of birth',
+        comment: 'Field label for the place of birth printed on a passport.'
+      }),
+      nationality: t({
+        message: 'Nationality',
+        comment: 'Field label for the nationality printed on a passport.'
+      }),
+      passportType: t({
+        message: 'Passport type',
+        comment: 'Field label for the passport type code, such as P for an ordinary passport.'
+      }),
+      nationalIdentificationNumber: t({
+        message: 'National ID number',
+        comment: 'Masked field label for the national identification number on a passport.'
+      })
     }),
     [t]
   )
+  const bankAccountTypeLabels = useBankAccountTypeLabels()
   const linkedFieldLabels: Record<number, string> = {
     100: t`Username`,
     101: t`Password`,
@@ -299,8 +399,13 @@ export function SelectedItemDetail({
     unset: t`Not set`
   }
   const detailFieldList = useMemo(
-    () => detailFields(login, detailFieldLabels),
-    [detailFieldLabels, login]
+    () =>
+      detailFields(login, detailFieldLabels, {
+        date: formatDocumentDate,
+        bankAccountType: (value) =>
+          isBankAccountType(value) ? bankAccountTypeLabels[value] : value
+      }),
+    [bankAccountTypeLabels, detailFieldLabels, login]
   )
   return (
     <article className="flex size-full min-h-0 min-w-0 flex-col">

@@ -479,6 +479,25 @@ export function useVaultItemActions({
         identityUsername: draft.identityUsername,
         publicKey: draft.publicKey,
         fingerprint: draft.fingerprint,
+        bankName: draft.bankName,
+        nameOnAccount: draft.nameOnAccount,
+        accountType: draft.accountType,
+        routingNumber: draft.routingNumber,
+        branchNumber: draft.branchNumber,
+        bankContactPhone: draft.bankContactPhone,
+        dateOfBirth: draft.dateOfBirth,
+        issuingCountry: draft.issuingCountry,
+        issuingState: draft.issuingState,
+        issueDate: draft.issueDate,
+        expirationDate: draft.expirationDate,
+        issuingAuthority: draft.issuingAuthority,
+        licenseClass: draft.licenseClass,
+        surname: draft.surname,
+        givenName: draft.givenName,
+        sex: draft.sex,
+        birthPlace: draft.birthPlace,
+        nationality: draft.nationality,
+        passportType: draft.passportType,
         ...(changedSecrets.has('password') ? { password: draft.password } : {}),
         ...(changedSecrets.has('totp') ? { totp: draft.totp } : {}),
         ...(changedSecrets.has('number') ? { number: draft.number } : {}),
@@ -486,7 +505,14 @@ export function useVaultItemActions({
         ...(changedSecrets.has('ssn') ? { ssn: draft.ssn } : {}),
         ...(changedSecrets.has('passportNumber') ? { passportNumber: draft.passportNumber } : {}),
         ...(changedSecrets.has('licenseNumber') ? { licenseNumber: draft.licenseNumber } : {}),
-        ...(changedSecrets.has('privateKey') ? { privateKey: draft.privateKey } : {})
+        ...(changedSecrets.has('privateKey') ? { privateKey: draft.privateKey } : {}),
+        ...(changedSecrets.has('accountNumber') ? { accountNumber: draft.accountNumber } : {}),
+        ...(changedSecrets.has('pin') ? { pin: draft.pin } : {}),
+        ...(changedSecrets.has('swiftCode') ? { swiftCode: draft.swiftCode } : {}),
+        ...(changedSecrets.has('iban') ? { iban: draft.iban } : {}),
+        ...(changedSecrets.has('nationalIdentificationNumber')
+          ? { nationalIdentificationNumber: draft.nationalIdentificationNumber }
+          : {})
       }
       if (editorMode === 'create') {
         const request = {

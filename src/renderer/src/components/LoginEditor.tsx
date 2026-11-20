@@ -156,6 +156,9 @@ import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import CredentialGeneratorDialog from './CredentialGeneratorDialog'
 import { itemTypeIcons } from './vault-item-type-icons'
+import { DocumentItemEditorFields } from './DocumentItemEditorFields'
+import { useItemTypeMeta } from '../hooks/use-item-type-meta'
+import { invalidDocumentDateField } from '../lib/document-item-fields'
 import {
   canSelectCustomFieldType,
   reorderEditorItemsByClientId,
@@ -189,7 +192,7 @@ import { Progress, ProgressLabel, ProgressValue } from './ui/progress'
 import { ScrollArea } from './ui/scroll-area'
 
 type EditorSecretField = VaultEditorSecretField
-type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'reveal' | null
+type EditorErrorKind = 'name' | 'password' | 'ssh' | 'uri' | 'collection' | 'date' | 'reveal' | null
 type SecretLoadState = 'loading' | 'ready' | 'error'
 interface CardCoverCatalogState {
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -371,6 +374,8 @@ interface LoginEditorProps {
     canEditSecrets: boolean
   }
   busy: boolean
+  /** False when the connected server cannot store bank account, license, or passport items. */
+  newItemTypesAvailable?: boolean
   authorizationToken?: string
   attachmentUpload?: {
     attachmentCount: number
@@ -628,6 +633,7 @@ function LoginEditor({
   collections = [],
   sharedContext,
   busy,
+  newItemTypesAvailable = true,
   authorizationToken,
   attachmentUpload,
   onCancel,
@@ -636,6 +642,7 @@ function LoginEditor({
   onSave
 }: LoginEditorProps): React.JSX.Element {
   const { t } = useLingui()
+  const itemTypeMeta = useItemTypeMeta()
   const linkedFieldLabels: Record<number, string> = {
     100: t`Username`,
     101: t`Password`,
@@ -690,7 +697,39 @@ function LoginEditor({
     { value: 'card', label: t`Card`, description: t`Payment card and security code` },
     { value: 'identity', label: t`Identity`, description: t`Personal and contact information` },
     { value: 'secureNote', label: t`Secure note`, description: t`Encrypted notes only` },
-    { value: 'sshKey', label: t`SSH key`, description: t`Private key, public key, and fingerprint` }
+    {
+      value: 'sshKey',
+      label: t`SSH key`,
+      description: t`Private key, public key, and fingerprint`
+    },
+    ...(newItemTypesAvailable
+      ? ([
+          {
+            value: 'bankAccount',
+            label: itemTypeMeta.bankAccount.label,
+            description: t({
+              message: 'Account, routing, and IBAN numbers',
+              comment: 'Description of the bank account item type in the new item type picker.'
+            })
+          },
+          {
+            value: 'driversLicense',
+            label: itemTypeMeta.driversLicense.label,
+            description: t({
+              message: 'License number, class, and validity dates',
+              comment: "Description of the driver's license item type in the new item type picker."
+            })
+          },
+          {
+            value: 'passport',
+            label: itemTypeMeta.passport.label,
+            description: t({
+              message: 'Passport number, nationality, and validity dates',
+              comment: 'Description of the passport item type in the new item type picker.'
+            })
+          }
+        ] as const)
+      : [])
   ]
   const typeLabel = (type: VaultItemType): string =>
     itemTypes.find((item) => item.value === type)?.label ?? t`Item`
@@ -1580,6 +1619,13 @@ function LoginEditor({
       requestAnimationFrame(() => document.getElementById(`editor-uri-${blankUriIndex}`)?.focus())
       return
     }
+    const invalidDateField = invalidDocumentDateField(draft.type, draft, login)
+    if (invalidDateField) {
+      setError(t`Enter dates as a complete year, month, and day.`)
+      setErrorKind('date')
+      requestAnimationFrame(() => document.getElementById(`editor-${invalidDateField}`)?.focus())
+      return
+    }
     const importedSshKeyIncomplete =
       draft.type === 'sshKey' &&
       Boolean(draft.sshImportToken) &&
@@ -2345,6 +2391,26 @@ function LoginEditor({
                     {secretInput('passportNumber', t`Passport number`)}
                     {secretInput('licenseNumber', t`License number`)}
                   </>
+                )}
+
+                {(draft.type === 'bankAccount' ||
+                  draft.type === 'driversLicense' ||
+                  draft.type === 'passport') && (
+                  <DocumentItemEditorFields
+                    type={draft.type}
+                    draft={draft}
+                    disabled={busy}
+                    invalidDateField={
+                      errorKind === 'date'
+                        ? invalidDocumentDateField(draft.type, draft, login)
+                        : null
+                    }
+                    onChange={(field, value) => {
+                      update(field, value)
+                      clearValidationError('date')
+                    }}
+                    renderSecret={(field, label) => secretInput(field, label)}
+                  />
                 )}
 
                 {draft.type === 'secureNote' && (

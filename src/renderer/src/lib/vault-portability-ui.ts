@@ -42,7 +42,7 @@ export function formatVaultExportResult(result: VaultExportResult): string {
     result.attachmentCount === undefined ? '' : i18n._(msg`, ${result.attachmentCount} attachments`)
   const unsupported = result.skippedUnsupportedItems
     ? i18n._(
-        msg`; CSV also skipped ${result.skippedUnsupportedItems} unsupported items (${result.skippedCards ?? 0} cards, ${result.skippedIdentities ?? 0} identities, and ${result.skippedSshKeys ?? 0} SSH keys)`
+        msg`; CSV also skipped ${result.skippedUnsupportedItems} unsupported items (${result.skippedCards ?? 0} cards, ${result.skippedIdentities ?? 0} identities, ${result.skippedSshKeys ?? 0} SSH keys, ${result.skippedBankAccounts ?? 0} bank accounts, ${result.skippedDriversLicenses ?? 0} driver's licenses, and ${result.skippedPassports ?? 0} passports)`
       )
     : ''
   const passkeys = result.skippedPasskeys

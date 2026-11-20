@@ -4,7 +4,8 @@ import {
   customFieldCopyFeedbackKey,
   customFieldDisplayValue,
   detailFields,
-  matchesCustomFieldSource
+  matchesCustomFieldSource,
+  type DetailField
 } from './vault-detail-view-model'
 import { makeLoginView } from './vault-detail-test-fixtures'
 
@@ -168,5 +169,62 @@ describe('custom field view model', () => {
     expect(customFieldCopyFeedbackKey('item-id', 2, field)).toBe(
       '["custom","item-id",2,"Account alias","text",null]'
     )
+  })
+})
+
+describe('detailFields for bank accounts and identity documents', () => {
+  const format = {
+    date: (value: string): string => `date:${value}`,
+    bankAccountType: (value: string): string => `type:${value}`
+  }
+  const rows = (fields: DetailField[]): Array<Partial<DetailField>> =>
+    fields.map(({ field, value, secret, copyable }) => ({ field, value, secret, copyable }))
+
+  it('masks bank account numbers and keeps routing details copyable', () => {
+    const fields = detailFields(
+      makeLoginView({
+        type: 'bankAccount',
+        bankName: 'Example Bank',
+        accountType: 'savings',
+        routingNumber: '021000021'
+      }),
+      {},
+      format
+    )
+    expect(
+      rows(fields)
+        .filter((row) => row.secret)
+        .map((row) => row.field)
+    ).toEqual(['accountNumber', 'pin', 'swiftCode', 'iban'])
+    expect(rows(fields)).toContainEqual({
+      field: 'routingNumber',
+      value: '021000021',
+      secret: undefined,
+      copyable: true
+    })
+    expect(fields.map((row) => row.value)).toContain('type:savings')
+    expect(fields.every((row) => !row.secret || row.value === undefined)).toBe(true)
+  })
+
+  it('masks license and passport numbers and formats document dates', () => {
+    const license = detailFields(
+      makeLoginView({ type: 'driversLicense', firstName: 'Test', expirationDate: '2028-02-01' }),
+      {},
+      format
+    )
+    expect(license.filter((row) => row.secret).map((row) => row.field)).toEqual(['licenseNumber'])
+    expect(license.map((row) => row.value)).toContain('date:2028-02-01')
+
+    const passport = detailFields(
+      makeLoginView({ type: 'passport', givenName: 'Test', dateOfBirth: '1990-01-31' }),
+      {},
+      format
+    )
+    expect(passport.filter((row) => row.secret).map((row) => row.field)).toEqual([
+      'passportNumber',
+      'nationalIdentificationNumber'
+    ])
+    expect(passport.map((row) => row.value)).toContain('date:1990-01-31')
+    expect(passport.map((row) => row.value)).not.toContain('date:')
   })
 })

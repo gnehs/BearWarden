@@ -38,10 +38,13 @@ describe('Bitwarden CSV export warning', () => {
       exportedFolders: 2,
       exportedItems: 4,
       skippedTrashItems: 3,
-      skippedUnsupportedItems: 6,
+      skippedUnsupportedItems: 9,
       skippedCards: 1,
       skippedIdentities: 2,
       skippedSshKeys: 3,
+      skippedBankAccounts: 1,
+      skippedDriversLicenses: 1,
+      skippedPassports: 1,
       skippedPasskeys: 5,
       skippedAttachments: 6,
       skippedPasswordHistoryEntries: 7,
@@ -59,10 +62,13 @@ describe('Bitwarden CSV export warning', () => {
     expect(message).toContain('4 個項目')
     expect(message).toContain('2 個資料夾')
     expect(message).toContain('垃圾桶中的 3 個項目')
-    expect(message).toContain('6 個不支援的項目')
+    expect(message).toContain('9 個不支援的項目')
     expect(message).toContain('1 張卡片')
     expect(message).toContain('2 個身分資料')
     expect(message).toContain('3 個 SSH 金鑰')
+    expect(message).toContain('1 個銀行帳戶')
+    expect(message).toContain('1 張駕照')
+    expect(message).toContain('1 本護照')
     expect(message).toContain('CSV 無法表示的 5 個通行密鑰')
     expect(message).toContain('6 個附件')
     expect(message).toContain('7 筆密碼歷程記錄')

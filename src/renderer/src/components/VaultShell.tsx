@@ -1259,6 +1259,9 @@ function VaultShellContent({
                       : undefined
                   }
                   busy={busy}
+                  newItemTypesAvailable={
+                    !syncStatus.configured || syncStatus.newItemTypesEnabled === true
+                  }
                   authorizationToken={
                     selectedLogin ? authorizationTokens[selectedLogin.id] : undefined
                   }

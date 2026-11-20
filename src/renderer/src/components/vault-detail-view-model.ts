@@ -67,7 +67,21 @@ export function detailFieldCopyFeedbackKey(
   return `field:${itemId}:${field}:${uriIndex ?? ''}`
 }
 
-export function detailFields(login: LoginView, labels: Record<string, string>): DetailField[] {
+export interface DetailFieldFormatters {
+  date: (value: string) => string
+  bankAccountType: (value: string) => string
+}
+
+const identityFormatters: DetailFieldFormatters = {
+  date: (value) => value,
+  bankAccountType: (value) => value
+}
+
+export function detailFields(
+  login: LoginView,
+  labels: Record<string, string>,
+  format: DetailFieldFormatters = identityFormatters
+): DetailField[] {
   if (login.type === 'login') {
     return [
       { field: 'username', label: labels.username, value: login.username, copyable: true },
@@ -139,6 +153,73 @@ export function detailFields(login: LoginView, labels: Record<string, string>): 
       { field: 'licenseNumber', label: labels.licenseNumber, secret: true }
     ]
   }
+  if (login.type === 'bankAccount') {
+    return [
+      { field: 'username', label: labels.bankName, value: login.bankName },
+      {
+        field: 'nameOnAccount',
+        label: labels.nameOnAccount,
+        value: login.nameOnAccount,
+        copyable: true
+      },
+      {
+        field: 'username',
+        label: labels.accountType,
+        value: login.accountType && format.bankAccountType(login.accountType)
+      },
+      { field: 'accountNumber', label: labels.accountNumber, secret: true },
+      {
+        field: 'routingNumber',
+        label: labels.routingNumber,
+        value: login.routingNumber,
+        copyable: true
+      },
+      {
+        field: 'branchNumber',
+        label: labels.branchNumber,
+        value: login.branchNumber,
+        copyable: true
+      },
+      { field: 'pin', label: labels.bankPin, secret: true },
+      { field: 'swiftCode', label: labels.swiftCode, secret: true },
+      { field: 'iban', label: labels.iban, secret: true },
+      { field: 'username', label: labels.bankContactPhone, value: login.bankContactPhone }
+    ]
+  }
+  if (login.type === 'driversLicense') {
+    return [
+      { field: 'firstName', label: labels.firstName, value: login.firstName, copyable: true },
+      { field: 'middleName', label: labels.middleName, value: login.middleName, copyable: true },
+      { field: 'lastName', label: labels.lastName, value: login.lastName, copyable: true },
+      { field: 'licenseNumber', label: labels.licenseNumber, secret: true },
+      ...documentDates(login, labels, format, ['dateOfBirth']),
+      { field: 'username', label: labels.issuingCountry, value: login.issuingCountry },
+      { field: 'username', label: labels.issuingState, value: login.issuingState },
+      { field: 'username', label: labels.issuingAuthority, value: login.issuingAuthority },
+      ...documentDates(login, labels, format, ['issueDate', 'expirationDate']),
+      { field: 'username', label: labels.licenseClass, value: login.licenseClass }
+    ]
+  }
+  if (login.type === 'passport') {
+    return [
+      { field: 'givenName', label: labels.givenName, value: login.givenName, copyable: true },
+      { field: 'surname', label: labels.surname, value: login.surname, copyable: true },
+      ...documentDates(login, labels, format, ['dateOfBirth']),
+      { field: 'username', label: labels.sex, value: login.sex },
+      { field: 'username', label: labels.birthPlace, value: login.birthPlace },
+      { field: 'username', label: labels.nationality, value: login.nationality },
+      { field: 'passportNumber', label: labels.passportNumber, secret: true },
+      { field: 'username', label: labels.passportType, value: login.passportType },
+      {
+        field: 'nationalIdentificationNumber',
+        label: labels.nationalIdentificationNumber,
+        secret: true
+      },
+      { field: 'username', label: labels.issuingCountry, value: login.issuingCountry },
+      { field: 'username', label: labels.issuingAuthority, value: login.issuingAuthority },
+      ...documentDates(login, labels, format, ['issueDate', 'expirationDate'])
+    ]
+  }
   if (login.type === 'sshKey') {
     return [
       { field: 'privateKey', label: labels.privateKey, secret: true },
@@ -152,4 +233,18 @@ export function detailFields(login: LoginView, labels: Record<string, string>): 
     ]
   }
   return []
+}
+
+function documentDates(
+  login: LoginView,
+  labels: Record<string, string>,
+  format: DetailFieldFormatters,
+  fields: ReadonlyArray<'dateOfBirth' | 'issueDate' | 'expirationDate'>
+): DetailField[] {
+  return fields.map((field) => ({
+    // Display-only rows reuse a non-secret field id; they are neither copyable nor revealable.
+    field: 'username',
+    label: labels[field]!,
+    value: login[field] && format.date(login[field])
+  }))
 }
