@@ -21,6 +21,7 @@ import {
   decryptBitwardenString,
   decryptBitwardenWrappedKey,
   deriveBitwardenSendKey,
+  deriveBitwardenSendPasswordHash,
   encryptBitwardenBytes,
   encryptBitwardenCipherBlob,
   encryptBitwardenString,
@@ -3206,13 +3207,30 @@ describe('BitwardenDirectClient', () => {
     userKey.fill(0)
   })
 
-  it('downloads a file Send through legacy access and decrypts bytes only in main', async () => {
+  async function sendDownloadFixture(
+    handle: (ctx: {
+      url: string
+      init: RequestInit | undefined
+      send: JsonObject
+      fileId: string
+      encryptedFile: Buffer
+      sendHash: string
+    }) => Response | undefined
+  ): Promise<{
+    client: BitwardenDirectClient
+    fetch: ReturnType<typeof vi.fn<FetchLike>>
+    plaintext: Buffer
+    sendHash: string
+  }> {
     const sync = await encryptedSync()
     const userKey = Buffer.alloc(64, 7)
     const seed = Buffer.alloc(16, 5)
     const sendKey = deriveBitwardenSendKey(seed)
     const plaintext = Buffer.from('downloaded Send file')
     const encryptedFile = encryptBitwardenAttachmentBuffer(plaintext, sendKey)
+    const sendHash = (await deriveBitwardenSendPasswordHash('send-password', seed)).toString(
+      'base64'
+    )
     const fileId = 'fedcba9876543210fedcba9876543210'
     const send: JsonObject = {
       id: SEND_ID,
@@ -3239,31 +3257,11 @@ describe('BitwardenDirectClient', () => {
     }
     sync.sends = [send]
     const fetch = vi.fn<FetchLike>().mockImplementation(async (url, init) => {
+      const handled = handle({ url, init, send, fileId, encryptedFile, sendHash })
+      if (handled) return handled
       const auth = passwordLoginResponse(url)
       if (auth) return auth
       if (url.endsWith('/api/sync')) return jsonResponse(sync)
-      if (url.endsWith('/api/sends')) return jsonResponse(send)
-      if (url.endsWith(`/api/sends/access/${send.accessId}`)) {
-        expect(init?.method).toBe('POST')
-        expect(JSON.parse(String(init?.body))).toEqual({ password: 'send-password' })
-        return jsonResponse({
-          id: SEND_ID,
-          type: 1,
-          name: send.name,
-          file: send.file,
-          expirationDate: null,
-          creatorIdentifier: 'creator'
-        })
-      }
-      if (url.endsWith(`/api/sends/${SEND_ID}/access/file/${fileId}`)) {
-        expect(init?.method).toBe('POST')
-        expect(JSON.parse(String(init?.body))).toEqual({ password: 'send-password' })
-        return jsonResponse({ id: fileId, url: `/api/sends/${SEND_ID}/${fileId}?t=capability` })
-      }
-      if (url.includes(`/api/sends/${SEND_ID}/${fileId}`)) {
-        expect(init?.method).toBe('GET')
-        return new Response(new Blob([new Uint8Array(encryptedFile)]), { status: 200 })
-      }
       return jsonResponse({ message: 'not found' }, 404)
     })
     const http = new BitwardenHttpClient({ server: 'https://vault.example.invalid', fetch })
@@ -3274,15 +3272,148 @@ describe('BitwardenDirectClient', () => {
     })
     await client.login({ email: EMAIL, password: PASSWORD })
     await client.sync()
+    return { client, fetch, plaintext, sendHash }
+  }
+
+  function bearerOf(init: RequestInit | undefined): string | null {
+    return new Headers(init?.headers).get('authorization')
+  }
+
+  it('downloads a file Send through the send_access token grant and decrypts bytes only in main', async () => {
+    const accessToken = 'send-token-value'
+    const { client, fetch, plaintext, sendHash } = await sendDownloadFixture(
+      ({ url, init, send, fileId, encryptedFile, sendHash: hash }) => {
+        if (url.endsWith('/identity/connect/token')) {
+          const form = new URLSearchParams(String(init?.body))
+          if (form.get('grant_type') !== 'send_access') return undefined
+          expect(Object.fromEntries(form)).toEqual({
+            grant_type: 'send_access',
+            client_id: 'send',
+            scope: 'api.send.access',
+            send_id: send.accessId,
+            password_hash_b64: hash
+          })
+          return jsonResponse({
+            access_token: accessToken,
+            expires_in: 120,
+            token_type: 'Bearer',
+            scope: 'api.send.access'
+          })
+        }
+        if (url.endsWith('/api/sends/access')) {
+          expect(init?.method).toBe('POST')
+          expect(bearerOf(init)).toBe(`Bearer ${accessToken}`)
+          return jsonResponse({
+            id: send.accessId,
+            type: 1,
+            name: send.name,
+            file: send.file,
+            expirationDate: null,
+            creatorIdentifier: 'creator',
+            object: 'send-access'
+          })
+        }
+        if (url.endsWith(`/api/sends/access/file/${fileId}`)) {
+          expect(init?.method).toBe('POST')
+          expect(bearerOf(init)).toBe(`Bearer ${accessToken}`)
+          return jsonResponse({
+            object: 'send-fileDownload',
+            id: fileId,
+            url: `/api/sends/${SEND_ID}/${fileId}?t=capability`
+          })
+        }
+        if (url.includes(`/api/sends/${SEND_ID}/${fileId}`)) {
+          expect(init?.method).toBe('GET')
+          expect(bearerOf(init)).toBeNull()
+          return new Response(new Blob([new Uint8Array(encryptedFile)]), { status: 200 })
+        }
+        return undefined
+      }
+    )
+    expect(sendHash).not.toBe('send-password')
     const downloaded = await client.downloadFileSend(SEND_ID, 'send-password')
     expect(downloaded.fileName).toBe('download.txt')
     expect(downloaded.data).toEqual(plaintext)
+    const tokenCalls = fetch.mock.calls.filter(([url]) => url.endsWith('/identity/connect/token'))
+    expect(
+      tokenCalls.filter(([, init]) => String(init?.body).includes('send_access'))
+    ).toHaveLength(1)
+    for (const [url, init] of fetch.mock.calls) {
+      if (url.endsWith('/api/sync')) expect(bearerOf(init)).not.toContain(accessToken)
+    }
     downloaded.data.fill(0)
-    encryptedFile.fill(0)
-    plaintext.fill(0)
-    sendKey.fill(0)
-    seed.fill(0)
-    userKey.fill(0)
+  })
+
+  it('does not send a password hash for a Send without a password', async () => {
+    const { client, fetch } = await sendDownloadFixture(({ url, init }) => {
+      if (url.endsWith('/identity/connect/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        if (form.get('grant_type') !== 'send_access') return undefined
+        return jsonResponse(
+          { error: 'invalid_request', send_access_error_type: 'send_id_required' },
+          400
+        )
+      }
+      return undefined
+    })
+    await expect(client.downloadFileSend(SEND_ID, null)).rejects.toBeInstanceOf(Error)
+    const grant = fetch.mock.calls
+      .map(([, init]) => new URLSearchParams(String(init?.body)))
+      .find((form) => form.get('grant_type') === 'send_access')
+    expect(grant?.has('password_hash_b64')).toBe(false)
+  })
+
+  it('reports a missing Send password as FORBIDDEN, not as an expired account session', async () => {
+    const { client, fetch } = await sendDownloadFixture(({ url, init }) => {
+      if (url.endsWith('/identity/connect/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        if (form.get('grant_type') !== 'send_access') return undefined
+        return jsonResponse(
+          { error: 'invalid_request', send_access_error_type: 'password_hash_b64_required' },
+          400
+        )
+      }
+      return undefined
+    })
+    await expect(client.downloadFileSend(SEND_ID, null)).rejects.toMatchObject({
+      code: 'FORBIDDEN'
+    })
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/api/sends/access'))).toBe(false)
+  })
+
+  it('reports a wrong Send password as NOT_FOUND and never downloads', async () => {
+    const { client, fetch } = await sendDownloadFixture(({ url, init }) => {
+      if (url.endsWith('/identity/connect/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        if (form.get('grant_type') !== 'send_access') return undefined
+        return jsonResponse(
+          { error: 'invalid_grant', send_access_error_type: 'password_hash_b64_invalid' },
+          404
+        )
+      }
+      return undefined
+    })
+    await expect(client.downloadFileSend(SEND_ID, 'wrong')).rejects.toMatchObject({
+      code: 'NOT_FOUND'
+    })
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/api/sends/access'))).toBe(false)
+  })
+
+  it('rejects a Send access response whose id is not the cached access id', async () => {
+    const { client } = await sendDownloadFixture(({ url, init, send }) => {
+      if (url.endsWith('/identity/connect/token')) {
+        const form = new URLSearchParams(String(init?.body))
+        if (form.get('grant_type') !== 'send_access') return undefined
+        return jsonResponse({ access_token: 't', expires_in: 120, token_type: 'Bearer' })
+      }
+      if (url.endsWith('/api/sends/access')) {
+        return jsonResponse({ id: 'someone-else', type: 1, name: send.name, file: send.file })
+      }
+      return undefined
+    })
+    await expect(client.downloadFileSend(SEND_ID, null)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE'
+    })
   })
 
   it('passes authenticated account-breach reports through without requiring decrypted vault keys', async () => {

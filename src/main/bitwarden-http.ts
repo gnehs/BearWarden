@@ -331,6 +331,14 @@ export interface BitwardenSendFileDownload {
   download: (signal?: AbortSignal) => Promise<Buffer>
 }
 
+export interface BitwardenSendAccessSession {
+  /** Anonymous Send access payload; `id` is the Send access id, not the owner's Send id. */
+  access: JsonObject
+  getFileDownload: (fileId: string, expectedSize: number) => Promise<BitwardenSendFileDownload>
+  /** Drops the short-lived Send token. */
+  dispose: () => void
+}
+
 export interface PasswordTokenForm {
   email: string
   /** Already transformed by the caller's crypto layer; never a raw master password. */
@@ -1938,60 +1946,85 @@ export class BitwardenHttpClient {
     )
   }
 
-  async getSendAccess(
+  /**
+   * Opens a short-lived anonymous Send access session through the `send_access` token grant.
+   * The Send token is kept only inside the returned session and is never merged with the
+   * account session; call `dispose` once the download is finished.
+   */
+  async openSendAccess(
     accessId: string,
-    password: string | null,
+    passwordHashB64: string | null,
     signal?: AbortSignal
-  ): Promise<JsonObject> {
-    const response = await this.requestJson(
-      'POST',
-      `${this.urls.apiUrl}/sends/access/${encodeURIComponent(assertId(accessId))}`,
-      {
-        body: { password },
-        headers: { 'Send-Id': assertId(accessId) },
-        signal,
-        authenticate: false
+  ): Promise<BitwardenSendAccessSession> {
+    const form = new URLSearchParams({
+      grant_type: 'send_access',
+      client_id: 'send',
+      scope: 'api.send.access',
+      send_id: assertId(accessId)
+    })
+    if (passwordHashB64 !== null) form.set('password_hash_b64', assertId(passwordHashB64))
+    let token: string | null = null
+    const call = async (url: string): Promise<JsonValue> => {
+      if (token === null) throw new BitwardenHttpError('AUTH')
+      try {
+        return await this.requestJson('POST', url, {
+          signal,
+          authenticate: false,
+          headers: { authorization: `Bearer ${token}` }
+        })
+      } catch (error) {
+        throw asSendAccessError(error)
       }
-    )
-    return parseSendAccessEntity(response)
-  }
-
-  async getSendFileDownload(
-    sendId: string,
-    fileId: string,
-    password: string | null,
-    expectedSize: number,
-    signal?: AbortSignal
-  ): Promise<BitwardenSendFileDownload> {
-    if (
-      !Number.isSafeInteger(expectedSize) ||
-      expectedSize < 1 ||
-      expectedSize > MAX_SEND_FILE_BYTES
-    ) {
-      throw new BitwardenHttpError('INVALID_RESPONSE')
     }
-    const response = await this.requestJson(
-      'POST',
-      `${this.urls.apiUrl}/sends/${encodeURIComponent(assertId(sendId))}/access/file/${encodeURIComponent(assertId(fileId))}`,
-      {
-        body: { password },
-        headers: { 'Send-Id': assertId(sendId) },
-        signal,
-        authenticate: false
+    try {
+      token = parseSendAccessToken(
+        await this.requestJson('POST', `${this.urls.identityUrl}/connect/token`, {
+          form,
+          signal,
+          authenticate: false
+        })
+      )
+    } catch (error) {
+      throw asSendAccessError(error)
+    }
+    try {
+      const access = parseSendAccessEntity(await call(`${this.urls.apiUrl}/sends/access`))
+      return {
+        access,
+        getFileDownload: async (fileId, expectedSize) => {
+          if (
+            !Number.isSafeInteger(expectedSize) ||
+            expectedSize < 1 ||
+            expectedSize > MAX_SEND_FILE_BYTES
+          ) {
+            throw new BitwardenHttpError('INVALID_RESPONSE')
+          }
+          const parsed = parseSendFileDownload(
+            await call(
+              `${this.urls.apiUrl}/sends/access/file/${encodeURIComponent(assertId(fileId))}`
+            ),
+            fileId
+          )
+          const url = resolveAttachmentDownloadUrl(
+            parsed.url,
+            this.urls.webVaultUrl,
+            this.attachmentDownloadOrigins,
+            this.allowHttpLoopback
+          )
+          return {
+            id: parsed.id,
+            url,
+            download: (downloadSignal) =>
+              this.requestAttachmentBytes(url, expectedSize, downloadSignal ?? signal)
+          }
+        },
+        dispose: () => {
+          token = null
+        }
       }
-    )
-    const parsed = parseSendFileDownload(response, fileId)
-    const url = resolveAttachmentDownloadUrl(
-      parsed.url,
-      this.urls.webVaultUrl,
-      this.attachmentDownloadOrigins,
-      this.allowHttpLoopback
-    )
-    return {
-      id: parsed.id,
-      url,
-      download: (downloadSignal) =>
-        this.requestAttachmentBytes(url, expectedSize, downloadSignal ?? signal)
+    } catch (error) {
+      token = null
+      throw error
     }
   }
 
@@ -4005,10 +4038,43 @@ function parseSendAccessEntity(value: JsonValue): JsonObject {
   const entity = parseSendEntity(value)
   const type = readField(entity, 'type')
   const id = readField(entity, 'id')
-  if ((type !== 0 && type !== 1) || typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+  if ((type !== 0 && type !== 1) || typeof id !== 'string' || id.length === 0) {
     throw new BitwardenHttpError('INVALID_RESPONSE')
   }
   return entity
+}
+
+function parseSendAccessToken(value: JsonValue): string {
+  if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const token = readField(value, 'access_token')
+  const tokenType = readField(value, 'token_type')
+  if (
+    typeof token !== 'string' ||
+    token.length === 0 ||
+    typeof tokenType !== 'string' ||
+    tokenType.toLowerCase() !== 'bearer'
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  return token
+}
+
+/**
+ * A Send token rejection says nothing about the account session, so it must never surface as
+ * `AUTH` (which the sync layer treats as a signed-out account). A missing or stale Send
+ * credential becomes `FORBIDDEN`; an unknown or wrong Send credential stays `NOT_FOUND`.
+ */
+function asSendAccessError(error: unknown): unknown {
+  if (!(error instanceof BitwardenHttpError)) return error
+  if (error.code === 'AUTH') return new BitwardenHttpError('FORBIDDEN', error.status)
+  if (
+    error.code === 'NETWORK' &&
+    error.status === 400 &&
+    readField(error.details ?? {}, 'send_access_error_type') === 'password_hash_b64_required'
+  ) {
+    return new BitwardenHttpError('FORBIDDEN', error.status)
+  }
+  return error
 }
 
 function parseSendFileDownload(value: JsonValue, expectedId: string): { id: string; url: string } {

@@ -44,6 +44,7 @@ import {
   type BitwardenEquivalentDomainSettings,
   type BitwardenEquivalentDomainUpdate,
   type BitwardenEmergencyAccess,
+  type BitwardenSendAccessSession,
   type BitwardenSendFileRequest,
   type BitwardenSendRequest,
   type BitwardenPrelogin,
@@ -2217,15 +2218,24 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
     let sendKey: Buffer | null = null
     let encrypted: Buffer | null = null
     let plaintext: Buffer | null = null
+    let passwordHashB64: string | null = null
+    let session: BitwardenSendAccessSession | null = null
     try {
       seed = decryptBitwardenBytes(requiredStringProperty(cached.raw, 'key'), userKey)
       if (seed.length !== 16) throw new BitwardenDirectError('INVALID_RESPONSE')
       sendKey = deriveBitwardenSendKey(seed)
-      const access = await this.http.getSendAccess(cached.item.accessId, password, signal)
-      const accessId = assertUuidValue(requiredStringProperty(access, 'id'))
+      if (password) {
+        const passwordHash = await deriveBitwardenSendPasswordHash(password, seed)
+        passwordHashB64 = passwordHash.toString('base64')
+        passwordHash.fill(0)
+      }
+      session = await this.http.openSendAccess(cached.item.accessId, passwordHashB64, signal)
+      passwordHashB64 = null
+      const access = session.access
+      const accessId = requiredStringProperty(access, 'id')
       const accessType = readField(access, 'type')
       const accessFile = recordProperty(access, 'file')
-      if (accessId !== cached.item.id || accessType !== 1 || !accessFile) {
+      if (accessId !== cached.item.accessId || accessType !== 1 || !accessFile) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
       const fileId = requiredStringProperty(accessFile, 'id')
@@ -2240,13 +2250,7 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       ) {
         throw new BitwardenDirectError('INVALID_RESPONSE')
       }
-      const download = await this.http.getSendFileDownload(
-        cached.item.id,
-        fileId,
-        password,
-        size,
-        signal
-      )
+      const download = await session.getFileDownload(fileId, size)
       encrypted = await download.download(signal)
       if (encrypted.length !== size) throw new BitwardenDirectError('INVALID_RESPONSE')
       plaintext = decryptBitwardenAttachmentBuffer(encrypted, sendKey)
@@ -2259,6 +2263,9 @@ export class BitwardenDirectClient implements BitwardenSyncClient {
       }
       throw this.mapError(error)
     } finally {
+      session?.dispose()
+      session = null
+      passwordHashB64 = null
       seed?.fill(0)
       sendKey?.fill(0)
       encrypted?.fill(0)
