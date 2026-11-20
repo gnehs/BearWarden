@@ -4102,3 +4102,168 @@ describe('response field spellings', () => {
     expect(rows.map((row) => row.name)).toEqual(names)
   })
 })
+
+describe('Login with device requester endpoints', () => {
+  const REQUEST_ID = '50000000-0000-4000-8000-000000000009'
+  const publicKey = generateKeyPairSync('rsa', { modulusLength: 2_048 })
+    .publicKey.export({ format: 'der', type: 'spki' })
+    .toString('base64')
+  const envelope = `4.${Buffer.alloc(256, 3).toString('base64')}`
+
+  function answer(fields: JsonObject): JsonObject {
+    return {
+      id: REQUEST_ID,
+      publicKey,
+      requestDeviceType: 'macOS',
+      creationDate: '2026-11-20T00:00:00.000Z',
+      key: null,
+      masterPasswordHash: null,
+      responseDate: null,
+      requestApproved: null,
+      object: 'auth-request',
+      ...fields
+    }
+  }
+
+  it('creates an anonymous AuthenticateAndUnlock request with the device type header', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json(answer({ requestApproved: false })))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    client.setSession({ accessToken: 'must-not-be-sent', refreshToken: 'r', expiresAt: 60_000 })
+
+    await expect(
+      client.createDeviceAuthRequest(
+        {
+          email: 'person@example.test',
+          publicKey,
+          deviceIdentifier: 'installation-id',
+          accessCode: 'access-code-0123456789abc'
+        },
+        7
+      )
+    ).resolves.toBe(REQUEST_ID)
+
+    expect(fetch.mock.calls[0]?.[0]).toBe('https://vault.example.test/api/auth-requests')
+    const init = fetch.mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'person@example.test',
+      publicKey,
+      deviceIdentifier: 'installation-id',
+      accessCode: 'access-code-0123456789abc',
+      type: 0
+    })
+    const headers = new Headers(init?.headers)
+    expect(headers.get('authorization')).toBeNull()
+    expect(headers.get('device-type')).toBe('7')
+  })
+
+  it.each([
+    ['unknown device', 400],
+    ['route absent', 404]
+  ])('keeps only the status of a rejected request (%s)', async (_label, status) => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ message: "AuthRequest doesn't exist", accessCode: 'x' }, status))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    const error = await client
+      .createDeviceAuthRequest(
+        { email: 'p@example.test', publicKey, deviceIdentifier: 'd', accessCode: 'x' },
+        7
+      )
+      .catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ status, details: undefined })
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('polls the anonymous response route with the access code', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(json(answer({})))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    await expect(client.getDeviceAuthRequestResponse(REQUEST_ID, 'code+/=', 7)).resolves.toEqual({
+      state: 'pending'
+    })
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `https://vault.example.test/api/auth-requests/${REQUEST_ID}/response?code=code%2B%2F%3D`
+    )
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('device-type')).toBe('7')
+  })
+
+  it.each([
+    [
+      'approved',
+      json(answer({ requestApproved: true, key: envelope, responseDate: '2026-11-20T00:01:00Z' })),
+      { state: 'approved', key: envelope }
+    ],
+    [
+      'denied by Bitwarden',
+      json(answer({ requestApproved: false, responseDate: '2026-11-20T00:01:00Z' })),
+      { state: 'denied' }
+    ],
+    ['gone from Bitwarden', json({ message: 'Not found' }, 404), { state: 'gone' }],
+    [
+      'gone from Vaultwarden',
+      json({ message: "AuthRequest doesn't exist" }, 400),
+      { state: 'gone' }
+    ]
+  ])('reads a %s answer', async (_label, response, expected) => {
+    const client = new BitwardenHttpClient({
+      server: 'https://vault.example.test',
+      fetch: vi.fn<FetchLike>().mockResolvedValue(response)
+    })
+    await expect(client.getDeviceAuthRequestResponse(REQUEST_ID, 'code', 7)).resolves.toEqual(
+      expected
+    )
+  })
+
+  it('rejects an approval without a valid RSA envelope or for another request', async () => {
+    for (const body of [
+      answer({ requestApproved: true, key: '2.not-rsa' }),
+      answer({ id: '50000000-0000-4000-8000-000000000001' })
+    ]) {
+      const client = new BitwardenHttpClient({
+        server: 'https://vault.example.test',
+        fetch: vi.fn<FetchLike>().mockResolvedValue(json(body))
+      })
+      await expect(
+        client.getDeviceAuthRequestResponse(REQUEST_ID, 'code', 7)
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    }
+  })
+
+  it('sends the access code as the password with the authRequest id', async () => {
+    const fetch = vi
+      .fn<FetchLike>()
+      .mockResolvedValue(json({ access_token: 'a', refresh_token: 'r', expires_in: 3_600 }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    await client.passwordToken({
+      email: 'person@example.test',
+      password: 'access-code-0123456789abc',
+      authRequest: REQUEST_ID,
+      deviceType: 7,
+      deviceIdentifier: 'installation-id',
+      deviceName: 'BearWarden desktop'
+    })
+    const body = new URLSearchParams(String(fetch.mock.calls[0]?.[1]?.body))
+    expect(body.get('grant_type')).toBe('password')
+    expect(body.get('username')).toBe('person@example.test')
+    expect(body.get('password')).toBe('access-code-0123456789abc')
+    expect(body.get('authRequest')).toBe(REQUEST_ID)
+  })
+
+  it('proves an Email 2FA login code request with the auth request', async () => {
+    const fetch = vi.fn<FetchLike>().mockResolvedValue(new Response(null, { status: 204 }))
+    const client = new BitwardenHttpClient({ server: 'https://vault.example.test', fetch })
+    await client.sendEmailTwoFactorLoginCode({
+      email: 'person@example.test',
+      deviceIdentifier: 'installation-id',
+      deviceType: 7,
+      authRequestId: REQUEST_ID,
+      authRequestAccessCode: 'access-code-0123456789abc'
+    })
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      email: 'person@example.test',
+      authRequestId: REQUEST_ID,
+      authRequestAccessCode: 'access-code-0123456789abc',
+      deviceIdentifier: 'installation-id'
+    })
+  })
+})

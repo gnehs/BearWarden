@@ -186,6 +186,27 @@ export interface BitwardenAuthRequest {
   creationDate: string
 }
 
+export interface BitwardenDeviceAuthRequestCreate {
+  email: string
+  /** Base64-encoded SubjectPublicKeyInfo DER of this device's single-use RSA-2048 key. */
+  publicKey: string
+  deviceIdentifier: string
+  accessCode: string
+}
+
+export type BitwardenDeviceAuthRequestStatus =
+  | { readonly state: 'pending' }
+  | { readonly state: 'denied' }
+  | { readonly state: 'gone' }
+  /** `key` is the approving device's `4.` RSA-OAEP envelope of the user key. */
+  | { readonly state: 'approved'; readonly key: string }
+
+export type BitwardenEmailTwoFactorLoginCodeRequest = {
+  email: string
+  deviceIdentifier: string
+  deviceType?: number
+} & ({ masterPasswordHash: string } | { authRequestId: string; authRequestAccessCode: string })
+
 export interface BitwardenAuthRequestResponse {
   key: string
   masterPasswordHash: null
@@ -1114,24 +1135,26 @@ export class BitwardenHttpClient {
   }
 
   async sendEmailTwoFactorLoginCode(
-    request: {
-      email: string
-      masterPasswordHash: string
-      deviceIdentifier: string
-      deviceType?: number
-    },
+    request: BitwardenEmailTwoFactorLoginCodeRequest,
     signal?: AbortSignal
   ): Promise<void> {
-    if (
-      !string(request.email) ||
-      !string(request.masterPasswordHash) ||
-      !string(request.deviceIdentifier)
-    ) {
+    const proof: JsonObject | null =
+      'masterPasswordHash' in request
+        ? string(request.masterPasswordHash)
+          ? { masterPasswordHash: request.masterPasswordHash }
+          : null
+        : string(request.authRequestId) && string(request.authRequestAccessCode)
+          ? {
+              authRequestId: request.authRequestId,
+              authRequestAccessCode: request.authRequestAccessCode
+            }
+          : null
+    if (!string(request.email) || !proof || !string(request.deviceIdentifier)) {
       throw new BitwardenHttpError('INVALID_RESPONSE')
     }
     const body: JsonObject = {
       email: request.email,
-      masterPasswordHash: request.masterPasswordHash,
+      ...proof,
       deviceIdentifier: request.deviceIdentifier
     }
     try {
@@ -1157,10 +1180,90 @@ export class BitwardenHttpClient {
       }
       throw error
     } finally {
-      body.email = ''
-      body.masterPasswordHash = ''
-      body.deviceIdentifier = ''
+      for (const key of Object.keys(body)) body[key] = ''
     }
+  }
+
+  /**
+   * Opens an anonymous Login with device request. Both servers accept it only from a device
+   * identifier already registered to the account, checked against the `device-type` header.
+   */
+  async createDeviceAuthRequest(
+    request: BitwardenDeviceAuthRequestCreate,
+    deviceType: number,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const body: JsonObject = {
+      email: request.email,
+      publicKey: request.publicKey,
+      deviceIdentifier: request.deviceIdentifier,
+      accessCode: request.accessCode,
+      // AuthRequestType.AuthenticateAndUnlock
+      type: 0
+    }
+    try {
+      const response = await this.requestJson('POST', `${this.urls.apiUrl}/auth-requests`, {
+        body,
+        signal,
+        authenticate: false,
+        retry: false,
+        headers: { 'device-type': String(deviceType) },
+        maxResponseBytes: MAX_AUTH_REQUESTS_RESPONSE_BYTES,
+        tooLargeCode: 'TOO_LARGE'
+      })
+      if (!isJsonObject(response)) throw new BitwardenHttpError('INVALID_RESPONSE')
+      const id = readField(response, 'id')
+      if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      if (readField(response, 'publicKey') !== request.publicKey) {
+        throw new BitwardenHttpError('INVALID_RESPONSE')
+      }
+      return id
+    } catch (error) {
+      // Anonymous endpoint errors must not retain reflected request fields.
+      if (error instanceof BitwardenHttpError) {
+        throw new BitwardenHttpError(error.code, error.status)
+      }
+      throw error
+    } finally {
+      for (const key of Object.keys(body)) body[key] = ''
+    }
+  }
+
+  /**
+   * Reads the answer to this device's request. A request the server no longer has is `gone`:
+   * Bitwarden answers 404, while Vaultwarden answers 400 and also deletes a request on denial.
+   */
+  async getDeviceAuthRequestResponse(
+    id: string,
+    accessCode: string,
+    deviceType: number,
+    signal?: AbortSignal
+  ): Promise<BitwardenDeviceAuthRequestStatus> {
+    const requestId = assertUuid(id)
+    if (!string(accessCode)) throw new BitwardenHttpError('INVALID_RESPONSE')
+    let response: JsonValue
+    try {
+      response = await this.requestJson(
+        'GET',
+        `${this.urls.apiUrl}/auth-requests/${requestId}/response?code=${encodeURIComponent(accessCode)}`,
+        {
+          signal,
+          authenticate: false,
+          headers: { 'device-type': String(deviceType) },
+          maxResponseBytes: MAX_AUTH_REQUESTS_RESPONSE_BYTES,
+          tooLargeCode: 'TOO_LARGE'
+        }
+      )
+    } catch (error) {
+      if (error instanceof BitwardenHttpError) {
+        if (error.status === 400 || error.status === 404) return { state: 'gone' }
+        throw new BitwardenHttpError(error.code, error.status)
+      }
+      throw error
+    }
+    return parseDeviceAuthRequestStatus(response, requestId)
   }
 
   async refresh(signal?: AbortSignal): Promise<BitwardenSession> {
@@ -3319,6 +3422,31 @@ function parsePendingAuthRequests(value: JsonValue, now: number): BitwardenAuthR
     ids.add(normalizedId)
     return request
   })
+}
+
+function parseDeviceAuthRequestStatus(
+  value: JsonValue,
+  id: string
+): BitwardenDeviceAuthRequestStatus {
+  if (!isJsonObject(value)) throw new BitwardenHttpError('INVALID_RESPONSE')
+  const responseId = readField(value, 'id')
+  const requestApproved = readField(value, 'requestApproved')
+  const responseDate = readField(value, 'responseDate')
+  if (
+    typeof responseId !== 'string' ||
+    responseId.toLocaleLowerCase('en-US') !== id.toLocaleLowerCase('en-US')
+  ) {
+    throw new BitwardenHttpError('INVALID_RESPONSE')
+  }
+  if (requestApproved === true) {
+    return { state: 'approved', key: authRequestEncryptedKey(readField(value, 'key')) }
+  }
+  if (responseDate === undefined || responseDate === null) return { state: 'pending' }
+  if (requestApproved === false || requestApproved === null) {
+    authRequestDate(responseDate)
+    return { state: 'denied' }
+  }
+  throw new BitwardenHttpError('INVALID_RESPONSE')
 }
 
 function parseAnsweredAuthRequest(value: JsonValue, id: string, approved: boolean): void {
