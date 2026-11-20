@@ -111,7 +111,8 @@ Cloud 與支援中的 Vaultwarden 版本執行相容測試。
 - Bitwarden Cloud 的伺服器網址填 `https://bitwarden.com`。
 - Vaultwarden 填部署站台的 HTTPS 根網址；開發測試僅後端允許 loopback HTTP。
 - 主密碼登入支援 PBKDF2／Argon2id、可重新寄送的新裝置電子郵件驗證，以及 Authenticator、Email、YubiKey OTP 或 WebAuthn 安全金鑰第二步驗證。伺服器核發的記住第二步驗證 token 只會存於加密的 direct-sync session，伺服器拒絕後便會清除。這裡的 WebAuthn 是第二步驗證，不是 Bitwarden 的 WebAuthn／PRF 無密碼登入。Duo 與 Organization Duo 登入會在系統瀏覽器開啟 Duo Universal Prompt，完成後貼上 Duo 返回頁面的網址，BearWarden 會先核對 state 再完成登入。
-- 尚不支援 SSO、Key Connector、Trusted Device Encryption、API key 登入，也不能用 Login with Device 讓 BearWarden 本身取代主密碼登入。已登入且已解鎖的 BearWarden 可作為 Login with Device initiator：核對 fingerprint 後，核准或拒絕另一台裝置的 pending request。
+- 尚不支援 SSO、Key Connector、Trusted Device Encryption 與 API key 登入。已登入且已解鎖的 BearWarden 可在核對驗證片語後，核准或拒絕另一台裝置的 Login with Device 請求。
+- 已設定同步的帳戶需要重新登入時，可改用「使用裝置登入」，由另一台已登入的 Bitwarden 或 BearWarden 裝置核准，不必輸入主密碼；兩步驟驗證仍照常進行。首次連線無法使用，因為 Bitwarden 與 Vaultwarden 只接受已註冊於帳戶之裝置送出的請求。
 - 可列出、新增與逐把移除帳號 FIDO2 第二步登入安全金鑰；登入與註冊的 challenge、assertion、attestation 及 server verification token 只在受限的主程序視窗中處理，不會進入主要 renderer。
 - 連線後會顯示 Email 驗證與雙重驗證狀態；未驗證時可要求伺服器重新寄送驗證信。
 - 可在主程序重新驗證主密碼後複製個人 API Client ID／Secret，或經二次確認輪替；Secret 不會回傳 renderer 或寫入密碼庫，剪貼簿最晚 30 秒清除。
