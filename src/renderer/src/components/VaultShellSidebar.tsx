@@ -139,7 +139,7 @@ function SidebarTooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'text-muted-foreground hover:text-foreground size-9 min-w-9 rounded-xl [-webkit-app-region:no-drag]',
+              'text-muted-foreground hover:text-foreground rounded-control size-9 min-w-9 [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -375,7 +375,7 @@ export function VaultShellSidebar({
               <Button
                 ref={accountMenuTriggerRef}
                 variant="sidebar"
-                className="h-auto min-h-11 w-full justify-start gap-2.5 rounded-2xl px-2 py-1.5"
+                className="rounded-control h-auto min-h-11 w-full justify-start gap-2.5 px-2 py-1.5"
                 type="button"
                 aria-label={t`Open ${sidebarAccountName} menu`}
               />
@@ -459,7 +459,7 @@ export function VaultShellSidebar({
         <SidebarTooltipIconButton
           variant="sidebar"
           size="icon"
-          className="size-11 min-w-11 rounded-2xl"
+          className="rounded-control size-11 min-w-11"
           type="button"
           label={t`Cloud sync: ${account.syncLabel}`}
           onClick={actions.onOpenSync}

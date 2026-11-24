@@ -1036,7 +1036,7 @@ function SyncDialog({
         <ModalHeader className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start">
           <span
             className={cn(
-              'text-brand grid size-11 place-items-center rounded-xl bg-[var(--accent-soft)]',
+              'text-brand rounded-control grid size-11 place-items-center bg-[var(--accent-soft)]',
               status.state === 'error' && 'text-destructive bg-[var(--danger-soft)]'
             )}
             aria-hidden="true"
@@ -1583,7 +1583,7 @@ function SyncDialog({
               )}
               {visibleAccountProfile && (
                 <section
-                  className="bg-card overflow-hidden rounded-xl border"
+                  className="bg-card rounded-nested overflow-hidden border"
                   aria-label={t`Account management`}
                 >
                   <AccountProfileCard

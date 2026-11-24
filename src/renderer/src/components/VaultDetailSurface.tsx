@@ -106,7 +106,7 @@ export const detailFieldClassName =
 
 /** Row actions stay quiet inside the recessed well until hovered. */
 export const detailRowActionClassName =
-  'size-7 min-w-7 rounded-lg border-transparent bg-transparent shadow-none dark:bg-transparent'
+  'size-7 min-w-7 rounded-control border-transparent bg-transparent shadow-none dark:bg-transparent'
 
 export const detailScrollClassName =
   'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-(--pane-content-inset) pt-1 pb-(--pane-content-inset)'
@@ -115,7 +115,7 @@ export const detailScrollClassName =
 // eslint-disable-next-line react-refresh/only-export-components
 export function detailIconClassName(type?: VaultItemType): string {
   return cn(
-    'bg-card text-brand dark:bg-muted dark:text-muted-foreground grid size-13 flex-none place-items-center rounded-2xl shadow-(--keycap-shadow) max-[680px]:size-10 max-[680px]:rounded-xl max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-5',
+    'bg-card text-brand dark:bg-muted dark:text-muted-foreground rounded-control grid size-13 flex-none place-items-center shadow-(--keycap-shadow) max-[680px]:size-10 max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-5',
     type === 'login' && 'overflow-hidden',
     type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
     type === 'identity' && 'bg-accent text-brand',

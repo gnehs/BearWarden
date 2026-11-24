@@ -276,7 +276,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
       <div className="relative z-10 mt-[20vh] mb-8 flex w-full max-w-[440px] shrink-0 flex-col items-center gap-4">
         <BrandMark stacked />
         <section
-          className="w-full max-w-[440px] rounded-[1.75rem] border border-(--glass-ring) bg-(--glass-surface) p-7 shadow-(--shadow) backdrop-blur-2xl backdrop-saturate-150"
+          className="rounded-window w-full max-w-[440px] border border-(--glass-ring) bg-(--glass-surface) p-7 shadow-(--shadow) backdrop-blur-2xl backdrop-saturate-150"
           aria-labelledby="auth-title"
         >
           {state === 'loading' && (
@@ -294,7 +294,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
           {state === 'unavailable' && (
             <div className="grid justify-items-start gap-3" role="status">
               <span
-                className="bg-destructive/10 text-destructive grid size-11 place-items-center rounded-xl"
+                className="bg-destructive/10 text-destructive rounded-control grid size-11 place-items-center"
                 aria-hidden="true"
               >
                 <ShieldAlert size={27} />

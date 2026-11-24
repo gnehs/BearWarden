@@ -60,7 +60,7 @@ function AuxiliaryPageLayout({
             <div className="flex min-w-0 items-center gap-3">
               {headerIcon && (
                 <span
-                  className="text-brand bg-card grid size-12 shrink-0 place-items-center rounded-2xl shadow-(--keycap-shadow) [&>svg]:size-5"
+                  className="text-brand bg-card rounded-control grid size-12 shrink-0 place-items-center shadow-(--keycap-shadow) [&>svg]:size-5"
                   aria-hidden="true"
                 >
                   {headerIcon}

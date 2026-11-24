@@ -48,7 +48,7 @@ export function ModalContent({
   return (
     <DialogContent
       className={cn(
-        'bg-card text-foreground m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden rounded-[1.75rem] p-0 backdrop-blur-none max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
+        'bg-card text-foreground rounded-window m-auto max-h-[calc(100%-48px)] w-[min(calc(100%-32px),470px)] max-w-[min(calc(100%-32px),470px)] gap-0 overflow-hidden p-0 backdrop-blur-none max-[680px]:w-[min(calc(100%-20px),470px)] max-[680px]:max-w-[min(calc(100%-20px),470px)]',
         className
       )}
       {...props}

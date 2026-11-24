@@ -44,7 +44,7 @@ export function TooltipIconButton({
           <Button
             aria-label={label}
             className={cn(
-              'text-muted-foreground hover:text-foreground size-9 min-w-9 rounded-xl [-webkit-app-region:no-drag]',
+              'text-muted-foreground hover:text-foreground rounded-control size-9 min-w-9 [-webkit-app-region:no-drag]',
               className
             )}
             {...props}
@@ -149,7 +149,7 @@ export function SidebarCategoryTile({
 
 /** Sidebar rows sit on the window canvas, so the selected row lifts into a white keycap. */
 export const sidebarRowClassName =
-  'text-sidebar-foreground min-h-9 rounded-xl text-[0.8125rem] font-medium transition-[background-color,box-shadow] duration-150'
+  'text-sidebar-foreground min-h-9 rounded-control text-[0.8125rem] font-medium transition-[background-color,box-shadow] duration-150'
 export const sidebarRowSelectedClassName =
   'bg-card shadow-(--keycap-shadow) dark:bg-(--segment-thumb)'
 export const sidebarRowDropClassName =
@@ -287,8 +287,8 @@ export function DetailPlaceholder({
               : t`Securely stored item`)
           }
         />
-        <Skeleton className="size-9 flex-none rounded-xl" aria-hidden="true" />
-        <Skeleton className="size-9 flex-none rounded-xl" aria-hidden="true" />
+        <Skeleton className="rounded-control size-9 flex-none" aria-hidden="true" />
+        <Skeleton className="rounded-control size-9 flex-none" aria-hidden="true" />
         <span className="sr-only" role="status">
           <Trans>Loading item details…</Trans>
         </span>

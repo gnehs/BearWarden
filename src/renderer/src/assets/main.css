@@ -57,6 +57,7 @@
   --radius-window: var(--window-radius);
   --radius-pane: var(--pane-radius);
   --radius-nested: var(--nested-radius);
+  --radius-control: var(--control-radius);
 }
 
 :root {
@@ -129,6 +130,7 @@
     max(2px, var(--window-radius) - var(--pane-inset) - var(--pane-content-inset)) +
       var(--radius-optical-bias)
   );
+  --control-radius: max(2px, var(--nested-radius) - 2px);
   --sidebar: oklch(0.965 0.003 260);
   --sidebar-foreground: oklch(0.2 0.006 265);
   --sidebar-primary: var(--brand);
@@ -253,6 +255,7 @@
     max(2px, var(--window-radius) - var(--pane-inset) - var(--pane-content-inset)) +
       var(--radius-optical-bias)
   );
+  --control-radius: max(2px, var(--nested-radius) - 2px);
 }
 
 .dark,

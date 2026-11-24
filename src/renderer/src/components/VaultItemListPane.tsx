@@ -117,29 +117,28 @@ export function VaultItemListPane({
               : t`${list.itemCount} items`}
           </small>
         </div>
-        <div className="bg-card flex items-center gap-2 rounded-full border border-(--surface-ring) p-0.5 shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_8%,transparent)] dark:bg-(--segment-thumb)">
-          <div className="text-muted-foreground flex h-8 items-center gap-1 border-0 bg-transparent py-0 pr-1 pl-2.5 shadow-none">
-            <ListFilter size={16} aria-hidden="true" />
-            <Select
-              items={list.sortOptions}
-              value={sortMode}
-              onValueChange={(value) => setSortMode(value as VaultSortMode)}
-            >
-              <SelectTrigger size="sm" variant="embedded" aria-label={t`Sort order`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {list.sortOptions.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <Select
+          items={list.sortOptions}
+          value={sortMode}
+          onValueChange={(value) => setSortMode(value as VaultSortMode)}
+        >
+          <SelectTrigger
+            className="bg-card text-muted-foreground hover:text-foreground dark:bg-card h-9 gap-1.5 border-0 pr-2 pl-2.5 shadow-(--keycap-shadow) hover:bg-[color-mix(in_oklch,var(--card),var(--foreground)_3%)]"
+            aria-label={t`Sort order`}
+          >
+            <ListFilter aria-hidden="true" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {list.sortOptions.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </header>
       {query && (
         <div
@@ -177,7 +176,7 @@ export function VaultItemListPane({
           <EmptyHeader>
             <EmptyMedia
               variant="icon"
-              className="text-brand mb-3 size-12 rounded-2xl bg-(--accent-soft)"
+              className="text-brand rounded-control mb-3 size-12 bg-(--accent-soft)"
             >
               {query ? (
                 <Search className="size-8" />

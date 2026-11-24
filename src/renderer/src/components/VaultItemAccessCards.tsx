@@ -103,7 +103,7 @@ export function VaultItemAttachmentsCard({
                 className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
               >
                 <span
-                  className="text-brand bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
+                  className="text-brand bg-card rounded-control grid size-8 place-items-center shadow-(--surface-shadow)"
                   aria-hidden="true"
                 >
                   <Paperclip size={16} />
@@ -226,7 +226,7 @@ export function VaultItemTotpCard({
         {code ? (
           <Button
             variant="ghost"
-            className="h-11 min-w-0 justify-start overflow-hidden rounded-xl px-2 [&>strong]:min-w-0 [&>strong]:truncate"
+            className="h-11 min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate"
             data-field-copy-value=""
             type="button"
             aria-label={

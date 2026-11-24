@@ -1737,7 +1737,7 @@ function LoginEditor({
         <Button
           variant="outline"
           size="icon"
-          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-xl shadow-(--control-highlight)"
+          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted rounded-control size-9 min-w-9 shadow-(--control-highlight)"
           type="button"
           aria-label={t`Cancel editing`}
           onClick={requestCancel}

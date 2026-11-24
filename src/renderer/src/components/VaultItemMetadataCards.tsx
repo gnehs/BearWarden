@@ -55,7 +55,7 @@ export function VaultItemMetadataCards({
                   className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                 >
                   <span
-                    className="text-brand bg-card grid size-8 place-items-center rounded-lg shadow-(--surface-shadow)"
+                    className="text-brand bg-card rounded-control grid size-8 place-items-center shadow-(--surface-shadow)"
                     aria-hidden="true"
                   >
                     <KeyRound size={16} />
@@ -92,7 +92,7 @@ export function VaultItemMetadataCards({
           <CardContent className="contents">
             <p
               className={cn(
-                'mx-(--card-spacing) my-0 rounded-xl bg-(--inset-surface) px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-(--inset-shadow)',
+                'rounded-control mx-(--card-spacing) my-0 bg-(--inset-surface) px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-(--inset-shadow)',
                 !selectedLogin.notes?.trim() && 'text-muted-foreground'
               )}
             >

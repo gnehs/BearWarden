@@ -250,7 +250,7 @@ function VaultShellDialogs({
           onClose={passwordZoom.onClose}
         >
           <ModalBody>
-            <div className="bg-muted/60 rounded-xl px-4 py-5">
+            <div className="bg-muted/60 rounded-nested px-4 py-5">
               <ColoredPassword
                 value={passwordZoom.value}
                 className="text-2xl leading-relaxed select-text"

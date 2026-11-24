@@ -466,95 +466,97 @@ export function SelectedItemDetail({
             </>
           }
         />
-        {(!sharedSummary || (sharedSummary.edit && sharedSummary.reprompt === 0)) && (
-          <TooltipIconButton
-            variant="outline"
-            size="icon"
-            type="button"
-            label={t`Edit`}
-            disabled={busy}
-            onClick={actions.onEdit}
-          >
-            <Edit3 />
-          </TooltipIconButton>
-        )}
-        {!sharedSummary && (
-          <>
+        <div className="flex flex-none items-center gap-1.5">
+          {(!sharedSummary || (sharedSummary.edit && sharedSummary.reprompt === 0)) && (
             <TooltipIconButton
               variant="outline"
               size="icon"
-              className={cn(login.favorite && 'text-chart-4')}
               type="button"
-              label={login.favorite ? t`Remove from favorites` : t`Add to favorites`}
-              aria-pressed={login.favorite}
-              onClick={actions.onToggleFavorite}
+              label={t`Edit`}
+              disabled={busy}
+              onClick={actions.onEdit}
             >
-              <Star fill={login.favorite ? 'currentColor' : 'none'} />
+              <Edit3 />
             </TooltipIconButton>
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted size-9 min-w-9 rounded-xl shadow-(--control-highlight)"
-                          type="button"
-                          aria-label={t`More actions`}
-                          disabled={busy}
-                        />
-                      }
+          )}
+          {!sharedSummary && (
+            <>
+              <TooltipIconButton
+                variant="outline"
+                size="icon"
+                className={cn(login.favorite && 'text-chart-4')}
+                type="button"
+                label={login.favorite ? t`Remove from favorites` : t`Add to favorites`}
+                aria-pressed={login.favorite}
+                onClick={actions.onToggleFavorite}
+              >
+                <Star fill={login.favorite ? 'currentColor' : 'none'} />
+              </TooltipIconButton>
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-card dark:hover:bg-muted rounded-control size-9 min-w-9 shadow-(--control-highlight)"
+                            type="button"
+                            aria-label={t`More actions`}
+                            disabled={busy}
+                          />
+                        }
+                      >
+                        <MoreHorizontal aria-hidden="true" />
+                      </DropdownMenuTrigger>
+                    }
+                  />
+                  <TooltipContent>
+                    <Trans>More actions</Trans>
+                  </TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem disabled={busy} onClick={actions.onClone}>
+                      <Copy data-icon="inline-start" />
+                      <Trans>Duplicate item</Trans>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={busy || archiveBlocked}
+                      onClick={actions.onToggleArchive}
                     >
-                      <MoreHorizontal aria-hidden="true" />
-                    </DropdownMenuTrigger>
-                  }
-                />
-                <TooltipContent>
-                  <Trans>More actions</Trans>
-                </TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem disabled={busy} onClick={actions.onClone}>
-                    <Copy data-icon="inline-start" />
-                    <Trans>Duplicate item</Trans>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={busy || archiveBlocked}
-                    onClick={actions.onToggleArchive}
-                  >
-                    {login.archivedAt ? (
-                      <ArchiveRestore data-icon="inline-start" />
-                    ) : (
-                      <Archive data-icon="inline-start" />
-                    )}
-                    <span className="grid gap-0.5">
-                      {login.archivedAt ? t`Unarchive` : t`Archive item`}
-                      {archiveBlocked && (
-                        <span className="text-muted-foreground max-w-56 text-xs font-normal">
-                          {archivePremiumMessage}
-                        </span>
+                      {login.archivedAt ? (
+                        <ArchiveRestore data-icon="inline-start" />
+                      ) : (
+                        <Archive data-icon="inline-start" />
                       )}
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={busy}
-                    onClick={actions.onDelete}
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    <Trans>Move to Trash</Trans>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
+                      <span className="grid gap-0.5">
+                        {login.archivedAt ? t`Unarchive` : t`Archive item`}
+                        {archiveBlocked && (
+                          <span className="text-muted-foreground max-w-56 text-xs font-normal">
+                            {archivePremiumMessage}
+                          </span>
+                        )}
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={busy}
+                      onClick={actions.onDelete}
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      <Trans>Move to Trash</Trans>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+        </div>
       </DetailHeader>
 
       <div className={cn('scroll-fade-y forced-colors:scroll-fade-none', detailScrollClassName)}>

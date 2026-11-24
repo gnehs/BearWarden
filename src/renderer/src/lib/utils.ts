@@ -4,7 +4,7 @@ import { extendTailwindMerge } from 'tailwind-merge'
 
 // The concentric container radii from main.css must override other `rounded-*` classes.
 const twMerge = extendTailwindMerge({
-  extend: { theme: { radius: ['window', 'pane', 'nested'] } }
+  extend: { theme: { radius: ['window', 'pane', 'nested', 'control'] } }
 })
 
 export function cn(...inputs: ClassValue[]): string {
