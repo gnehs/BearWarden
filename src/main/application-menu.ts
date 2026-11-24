@@ -61,6 +61,89 @@ export function executeApplicationMenuCommand(
   }
 }
 
+// Electron labels role items in English only, so every role carries a translated label.
+function appMenu(): MenuItemConstructorOptions {
+  return {
+    role: 'appMenu',
+    submenu: [
+      { role: 'about', label: translateMain('applicationMenu.about') },
+      { type: 'separator' },
+      { role: 'services', label: translateMain('applicationMenu.services') },
+      { type: 'separator' },
+      { role: 'hide', label: translateMain('applicationMenu.hide') },
+      { role: 'hideOthers', label: translateMain('applicationMenu.hideOthers') },
+      { role: 'unhide', label: translateMain('applicationMenu.showAll') },
+      { type: 'separator' },
+      { role: 'quit', label: translateMain('applicationMenu.quit') }
+    ]
+  }
+}
+
+function fileMenu(): MenuItemConstructorOptions {
+  return {
+    role: 'fileMenu',
+    label: translateMain('applicationMenu.file'),
+    submenu: [{ role: 'quit', label: translateMain('applicationMenu.quit') }]
+  }
+}
+
+function editMenu(isMac: boolean): MenuItemConstructorOptions {
+  return {
+    role: 'editMenu',
+    label: translateMain('applicationMenu.edit'),
+    submenu: [
+      { role: 'undo', label: translateMain('applicationMenu.undo') },
+      { role: 'redo', label: translateMain('applicationMenu.redo') },
+      { type: 'separator' },
+      { role: 'cut', label: translateMain('applicationMenu.cut') },
+      { role: 'copy', label: translateMain('applicationMenu.copy') },
+      { role: 'paste', label: translateMain('applicationMenu.paste') },
+      ...(isMac
+        ? [
+            {
+              role: 'pasteAndMatchStyle',
+              label: translateMain('applicationMenu.pasteAndMatchStyle')
+            } satisfies MenuItemConstructorOptions
+          ]
+        : []),
+      { role: 'delete', label: translateMain('applicationMenu.delete') },
+      { role: 'selectAll', label: translateMain('applicationMenu.selectAll') },
+      ...(isMac
+        ? ([
+            { type: 'separator' },
+            {
+              label: translateMain('applicationMenu.speech'),
+              submenu: [
+                { role: 'startSpeaking', label: translateMain('applicationMenu.startSpeaking') },
+                { role: 'stopSpeaking', label: translateMain('applicationMenu.stopSpeaking') }
+              ]
+            }
+          ] satisfies MenuItemConstructorOptions[])
+        : [])
+    ]
+  }
+}
+
+function windowMenu(isMac: boolean): MenuItemConstructorOptions {
+  return {
+    // `window` lets macOS append its open-window list; it has no meaning elsewhere.
+    ...(isMac ? { role: 'window' as const } : {}),
+    label: translateMain('applicationMenu.window'),
+    submenu: [
+      { role: 'minimize', label: translateMain('applicationMenu.minimize') },
+      { role: 'zoom', label: translateMain('applicationMenu.zoom') },
+      ...(isMac
+        ? ([
+            { type: 'separator' },
+            { role: 'front', label: translateMain('applicationMenu.bringAllToFront') }
+          ] satisfies MenuItemConstructorOptions[])
+        : ([
+            { role: 'close', label: translateMain('applicationMenu.closeWindow') }
+          ] satisfies MenuItemConstructorOptions[]))
+    ]
+  }
+}
+
 export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
   const copySelectedItem = (command: SelectedItemCopyCommand): void => {
     const window = BrowserWindow.getFocusedWindow()
@@ -69,7 +152,7 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
   }
 
   const template: MenuItemConstructorOptions[] = [
-    options.isMac ? { role: 'appMenu' } : { role: 'fileMenu' },
+    options.isMac ? appMenu() : fileMenu(),
     {
       id: 'vault-menu',
       label: translateMain('applicationMenu.vault'),
@@ -82,7 +165,7 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
         }
       ]
     },
-    { role: 'editMenu' },
+    editMenu(options.isMac),
     {
       id: 'item-menu',
       label: translateMain('applicationMenu.item'),
@@ -115,9 +198,12 @@ export function installApplicationMenu(options: ApplicationMenuOptions): Menu {
     },
     {
       label: translateMain('applicationMenu.view'),
-      submenu: [{ role: 'toggleDevTools' }, { role: 'togglefullscreen' }]
+      submenu: [
+        { role: 'toggleDevTools', label: translateMain('applicationMenu.toggleDeveloperTools') },
+        { role: 'togglefullscreen', label: translateMain('applicationMenu.toggleFullScreen') }
+      ]
     },
-    { role: 'windowMenu' }
+    windowMenu(options.isMac)
   ]
 
   const menu = Menu.buildFromTemplate(template)

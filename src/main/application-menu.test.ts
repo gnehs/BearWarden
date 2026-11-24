@@ -16,6 +16,7 @@ vi.mock('electron', () => ({
 }))
 
 import { executeApplicationMenuCommand, installApplicationMenu } from './application-menu'
+import { initializeMainI18n } from './i18n'
 
 type TemplateEntry = {
   id?: string
@@ -67,6 +68,29 @@ describe('installApplicationMenu', () => {
     lockItem.click?.()
     expect(onLockVault).toHaveBeenCalledOnce()
     expect(setApplicationMenu).toHaveBeenCalledWith(menu)
+  })
+
+  it('labels the native edit and window roles in the active locale', () => {
+    buildFromTemplate.mockReturnValue({})
+    initializeMainI18n('zh-TW')
+
+    try {
+      installApplicationMenu({ isMac: true, onLockVault: vi.fn() })
+    } finally {
+      initializeMainI18n('en')
+    }
+
+    const template = buildFromTemplate.mock.calls[0]?.[0] as TemplateEntry[]
+    const editMenu = template.find((candidate) => candidate.role === 'editMenu')
+    expect(editMenu?.label).toBe('編輯')
+    expect(editMenu?.submenu?.find((entry) => entry.role === 'copy')?.label).toBe('拷貝')
+    const windowMenu = template.find((candidate) => candidate.role === 'window')
+    expect(windowMenu?.label).toBe('視窗')
+    const roleItems = template
+      .flatMap((menu) => menu.submenu ?? [])
+      .flatMap((entry) => [entry, ...(entry.submenu ?? [])])
+      .filter((entry) => entry.role)
+    expect(roleItems.filter((entry) => !entry.label)).toEqual([])
   })
 
   it('uses the native file menu role outside macOS', () => {
