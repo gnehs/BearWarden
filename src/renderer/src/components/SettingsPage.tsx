@@ -76,6 +76,12 @@ import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
 import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
+import {
+  WorkspaceDialogContent,
+  WorkspaceDialogSidebar,
+  workspaceNavListClassName,
+  workspaceNavTriggerClassName
+} from './WorkspaceDialogLayout'
 import AboutPage from './AboutPage'
 import { ThemePreviewPicker } from './ThemePreviewPicker'
 import { AutofillAccessibilityGuide } from './AutofillAccessibilityGuide'
@@ -726,25 +732,33 @@ function SettingsPage({
         settingsScrollRef.current?.scrollTo({ top: 0 })
       }}
     >
-      <div className="flex w-52 shrink-0 flex-col gap-3 border-r border-(--surface-ring) p-3 max-[680px]:w-full max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pr-14">
-        <h1
-          id="settings-title"
-          className="m-0 px-2 pt-1.5 text-base leading-tight font-semibold tracking-tight"
-        >
-          <Trans>Settings</Trans>
-        </h1>
+      <WorkspaceDialogSidebar
+        title={<Trans>Settings</Trans>}
+        titleId="settings-title"
+        footer={
+          settingsBusy ? (
+            <span
+              className="text-muted-foreground inline-flex items-center gap-1.5 px-2 pb-1 text-xs"
+              role="status"
+            >
+              <Spinner />
+              <Trans>Saving</Trans>
+            </span>
+          ) : undefined
+        }
+      >
         {settings && (
           <TabsList
             variant="list"
             aria-label={t`Settings categories`}
-            className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none w-full items-stretch max-[680px]:flex-row max-[680px]:justify-start max-[680px]:overflow-x-auto"
+            className={workspaceNavListClassName}
           >
             {localizedSettingsCategories.map(({ id, label, description, icon: Icon }) => (
               <TabsTrigger
                 key={id}
                 value={id}
                 title={description}
-                className="data-active:bg-primary! data-active:text-primary-foreground! h-8 flex-none justify-start gap-2 px-2 text-sm data-active:font-semibold max-[680px]:min-w-max"
+                className={workspaceNavTriggerClassName}
               >
                 <Icon aria-hidden="true" />
                 {label}
@@ -752,20 +766,8 @@ function SettingsPage({
             ))}
           </TabsList>
         )}
-        {settingsBusy && (
-          <span
-            className="text-muted-foreground mt-auto inline-flex items-center gap-1.5 px-2 pb-1 text-xs max-[680px]:hidden"
-            role="status"
-          >
-            <Spinner />
-            <Trans>Saving</Trans>
-          </span>
-        )}
-      </div>
-      <div
-        ref={settingsScrollRef}
-        className="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none min-h-0 min-w-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto bg-(--canvas) p-5 max-[680px]:p-3"
-      >
+      </WorkspaceDialogSidebar>
+      <WorkspaceDialogContent scrollRef={settingsScrollRef}>
         {!settings ? (
           <div
             className="text-muted-foreground flex min-h-0 flex-1 flex-row items-center justify-center gap-2.5 p-7 text-center text-xs"
@@ -1777,7 +1779,7 @@ function SettingsPage({
             </SettingsCategoryContent>
           </div>
         )}
-      </div>
+      </WorkspaceDialogContent>
     </Tabs>
   )
 }

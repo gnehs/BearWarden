@@ -149,12 +149,12 @@ msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, other {# 个结果}}"
 
 #. placeholder {0}: sshAgentStatus.identityCount
-#: src/renderer/src/components/SettingsPage.tsx:1737
+#: src/renderer/src/components/SettingsPage.tsx:1739
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
 msgstr "{0, plural, one {有 # 个 SSH 密钥可用。私钥和签名数据绝不会发送到渲染进程。} other {有 # 个 SSH 密钥可用。私钥和签名数据绝不会发送到渲染进程。}}"
 
 #. placeholder {0}: pinStatus.remainingAttempts
-#: src/renderer/src/components/SettingsPage.tsx:1060
+#: src/renderer/src/components/SettingsPage.tsx:1062
 msgid "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You have # attempt remaining.} other {PIN unlock is disabled after 5 consecutive failures. You have # attempts remaining.}}"
 msgstr "{0, plural, one {连续失败 5 次后，PIN 解锁将被禁用。您还剩 # 次尝试机会。} other {连续失败 5 次后，PIN 解锁将被禁用。您还剩 # 次尝试机会。}}"
 
@@ -304,7 +304,7 @@ msgstr "{0} 条 URI 匹配规则"
 msgid "{0}: {1}"
 msgstr "{0}：{1}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1031
+#: src/renderer/src/components/VaultHealthPage.tsx:1036
 msgid "{breachCount, plural, one {# known breach found} other {# known breaches found}}"
 msgstr "{breachCount, plural, one {发现 # 起已知泄露事件} other {发现 # 起已知泄露事件}}"
 
@@ -316,7 +316,7 @@ msgstr "{conflicts, plural, one {# 个冲突} other {# 个冲突}}"
 msgid "{count, plural, one {“{itemName}” has # history entry.} other {“{itemName}” has # history entries.}}"
 msgstr "{count, plural, one {“{itemName}”有 # 条历史记录。} other {“{itemName}”有 # 条历史记录。}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:228
+#: src/renderer/src/components/VaultHealthPage.tsx:233
 msgid "{count, plural, one {# item} other {# items}}"
 msgstr "{count, plural, one {# 个项目} other {# 个项目}}"
 
@@ -341,19 +341,19 @@ msgstr "{currentTypeLabel} 详细信息"
 msgid "{deleted, plural, one {Deleted # item} other {Deleted # items}}"
 msgstr "{deleted, plural, one {已删除 # 个项目} other {已删除 # 个项目}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:503
+#: src/renderer/src/components/VaultHealthPage.tsx:508
 msgid "{excludedArchivedCount, plural, one {# archived item} other {# archived items}}"
 msgstr "{excludedArchivedCount, plural, one {# 个已归档项目} other {# 个已归档项目}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:500
+#: src/renderer/src/components/VaultHealthPage.tsx:505
 msgid "{excludedDeletedCount, plural, one {# item in trash} other {# items in trash}}"
 msgstr "{excludedDeletedCount, plural, one {回收站中的 # 个项目} other {回收站中的 # 个项目}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:493
+#: src/renderer/src/components/VaultHealthPage.tsx:498
 msgid "{excludedTotpCount, plural, one {# already has TOTP} other {# already have TOTP}}"
 msgstr "{excludedTotpCount, plural, one {# 个项目已有 TOTP} other {# 个项目已有 TOTP}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:578
+#: src/renderer/src/components/VaultHealthPage.tsx:583
 msgid "{exposedCount, plural, one {# known breach record} other {# known breach records}}"
 msgstr "{exposedCount, plural, one {# 条已知泄露记录} other {# 条已知泄露记录}}"
 
@@ -405,11 +405,11 @@ msgstr "{message} 无法刷新列表。请稍后重试。"
 msgid "{message} The list could not be reloaded. Close Settings and try again."
 msgstr "{message} 无法重新加载列表。请关闭“设置”后重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1476
+#: src/renderer/src/components/VaultHealthPage.tsx:1455
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped to prevent health labels from revealing characteristics of protected content.} other {# login items with master password reprompt enabled were skipped to prevent health labels from revealing characteristics of protected content.}}"
 msgstr "{protectedSkippedCount, plural, one {已跳过 # 个激活了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。} other {已跳过 # 个激活了主密码重新输入的登录项目，以防止健康标签泄露受保护内容的特征。}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:738
+#: src/renderer/src/components/VaultHealthPage.tsx:743
 msgid "{protectedSkippedCount, plural, one {# login item with master password reprompt enabled was skipped without creating a SHA-1 or sending an HIBP range query.} other {# login items with master password reprompt enabled were skipped without creating a SHA-1 or sending an HIBP range query.}}"
 msgstr "{protectedSkippedCount, plural, one {已跳过 # 个激活了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。} other {已跳过 # 个激活了主密码重新输入的登录项目，未创建 SHA-1 也未发送 HIBP 范围查询。}}"
 
@@ -425,11 +425,11 @@ msgstr "{pulled, plural, one {已拉取 # 个项目} other {已拉取 # 个项�
 msgid "{pushed, plural, one {Pushed # item} other {Pushed # items}}"
 msgstr "{pushed, plural, one {已推送 # 个项目} other {已推送 # 个项目}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:943
+#: src/renderer/src/components/VaultHealthPage.tsx:948
 msgid "{pwnCount, plural, one {# account} other {# accounts}}"
 msgstr "{pwnCount, plural, one {# 个账号} other {# 个账号}}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:249
+#: src/renderer/src/components/VaultHealthPage.tsx:254
 msgid "{reuseCount, plural, one {Reused # time} other {Reused # times}}"
 msgstr "{reuseCount, plural, one {重复使用 # 次} other {重复使用 # 次}}"
 
@@ -506,31 +506,31 @@ msgstr "{scopeTitle} 密码库项目"
 msgid "{value} seconds remaining"
 msgstr "剩余 {value} 秒"
 
-#: src/renderer/src/components/SettingsPage.tsx:1552
+#: src/renderer/src/components/SettingsPage.tsx:1554
 msgid "<0/> could not be registered"
 msgstr "无法注册 <0/>"
 
-#: src/renderer/src/components/SettingsPage.tsx:422
+#: src/renderer/src/components/SettingsPage.tsx:428
 msgid "1 minute"
 msgstr "1 分钟"
 
-#: src/renderer/src/components/SettingsPage.tsx:424
+#: src/renderer/src/components/SettingsPage.tsx:430
 msgid "15 minutes"
 msgstr "15 分钟"
 
-#: src/renderer/src/components/SettingsPage.tsx:427
+#: src/renderer/src/components/SettingsPage.tsx:433
 msgid "240 minutes"
 msgstr "240 分钟"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:316
+#: src/renderer/src/components/VaultHealthPage.tsx:321
 msgid "2fa.directory service: {matchedDomain}"
 msgstr "2fa.directory 服务：{matchedDomain}"
 
-#: src/renderer/src/components/SettingsPage.tsx:425
+#: src/renderer/src/components/SettingsPage.tsx:431
 msgid "30 minutes"
 msgstr "30 分钟"
 
-#: src/renderer/src/components/SettingsPage.tsx:423
+#: src/renderer/src/components/SettingsPage.tsx:429
 msgid "5 minutes"
 msgstr "5 分钟"
 
@@ -538,7 +538,7 @@ msgstr "5 分钟"
 msgid "6-digit verification code"
 msgstr "6 位验证码"
 
-#: src/renderer/src/components/SettingsPage.tsx:426
+#: src/renderer/src/components/SettingsPage.tsx:432
 msgid "60 minutes"
 msgstr "60 分钟"
 
@@ -575,7 +575,7 @@ msgstr "同步问题需要处理"
 msgid "A two-step verification code was sent by email."
 msgstr "两步验证代码已通过电子邮件发送。"
 
-#: src/renderer/src/components/SettingsPage.tsx:417
+#: src/renderer/src/components/SettingsPage.tsx:423
 msgid "About"
 msgstr "关于"
 
@@ -617,15 +617,15 @@ msgstr "已请求访问"
 msgid "Access token refresh"
 msgstr "访问令牌刷新"
 
-#: src/renderer/src/components/SettingsPage.tsx:635
+#: src/renderer/src/components/SettingsPage.tsx:641
 msgid "Accessibility and shortcut status checked again."
 msgstr "已再次检查辅助功能和快捷键状态。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1513
+#: src/renderer/src/components/SettingsPage.tsx:1515
 msgid "Accessibility permission"
 msgstr "辅助功能权限"
 
-#: src/renderer/src/components/SettingsPage.tsx:704
+#: src/renderer/src/components/SettingsPage.tsx:710
 msgid "Accessibility permission is enabled. Cross-browser autofill is ready to use."
 msgstr "辅助功能权限已激活。跨浏览器自动填充已可使用。"
 
@@ -653,7 +653,7 @@ msgstr "账号 {slot}"
 msgid "Account and encryption information"
 msgstr "账号和加密信息"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1441
+#: src/renderer/src/components/VaultHealthPage.tsx:1401
 msgid "Account breaches"
 msgstr "账号泄露"
 
@@ -729,7 +729,7 @@ msgstr "账户类型"
 msgid "Account, routing, and IBAN numbers"
 msgstr "账号、银行代码和 IBAN"
 
-#: src/renderer/src/components/SettingsPage.tsx:407
+#: src/renderer/src/components/SettingsPage.tsx:413
 msgid "Accounts & sync"
 msgstr "账号和同步"
 
@@ -738,7 +738,7 @@ msgstr "账号和同步"
 msgid "Action"
 msgstr "操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:477
+#: src/renderer/src/components/SettingsPage.tsx:483
 #: src/renderer/src/lib/ssh-agent-ui.ts:23
 msgid "Action required"
 msgstr "需要操作"
@@ -878,27 +878,27 @@ msgstr "地址行 3"
 msgid "Administrator"
 msgstr "管理员"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:954
+#: src/renderer/src/components/VaultHealthPage.tsx:959
 msgid "Affected data classes"
 msgstr "受影响的数据类别"
 
-#: src/renderer/src/components/SettingsPage.tsx:434
+#: src/renderer/src/components/SettingsPage.tsx:440
 msgid "After 1 minute"
 msgstr "1 分钟后"
 
-#: src/renderer/src/components/SettingsPage.tsx:432
+#: src/renderer/src/components/SettingsPage.tsx:438
 msgid "After 15 seconds"
 msgstr "15 秒后"
 
-#: src/renderer/src/components/SettingsPage.tsx:435
+#: src/renderer/src/components/SettingsPage.tsx:441
 msgid "After 2 minutes"
 msgstr "2 分钟后"
 
-#: src/renderer/src/components/SettingsPage.tsx:433
+#: src/renderer/src/components/SettingsPage.tsx:439
 msgid "After 30 seconds"
 msgstr "30 秒后"
 
-#: src/renderer/src/components/SettingsPage.tsx:421
+#: src/renderer/src/components/SettingsPage.tsx:427
 msgid "After 5 minutes of system inactivity"
 msgstr "系统闲置 5 分钟后"
 
@@ -931,11 +931,11 @@ msgstr "确认此提示后，请重新连接。仅可在重新连接后开始新
 msgid "After you enter your master password and explicitly confirm, the next sync will resend unconfirmed items. This may create duplicates on the server."
 msgstr "输入主密码并明确确认后，下次同步将重新发送未确认的项目。这可能会在服务器上创建重复项目。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:356
+#: src/renderer/src/components/VaultHealthPage.tsx:361
 msgid "After you start the check, the main process downloads only the static TOTP service list from 2fa.directory and compares it locally. Vault domains, URIs, passwords, and TOTP secrets are never uploaded."
 msgstr "开始检查后，主进程仅从 2fa.directory 下载静态 TOTP 服务列表，并在本地进行比较。绝不会上传密码库域名、URI、密码和 TOTP 密钥。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1722
+#: src/renderer/src/components/SettingsPage.tsx:1724
 msgid "Agent could not start"
 msgstr "Agent 无法启动"
 
@@ -944,7 +944,7 @@ msgstr "Agent 无法启动"
 msgid "All"
 msgstr "全部"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:162
+#: src/renderer/src/components/VaultHealthPage.tsx:167
 msgid "All analyzed login items are above the weak-password threshold."
 msgstr "所有已分析的登录项目均高于弱密码阈值。"
 
@@ -964,7 +964,7 @@ msgstr "所有组织"
 msgid "All shared items"
 msgstr "所有共享项目"
 
-#: src/renderer/src/components/SettingsPage.tsx:705
+#: src/renderer/src/components/SettingsPage.tsx:711
 msgid "Allow BearWarden under System Settings → Privacy & Security → Accessibility, then return and check again."
 msgstr "请在“系统设置”→“隐私与安全性”→“辅助功能”中允许 BearWarden，然后返回并再次检查。"
 
@@ -1001,15 +1001,15 @@ msgstr "发生未知错误。请稍后重试。"
 #~ msgid "An unknown error occurred. Try again later."
 #~ msgstr "发生未知错误。请稍后重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1327
+#: src/renderer/src/components/VaultHealthPage.tsx:1342
 msgid "Analyze again"
 msgstr "重新分析"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:453
+#: src/renderer/src/components/VaultHealthPage.tsx:458
 msgid "Analyzed this time"
 msgstr "本次已分析"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:139
+#: src/renderer/src/components/VaultHealthPage.tsx:144
 msgid "Analyzing the vault locally"
 msgstr "正在本地分析密码库"
 
@@ -1021,7 +1021,7 @@ msgstr "Android"
 msgid "Android (Amazon)"
 msgstr "Android（Amazon）"
 
-#: src/renderer/src/components/SettingsPage.tsx:1558
+#: src/renderer/src/components/SettingsPage.tsx:1560
 msgid "Another app, such as 1Password, already uses this shortcut. Choose another shortcut above, or disable the same shortcut in that app and check again."
 msgstr "其他应用程序（例如 1Password）已使用该快捷键。请从上方选择其他快捷键，或在该应用程序中停用相同的快捷键后重新检查。"
 
@@ -1029,7 +1029,7 @@ msgstr "其他应用程序（例如 1Password）已使用该快捷键。请从�
 #~ msgid "Another app, such as 1Password, already uses this shortcut. Disable the same shortcut in that app, then check again."
 #~ msgstr "另一个应用（如 1Password）已在使用此快捷键。请在该应用中禁用相同的快捷键，然后再次检查。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1727
+#: src/renderer/src/components/SettingsPage.tsx:1729
 msgid "Another SSH Agent is using the same endpoint. Stop that Agent, then enable BearWarden SSH Agent again."
 msgstr "另一个 SSH Agent 正在使用同一端点。请停止该 Agent，然后再次激活 BearWarden SSH Agent。"
 
@@ -1037,7 +1037,7 @@ msgstr "另一个 SSH Agent 正在使用同一端点。请停止该 Agent，然�
 msgid "App version"
 msgstr "应用版本"
 
-#: src/renderer/src/components/SettingsPage.tsx:390
+#: src/renderer/src/components/SettingsPage.tsx:396
 msgid "Appearance and defaults"
 msgstr "皮肤和默认设置"
 
@@ -1050,7 +1050,7 @@ msgstr "皮肤和默认设置"
 msgid "Application menu"
 msgstr "应用程序菜单"
 
-#: src/renderer/src/components/SettingsPage.tsx:288
+#: src/renderer/src/components/SettingsPage.tsx:294
 msgid "Apply"
 msgstr "应用"
 
@@ -1117,7 +1117,7 @@ msgstr "已归档 {affectedCount} 个项目。"
 msgid "Archiving requires a premium membership. Items that are already archived can still be viewed and unarchived."
 msgstr "归档需要高级会员资格。已归档的项目仍可查看并取消归档。"
 
-#: src/renderer/src/components/SettingsPage.tsx:468
+#: src/renderer/src/components/SettingsPage.tsx:474
 msgid "Ask before every signature"
 msgstr "每次签名之前询问"
 
@@ -1133,7 +1133,7 @@ msgstr "至少 12 个字符。BearWarden 无法恢复它。"
 msgid "At least 12 characters. It is provided only to the local main process for encryption or decryption."
 msgstr "至少 12 个字符。它仅会提供给本地主进程用于加密或解密。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:290
+#: src/renderer/src/components/VaultHealthPage.tsx:295
 msgid "At least one URI explicitly uses http://"
 msgstr "至少有一个 URI 明确使用 http://"
 
@@ -1182,15 +1182,15 @@ msgstr "身份验证器密钥（TOTP）"
 msgid "Authorization expired. Select the item again and verify your master password."
 msgstr "授权已过期。请重新选择项目并验证您的主密码。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1471
+#: src/renderer/src/components/SettingsPage.tsx:1473
 msgid "Autofill shortcut"
 msgstr "自动填充快捷键"
 
-#: src/renderer/src/components/SettingsPage.tsx:684
+#: src/renderer/src/components/SettingsPage.tsx:690
 msgid "Autofill shortcut updated."
 msgstr "自动填充快捷键已更新。"
 
-#: src/renderer/src/components/SettingsPage.tsx:414
+#: src/renderer/src/components/SettingsPage.tsx:420
 msgid "Autofill, SSH Agent, and backups"
 msgstr "自动填充、SSH Agent 和备份"
 
@@ -1198,11 +1198,11 @@ msgstr "自动填充、SSH Agent 和备份"
 msgid "Automatic generation failed. Try again, or change the item type to cancel."
 msgstr "自动生成失败。请重试，或更改项目类型以取消。"
 
-#: src/renderer/src/components/SettingsPage.tsx:867
+#: src/renderer/src/components/SettingsPage.tsx:869
 msgid "Automatic launch is available only in installed versions for macOS and Windows."
 msgstr "自动启动仅适用于已安装的 macOS 和 Windows 版本。"
 
-#: src/renderer/src/components/SettingsPage.tsx:611
+#: src/renderer/src/components/SettingsPage.tsx:617
 msgid "Available"
 msgstr "可用"
 
@@ -1286,7 +1286,7 @@ msgstr "Base32、otpauth://… 或 steam://…"
 msgid "BearWarden autofill"
 msgstr "BearWarden 自动填充"
 
-#: src/renderer/src/components/SettingsPage.tsx:1517
+#: src/renderer/src/components/SettingsPage.tsx:1519
 msgid "BearWarden can control the current browser and perform autofill."
 msgstr "BearWarden 可以控制当前浏览器并运行自动填充。"
 
@@ -1302,7 +1302,7 @@ msgstr "没有受信任设备密钥，BearWarden 无法安全解锁此账号。�
 msgid "BearWarden cannot unlock this organization's account safely. Use the official Bitwarden client."
 msgstr "BearWarden 无法安全解锁此组织的账号。请使用官方 Bitwarden 客户端。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1728
+#: src/renderer/src/components/SettingsPage.tsx:1730
 msgid "BearWarden could not create the SSH Agent endpoint safely. Check the home directory permissions and socket path, then try again."
 msgstr "BearWarden 无法安全地创建 SSH Agent 端点。请检查主目录权限和套接字路径，然后重试。"
 
@@ -1326,7 +1326,7 @@ msgstr "BearWarden 是一款本地优先的桌面密码管理器。"
 msgid "BearWarden needs this permission to identify the current browser and website. Allow it in System Settings, then try again."
 msgstr "BearWarden 需要此权限来识别当前浏览器和网站。请在“系统设置”中允许此权限，然后重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1606
+#: src/renderer/src/components/SettingsPage.tsx:1608
 msgid "BearWarden provides only unarchived, undeleted SSH keys. Each signature is approved according to the rule below."
 msgstr "BearWarden 仅提供未归档且未删除的 SSH 密钥。每次签名均根据以下规则批准。"
 
@@ -1334,11 +1334,11 @@ msgstr "BearWarden 仅提供未归档且未删除的 SSH 密钥。每次签名�
 msgid "BearWarden sends only the approval result to the local main process and never shares private passkey data with the website."
 msgstr "BearWarden 仅将批准结果发送给本地主进程，绝不会与网站共享私有通行密钥数据。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:594
+#: src/renderer/src/components/VaultHealthPage.tsx:599
 msgid "BearWarden sends only the first 5 characters of the password SHA-1 hash, downloads the padded range response from HIBP Pwned Passwords, and compares the complete SHA-1 locally in the main process. Neither the password nor the complete hash is sent to HIBP or the renderer process."
 msgstr "BearWarden 仅发送密码 SHA-1 哈希的前 5 个字符，从 HIBP Pwned Passwords 下载填充的范围响应，并在主进程本地比对完整的 SHA-1。密码和完整哈希均不会发送至 HIBP 或渲染器进程。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:824
+#: src/renderer/src/components/VaultHealthPage.tsx:829
 msgid "BearWarden sends your complete email address to the configured Vaultwarden server only after you submit a query. That server then sends it to <0/>. This is not a k-anonymity password check. Query only accounts you are authorized to check."
 msgstr "只有在您提交查询后，BearWarden 才会将您的完整电子邮件地址发送至已配置的 Vaultwarden 服务器。该服务器随后会将其发送到 <0/>。这不是 k-匿名密码检查。仅查询您获授权检查的账号。"
 
@@ -1346,7 +1346,7 @@ msgstr "只有在您提交查询后，BearWarden 才会将您的完整电子邮�
 msgid "BearWarden stores local error logs for troubleshooting. Open the log in {fileManagerName} when you need to inspect or share diagnostics."
 msgstr "BearWarden 会在本地存储错误日志以便故障排查。需要检查或分享诊断信息时，请在{fileManagerName}中打开日志。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1668
+#: src/renderer/src/components/SettingsPage.tsx:1670
 msgid "BearWarden uses the fixed <0>\\\\.\\pipe\\openssh-ssh-agent</0> named pipe. Disable the system OpenSSH Authentication Agent first so the two agents do not compete for the same pipe."
 msgstr "BearWarden 使用固定的命名管道 <0>\\\\.\\pipe\\openssh-ssh-agent</0>。请先禁用系统 OpenSSH Authentication Agent，以免两个代理争用同一管道。"
 
@@ -1378,11 +1378,11 @@ msgstr "生物识别身份验证"
 msgid "Biometric unlock is unavailable right now. Enter your master password."
 msgstr "生物识别解锁当前不可用。请输入您的主密码。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1182
+#: src/renderer/src/components/SettingsPage.tsx:1184
 msgid "Biometrics"
 msgstr "生物识别"
 
-#: src/renderer/src/components/SettingsPage.tsx:1203
+#: src/renderer/src/components/SettingsPage.tsx:1205
 msgid "Biometrics are unavailable on this device"
 msgstr "此设备不支持生物识别"
 
@@ -1414,7 +1414,7 @@ msgstr "Bitwarden 纯文本 ZIP（包含附件）"
 msgid "Bitwarden-compatible settings allow only one UTF-16 character."
 msgstr "与 Bitwarden 兼容的设置仅允许一个 UTF-16 字符。"
 
-#: src/renderer/src/components/SettingsPage.tsx:902
+#: src/renderer/src/components/SettingsPage.tsx:904
 msgid "Block screenshots"
 msgstr "阻止截屏"
 
@@ -1431,11 +1431,11 @@ msgstr "支行代码"
 msgid "Brand"
 msgstr "品牌"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:723
+#: src/renderer/src/components/VaultHealthPage.tsx:728
 msgid "Breach counts come from HIBP and do not mean the password is still circulating on a specific website."
 msgstr "泄露次数来自 HIBP，并不表示该密码仍在某个特定网站上流传。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:949
+#: src/renderer/src/components/VaultHealthPage.tsx:954
 msgid "Breach date: {breachDate}; added to HIBP: {addedDate}"
 msgstr "泄露日期：{breachDate}；添加至 HIBP：{addedDate}"
 
@@ -1485,7 +1485,7 @@ msgstr "可还原"
 msgid "Cancel"
 msgstr "取消"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:652
+#: src/renderer/src/components/VaultHealthPage.tsx:657
 msgid "Cancel check"
 msgstr "取消检查"
 
@@ -1498,7 +1498,7 @@ msgstr "取消 Duo"
 msgid "Cancel editing"
 msgstr "取消编辑"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:910
+#: src/renderer/src/components/VaultHealthPage.tsx:915
 msgid "Cancel query"
 msgstr "取消查询"
 
@@ -1606,7 +1606,7 @@ msgstr "要更改您的主密码吗？"
 msgid "Character types"
 msgstr "字符类型"
 
-#: src/renderer/src/components/SettingsPage.tsx:1543
+#: src/renderer/src/components/SettingsPage.tsx:1545
 msgid "Check again"
 msgstr "再次检查"
 
@@ -1618,7 +1618,7 @@ msgstr "检查并继续"
 msgid "Check conflicts again"
 msgstr "再次检查冲突"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:625
+#: src/renderer/src/components/VaultHealthPage.tsx:630
 msgid "Check exposed passwords"
 msgstr "检查已泄露的密码"
 
@@ -1646,11 +1646,11 @@ msgstr "检查域名格式。请用逗号或换行分隔各行。"
 msgid "Check the network connection and server status, then try again."
 msgstr "检查网络连接和服务器状态，然后重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:386
+#: src/renderer/src/components/VaultHealthPage.tsx:391
 msgid "Check two-factor authentication"
 msgstr "检查双重身份验证"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1516
+#: src/renderer/src/components/VaultHealthPage.tsx:1495
 msgid "Check whether the service offers HTTPS and update the saved website address."
 msgstr "检查该服务是否提供 HTTPS，并更新已保存的网站地址。"
 
@@ -1675,12 +1675,12 @@ msgstr "检查网络、服务器 URL 和 TLS 证书，并确保可以访问服�
 msgid "Checkbox"
 msgstr "复选框"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:695
+#: src/renderer/src/components/VaultHealthPage.tsx:700
 msgid "Checked this time"
 msgstr "本次已检查"
 
 #: src/renderer/src/components/AboutPage.tsx:85
-#: src/renderer/src/components/SettingsPage.tsx:602
+#: src/renderer/src/components/SettingsPage.tsx:608
 msgid "Checking"
 msgstr "正在检查"
 
@@ -1698,7 +1698,7 @@ msgstr "正在检查上次更改的状态…"
 msgid "Checking the update service for a new version."
 msgstr "正在检查更新服务是否有新版本。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1361
+#: src/renderer/src/components/VaultHealthPage.tsx:1347
 msgid "Checks"
 msgstr "检查项"
 
@@ -1710,7 +1710,7 @@ msgstr "选择卡面"
 msgid "Choose a folder"
 msgstr "选择文件夹"
 
-#: src/renderer/src/components/SettingsPage.tsx:1474
+#: src/renderer/src/components/SettingsPage.tsx:1476
 msgid "Choose a global shortcut that is not used by your browser or another password manager."
 msgstr "请选择未被浏览器或其他密码管理器使用的全局快捷键。"
 
@@ -1776,7 +1776,7 @@ msgstr "选择完整备份"
 msgid "Choose save location"
 msgstr "选择保存位置"
 
-#: src/renderer/src/components/SettingsPage.tsx:889
+#: src/renderer/src/components/SettingsPage.tsx:891
 msgid "Choose when the vault locks and how window content is protected."
 msgstr "选择密码库锁定的时机以及窗口内容的保护方式。"
 
@@ -1798,7 +1798,7 @@ msgstr "城市"
 msgid "Clear"
 msgstr "清除"
 
-#: src/renderer/src/components/SettingsPage.tsx:1285
+#: src/renderer/src/components/SettingsPage.tsx:1287
 msgid "Clear clipboard"
 msgstr "清空剪贴板"
 
@@ -1810,7 +1810,7 @@ msgstr "清除自定义颜色"
 msgid "Clear history"
 msgstr "清除历史记录"
 
-#: src/renderer/src/components/SettingsPage.tsx:1288
+#: src/renderer/src/components/SettingsPage.tsx:1290
 msgid "Clear only content written by BearWarden that you have not overwritten."
 msgstr "仅清除由 BearWarden 写入且您尚未覆盖的内容。"
 
@@ -1828,7 +1828,7 @@ msgstr "点击下方的“请求辅助功能权限”。"
 msgid "Client ID copied."
 msgstr "Client ID 已复制。"
 
-#: src/renderer/src/components/SettingsPage.tsx:402
+#: src/renderer/src/components/SettingsPage.tsx:408
 msgid "Clipboard and website icons"
 msgstr "剪贴板和网站图标"
 
@@ -1954,8 +1954,8 @@ msgstr "确认禁用 {disableTargetName}"
 #: src/renderer/src/components/AuthScreen.tsx:417
 #: src/renderer/src/components/AuthScreen.tsx:421
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:409
-#: src/renderer/src/components/SettingsPage.tsx:1128
-#: src/renderer/src/components/SettingsPage.tsx:1238
+#: src/renderer/src/components/SettingsPage.tsx:1130
+#: src/renderer/src/components/SettingsPage.tsx:1240
 #: src/renderer/src/components/SshAgentApprovalDialog.tsx:189
 msgid "Confirm master password"
 msgstr "确认主密码"
@@ -2011,11 +2011,11 @@ msgstr "冲突需要处理"
 msgid "Connect and sync"
 msgstr "连接并同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1367
+#: src/renderer/src/components/SettingsPage.tsx:1369
 msgid "Connect to Bitwarden or Vaultwarden to sync the vault."
 msgstr "连接至 Bitwarden 或 Vaultwarden 以同步密码库。"
 
-#: src/renderer/src/components/SettingsPage.tsx:475
+#: src/renderer/src/components/SettingsPage.tsx:481
 #: src/renderer/src/components/VaultShell.tsx:191
 msgid "Connected"
 msgstr "已连接"
@@ -2074,14 +2074,14 @@ msgstr "Control 加 Shift 加反斜杠"
 
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:514
 #: src/renderer/src/components/Dialogs.tsx:710
-#: src/renderer/src/components/SettingsPage.tsx:1702
+#: src/renderer/src/components/SettingsPage.tsx:1704
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:144
 msgid "Copied"
 msgstr "已复制"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:92
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:516
-#: src/renderer/src/components/SettingsPage.tsx:1702
+#: src/renderer/src/components/SettingsPage.tsx:1704
 msgid "Copy"
 msgstr "复制"
 
@@ -2130,7 +2130,7 @@ msgstr "复制设置密钥"
 msgid "Copy sharing link"
 msgstr "复制分享链接"
 
-#: src/renderer/src/components/SettingsPage.tsx:1694
+#: src/renderer/src/components/SettingsPage.tsx:1696
 msgid "Copy SSH Agent setup command"
 msgstr "复制 SSH Agent 设置命令"
 
@@ -2318,7 +2318,7 @@ msgstr "创建 Send"
 msgid "Create text Send"
 msgstr "创建文本 Send"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1488
+#: src/renderer/src/components/VaultHealthPage.tsx:1467
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "优先为重复使用最频繁的项目创建唯一密码。"
 
@@ -2365,7 +2365,7 @@ msgstr "已创建 {creationLabel}"
 msgid "Created folder “{0}”."
 msgstr "已创建文件夹“{0}”。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1425
+#: src/renderer/src/components/SettingsPage.tsx:1427
 msgid "Cross-browser autofill"
 msgstr "跨浏览器自动填充"
 
@@ -2417,11 +2417,11 @@ msgstr "当前为只读状态。邀请、确认、查看和接管功能尚不可
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "目前您只能查看紧急访问授权及其状态。邀请、接受、确认、访问、接管授权和密钥轮换功能尚不受支持。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1206
+#: src/renderer/src/components/SettingsPage.tsx:1208
 msgid "Currently, only macOS Touch ID is supported. You can still unlock the vault with your master password."
 msgstr "目前仅支持 macOS Touch ID。您仍可使用主密码解锁密码库。"
 
-#: src/renderer/src/components/SettingsPage.tsx:428
+#: src/renderer/src/components/SettingsPage.tsx:434
 msgid "Custom"
 msgstr "自定义"
 
@@ -2458,15 +2458,15 @@ msgstr "自定义字段未移动。"
 msgid "Custom fields"
 msgstr "自定义字段"
 
-#: src/renderer/src/components/SettingsPage.tsx:245
+#: src/renderer/src/components/SettingsPage.tsx:251
 msgid "Custom inactivity timeout"
 msgstr "自定义非活动超时"
 
-#: src/renderer/src/components/SettingsPage.tsx:253
+#: src/renderer/src/components/SettingsPage.tsx:259
 msgid "Custom inactivity timeout hours"
 msgstr "自定义非活动超时小时数"
 
-#: src/renderer/src/components/SettingsPage.tsx:268
+#: src/renderer/src/components/SettingsPage.tsx:274
 msgid "Custom inactivity timeout minutes"
 msgstr "自定义非活动超时分钟数"
 
@@ -2474,7 +2474,7 @@ msgstr "自定义非活动超时分钟数"
 msgid "Custom role"
 msgstr "自定义角色"
 
-#: src/renderer/src/components/SettingsPage.tsx:785
+#: src/renderer/src/components/SettingsPage.tsx:787
 msgid "Customize the vault's appearance and default sorting."
 msgstr "自定义密码库的皮肤和默认排序。"
 
@@ -2482,19 +2482,19 @@ msgstr "自定义密码库的皮肤和默认排序。"
 msgid "Cut"
 msgstr "剪切"
 
-#: src/renderer/src/components/SettingsPage.tsx:452
+#: src/renderer/src/components/SettingsPage.tsx:458
 msgid "Dark"
 msgstr "深色"
 
-#: src/renderer/src/components/SettingsPage.tsx:1751
+#: src/renderer/src/components/SettingsPage.tsx:1753
 msgid "Data portability"
 msgstr "数据可移植性"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1034
+#: src/renderer/src/components/VaultHealthPage.tsx:1039
 msgid "Data provided by <0/>. Take action based on the affected data and whether the password was reused."
 msgstr "数据由 <0/> 提供。请根据受影响的数据以及密码是否被重复使用来采取行动。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1062
+#: src/renderer/src/components/VaultHealthPage.tsx:1067
 msgid "Data source: <0/>"
 msgstr "数据来源：<0/>"
 
@@ -2527,7 +2527,7 @@ msgstr "默认"
 msgid "Default service groups provided by Vaultwarden. Turning one off adds it to this account’s exclusion list."
 msgstr "由 Vaultwarden 提供的默认服务分组。关闭其中一项会将其添加到此账号的排除列表。"
 
-#: src/renderer/src/components/SettingsPage.tsx:832
+#: src/renderer/src/components/SettingsPage.tsx:834
 msgid "Default sort"
 msgstr "默认排序"
 
@@ -2664,11 +2664,11 @@ msgstr "禁用"
 msgid "Disable {disableTargetName}?"
 msgstr "要禁用 {disableTargetName} 吗？"
 
-#: src/renderer/src/components/SettingsPage.tsx:1229
+#: src/renderer/src/components/SettingsPage.tsx:1231
 msgid "Disable biometrics"
 msgstr "禁用生物识别"
 
-#: src/renderer/src/components/SettingsPage.tsx:1080
+#: src/renderer/src/components/SettingsPage.tsx:1082
 msgid "Disable PIN unlock"
 msgstr "禁用 PIN 解锁"
 
@@ -2678,9 +2678,9 @@ msgstr "禁用 Send"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:58
 #: src/renderer/src/components/SendsPage.tsx:116
-#: src/renderer/src/components/SettingsPage.tsx:606
-#: src/renderer/src/components/SettingsPage.tsx:1045
-#: src/renderer/src/components/SettingsPage.tsx:1191
+#: src/renderer/src/components/SettingsPage.tsx:612
+#: src/renderer/src/components/SettingsPage.tsx:1047
+#: src/renderer/src/components/SettingsPage.tsx:1193
 #: src/renderer/src/lib/ssh-agent-ui.ts:19
 msgid "Disabled"
 msgstr "已禁用"
@@ -2745,7 +2745,7 @@ msgstr "下载文件 Send"
 msgid "Download progress"
 msgstr "下载进度"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:353
+#: src/renderer/src/components/VaultHealthPage.tsx:358
 msgid "Download the service list only when requested"
 msgstr "仅在请求时下载服务列表"
 
@@ -2837,7 +2837,7 @@ msgstr "每一行是一个组。使用逗号或换行分隔域名。URL 会在�
 msgid "Earlier"
 msgstr "更早"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1501
+#: src/renderer/src/components/VaultHealthPage.tsx:1480
 msgid "Easy-to-guess passwords"
 msgstr "容易猜测的密码"
 
@@ -2908,7 +2908,7 @@ msgstr "暂不支持编辑文件 Send。"
 msgid "Email"
 msgstr "电子邮件"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:874
+#: src/renderer/src/components/VaultHealthPage.tsx:879
 msgid "Email address"
 msgstr "电子邮件地址"
 
@@ -2962,7 +2962,7 @@ msgstr "服务器响应为空"
 msgid "Empty Trash"
 msgstr "清空回收站"
 
-#: src/renderer/src/components/SettingsPage.tsx:1444
+#: src/renderer/src/components/SettingsPage.tsx:1446
 msgid "Enable <0/> autofill"
 msgstr "激活 <0/> 自动填充"
 
@@ -2970,7 +2970,7 @@ msgstr "激活 <0/> 自动填充"
 msgid "Enable authenticator"
 msgstr "激活身份验证器"
 
-#: src/renderer/src/components/SettingsPage.tsx:1263
+#: src/renderer/src/components/SettingsPage.tsx:1265
 msgid "Enable biometrics"
 msgstr "激活生物识别"
 
@@ -2978,17 +2978,17 @@ msgstr "激活生物识别"
 msgid "Enable email two-factor authentication"
 msgstr "激活电子邮件双重身份验证"
 
-#: src/renderer/src/components/SettingsPage.tsx:1170
+#: src/renderer/src/components/SettingsPage.tsx:1172
 msgid "Enable PIN unlock"
 msgstr "激活 PIN 解锁"
 
-#: src/renderer/src/components/SettingsPage.tsx:1603
+#: src/renderer/src/components/SettingsPage.tsx:1605
 msgid "Enable SSH Agent"
 msgstr "激活 SSH Agent"
 
 #: src/renderer/src/components/LoginEditor.tsx:3172
-#: src/renderer/src/components/SettingsPage.tsx:1045
-#: src/renderer/src/components/SettingsPage.tsx:1190
+#: src/renderer/src/components/SettingsPage.tsx:1047
+#: src/renderer/src/components/SettingsPage.tsx:1192
 msgid "Enabled"
 msgstr "已激活"
 
@@ -3004,7 +3004,7 @@ msgstr "仅加密笔记"
 msgid "Encrypting locally"
 msgstr "正在本地加密"
 
-#: src/renderer/src/components/SettingsPage.tsx:459
+#: src/renderer/src/components/SettingsPage.tsx:465
 msgid "English"
 msgstr "英语"
 
@@ -3040,7 +3040,7 @@ msgstr "输入 URL 以查看匹配示例"
 #~ msgid "Enter a URL to show a matching example"
 #~ msgstr "输入 URL 以显示匹配示例"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:894
+#: src/renderer/src/components/VaultHealthPage.tsx:899
 msgid "Enter a valid email address with no more than 254 characters."
 msgstr "请输入不超过 254 个字符的有效电子邮件地址。"
 
@@ -3092,7 +3092,7 @@ msgstr "每次禁用请求都必须重新输入；绝不会重复使用之前的
 msgid "Enter master password again"
 msgstr "再次输入主密码"
 
-#: src/renderer/src/components/SettingsPage.tsx:1115
+#: src/renderer/src/components/SettingsPage.tsx:1117
 msgid "Enter PIN again"
 msgstr "再次输入 PIN"
 
@@ -3113,7 +3113,7 @@ msgstr "输入访问密码以下载“{sendName}”。"
 msgid "Enter the backup password again"
 msgstr "再次输入备份密码"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:860
+#: src/renderer/src/components/VaultHealthPage.tsx:865
 msgid "Enter the email address to query through Vaultwarden and HIBP."
 msgstr "请输入要通过 Vaultwarden 和 HIBP 查询的电子邮件地址。"
 
@@ -3137,7 +3137,7 @@ msgstr "请输入为此会话设置的 PIN。"
 msgid "Enter the SSH private key password"
 msgstr "输入 SSH 私钥密码"
 
-#: src/renderer/src/components/SettingsPage.tsx:217
+#: src/renderer/src/components/SettingsPage.tsx:223
 msgid "Enter whole numbers for hours and minutes."
 msgstr "小时和分钟请输入整数。"
 
@@ -3173,7 +3173,7 @@ msgstr "激活生物识别前请输入主密码。"
 msgid "Enter your master password to approve this protected SSH key."
 msgstr "输入主密码以批准此受保护的 SSH 密钥。"
 
-#: src/renderer/src/components/SettingsPage.tsx:553
+#: src/renderer/src/components/SettingsPage.tsx:559
 msgid "Enter your master password to confirm."
 msgstr "输入主密码以确认。"
 
@@ -3279,7 +3279,7 @@ msgstr "导出 Bitwarden 附件 ZIP"
 msgid "Export Bitwarden CSV"
 msgstr "导出 Bitwarden CSV"
 
-#: src/renderer/src/components/SettingsPage.tsx:1770
+#: src/renderer/src/components/SettingsPage.tsx:1772
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:290
 msgid "Export encrypted backup"
 msgstr "导出加密备份"
@@ -3290,7 +3290,7 @@ msgstr "导出加密备份"
 msgid "Export file saved: {0} items and {1} folders{attachments}{skipped}{unsupported}{passkeys}{lossSummary}{riskyFields}{durability}."
 msgstr "导出文件已保存：{0} 个项目和 {1} 个文件夹{attachments}{skipped}{unsupported}{passkeys}{lossSummary}{riskyFields}{durability}。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1418
+#: src/renderer/src/components/VaultHealthPage.tsx:1381
 msgid "Exposed passwords"
 msgstr "已泄露的密码"
 
@@ -3328,7 +3328,7 @@ msgstr "字段 {linkedId}"
 msgid "File"
 msgstr "文件"
 
-#: src/renderer/src/components/SettingsPage.tsx:1757
+#: src/renderer/src/components/SettingsPage.tsx:1759
 msgid "File contents and paths are handled only by the local main process and are never sent back to the renderer process."
 msgstr "文件内容和路径仅由本地主进程处理，绝不会传回渲染进程。"
 
@@ -3426,7 +3426,7 @@ msgstr "文件夹"
 msgid "Folders organize your items without changing their login details."
 msgstr "文件夹可整理项目，而不改变其登录详情。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1518
+#: src/renderer/src/components/SettingsPage.tsx:1520
 msgid "Follow the steps below to let BearWarden identify the current website and fill the focused login form."
 msgstr "按照以下步骤，让 BearWarden 识别当前网站并填写光标所在的登录表单。"
 
@@ -3480,8 +3480,8 @@ msgstr "完整 BearWarden 备份（包含附件）"
 msgid "Full name"
 msgstr "姓名"
 
-#: src/renderer/src/components/SettingsPage.tsx:389
-#: src/renderer/src/components/SettingsPage.tsx:784
+#: src/renderer/src/components/SettingsPage.tsx:395
+#: src/renderer/src/components/SettingsPage.tsx:786
 msgid "General"
 msgstr "常规"
 
@@ -3594,7 +3594,7 @@ msgstr "组 {0}"
 msgid "Handle incomplete purge"
 msgstr "处理未完成的清除操作"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:811
+#: src/renderer/src/components/VaultHealthPage.tsx:816
 msgid "Have I Been Pwned (HIBP)"
 msgstr "Have I Been Pwned (HIBP)"
 
@@ -3602,7 +3602,7 @@ msgstr "Have I Been Pwned (HIBP)"
 msgid "Health report"
 msgstr "健康报告"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1054
+#: src/renderer/src/components/VaultHealthPage.tsx:1059
 msgid "HIBP returned no known breaches for this account. This is only the result of the current query and does not mean the account will always be safe."
 msgstr "HIBP 未返回此账号已知的泄露记录。这仅是当前查询的结果，并不代表该账号始终安全。"
 
@@ -3667,7 +3667,7 @@ msgstr "历史记录以明文显示"
 msgid "Host"
 msgstr "主机"
 
-#: src/renderer/src/components/SettingsPage.tsx:265
+#: src/renderer/src/components/SettingsPage.tsx:271
 msgid "hours"
 msgstr "小时"
 
@@ -3729,7 +3729,7 @@ msgstr "如果您不想冒出现重复项的风险，请改为断开连接。您
 msgid "Image attachment preview"
 msgstr "图片附件预览"
 
-#: src/renderer/src/components/SettingsPage.tsx:1752
+#: src/renderer/src/components/SettingsPage.tsx:1754
 msgid "Import Bitwarden JSON or create a password-protected portable backup."
 msgstr "导入 Bitwarden JSON，或创建受密码保护的便携备份。"
 
@@ -3743,7 +3743,7 @@ msgstr "导入完成：已添加 {0} 个项目和 {1} 个文件夹{skipped}{loss
 msgid "Import from clipboard"
 msgstr "从剪贴板导入"
 
-#: src/renderer/src/components/SettingsPage.tsx:1766
+#: src/renderer/src/components/SettingsPage.tsx:1768
 msgid "Import JSON"
 msgstr "导入 JSON"
 
@@ -3880,7 +3880,7 @@ msgstr "项目 / 附件"
 msgid "Items remain encrypted in Trash and can be restored later."
 msgstr "项目在回收站中保持加密状态，稍后可以恢复。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:489
+#: src/renderer/src/components/VaultHealthPage.tsx:494
 msgid "Items that do not apply were skipped"
 msgstr "不适用的项目已跳过"
 
@@ -3888,7 +3888,7 @@ msgstr "不适用的项目已跳过"
 msgid "Its items will move to Unfiled and will not be deleted."
 msgstr "其中的项目将移至未分类，且不会被删除。"
 
-#: src/renderer/src/components/SettingsPage.tsx:462
+#: src/renderer/src/components/SettingsPage.tsx:468
 msgid "Japanese"
 msgstr "日语"
 
@@ -3942,15 +3942,15 @@ msgstr "密钥指纹"
 msgid "Key material is read-only. Use the show button to view the private key temporarily."
 msgstr "密钥材料为只读。使用显示按钮可暂时查看私钥。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:711
+#: src/renderer/src/components/VaultHealthPage.tsx:716
 msgid "Known breaches found"
 msgstr "发现已知泄露记录"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:613
+#: src/renderer/src/components/VaultHealthPage.tsx:618
 msgid "Known breaches have not been checked yet"
 msgstr "尚未检查已知泄露记录"
 
-#: src/renderer/src/components/SettingsPage.tsx:805
+#: src/renderer/src/components/SettingsPage.tsx:807
 msgid "Language"
 msgstr "语言"
 
@@ -3983,11 +3983,11 @@ msgstr "上次同步"
 msgid "Last synced: {lastSyncTime}"
 msgstr "上次同步：{lastSyncTime}"
 
-#: src/renderer/src/components/SettingsPage.tsx:860
+#: src/renderer/src/components/SettingsPage.tsx:862
 msgid "Launch BearWarden at login"
 msgstr "登录时启动 BearWarden"
 
-#: src/renderer/src/components/SettingsPage.tsx:866
+#: src/renderer/src/components/SettingsPage.tsx:868
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "登录此计算机后自动启动 BearWarden。"
 
@@ -3999,7 +3999,7 @@ msgstr "留空表示不设限制。"
 msgid "Length"
 msgstr "长度"
 
-#: src/renderer/src/components/SettingsPage.tsx:1590
+#: src/renderer/src/components/SettingsPage.tsx:1592
 msgid "Let terminals and Git use SSH keys from the vault through a local socket."
 msgstr "允许终端和 Git 通过本地套接字使用密码库中的 SSH 密钥。"
 
@@ -4030,7 +4030,7 @@ msgstr "驾驶执照号码"
 msgid "License number, class, and validity dates"
 msgstr "驾驶执照号码、准驾车型和有效日期"
 
-#: src/renderer/src/components/SettingsPage.tsx:451
+#: src/renderer/src/components/SettingsPage.tsx:457
 msgid "Light"
 msgstr "浅色"
 
@@ -4068,7 +4068,7 @@ msgstr "列表操作"
 msgid "load"
 msgstr "加载"
 
-#: src/renderer/src/components/SettingsPage.tsx:1327
+#: src/renderer/src/components/SettingsPage.tsx:1329
 msgid "Load icons through the configured Bitwarden or Vaultwarden icon service. When disabled, local initials are used instead."
 msgstr "通过已配置的 Bitwarden 或 Vaultwarden 图标服务加载图标。禁用后将改用本地首字母。"
 
@@ -4112,7 +4112,7 @@ msgstr "正在加载密码历史记录"
 msgid "Loading Sends…"
 msgstr "正在加载 Sends…"
 
-#: src/renderer/src/components/SettingsPage.tsx:774
+#: src/renderer/src/components/SettingsPage.tsx:776
 msgid "Loading settings…"
 msgstr "正在加载设置…"
 
@@ -4120,7 +4120,7 @@ msgstr "正在加载设置…"
 msgid "Loading shared item…"
 msgstr "正在加载共享项目…"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:401
+#: src/renderer/src/components/VaultHealthPage.tsx:406
 msgid "Loading the 2fa.directory service list"
 msgstr "正在加载 2fa.directory 服务列表"
 
@@ -4171,7 +4171,7 @@ msgstr "本地账号未移动。"
 msgid "Local accounts"
 msgstr "本地账号"
 
-#: src/renderer/src/components/SettingsPage.tsx:408
+#: src/renderer/src/components/SettingsPage.tsx:414
 msgid "Local accounts and cloud connections"
 msgstr "本地账号和云端连接"
 
@@ -4187,7 +4187,7 @@ msgstr "本地同步快照限制"
 msgid "Local vault"
 msgstr "本地密码库"
 
-#: src/renderer/src/components/SettingsPage.tsx:960
+#: src/renderer/src/components/SettingsPage.tsx:962
 msgid "Lock after inactivity"
 msgstr "闲置后锁定"
 
@@ -4195,15 +4195,15 @@ msgstr "闲置后锁定"
 msgid "Lock and restart"
 msgstr "锁定并重启"
 
-#: src/renderer/src/components/SettingsPage.tsx:963
+#: src/renderer/src/components/SettingsPage.tsx:965
 msgid "Lock automatically after a period of inactivity. The vault always locks when the app closes."
 msgstr "闲置一段时间后自动锁定。应用关闭时，密码库始终会锁定。"
 
-#: src/renderer/src/components/SettingsPage.tsx:945
+#: src/renderer/src/components/SettingsPage.tsx:947
 msgid "Lock the vault immediately when the computer goes to sleep."
 msgstr "电脑进入睡眠状态时立即锁定密码库。"
 
-#: src/renderer/src/components/SettingsPage.tsx:927
+#: src/renderer/src/components/SettingsPage.tsx:929
 msgid "Lock the vault immediately when you lock the screen."
 msgstr "锁定屏幕时立即锁定密码库。"
 
@@ -4212,15 +4212,15 @@ msgstr "锁定屏幕时立即锁定密码库。"
 msgid "Lock vault"
 msgstr "锁定密码库"
 
-#: src/renderer/src/components/SettingsPage.tsx:942
+#: src/renderer/src/components/SettingsPage.tsx:944
 msgid "Lock when the computer sleeps"
 msgstr "电脑睡眠时锁定"
 
-#: src/renderer/src/components/SettingsPage.tsx:924
+#: src/renderer/src/components/SettingsPage.tsx:926
 msgid "Lock when the screen is locked"
 msgstr "锁定屏幕时锁定"
 
-#: src/renderer/src/components/SettingsPage.tsx:396
+#: src/renderer/src/components/SettingsPage.tsx:402
 msgid "Locking and unlocking"
 msgstr "锁定和解锁"
 
@@ -4234,21 +4234,21 @@ msgstr "使用设备登录"
 msgid "Login"
 msgstr "登录"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:246
-#: src/renderer/src/components/VaultHealthPage.tsx:268
-#: src/renderer/src/components/VaultHealthPage.tsx:575
+#: src/renderer/src/components/VaultHealthPage.tsx:251
+#: src/renderer/src/components/VaultHealthPage.tsx:273
+#: src/renderer/src/components/VaultHealthPage.tsx:580
 msgid "Login item"
 msgstr "登录项目"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:714
+#: src/renderer/src/components/VaultHealthPage.tsx:719
 msgid "Login items whose complete hash matched an HIBP padded range"
 msgstr "完整哈希值匹配 HIBP 填充范围的登录项目"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1487
+#: src/renderer/src/components/VaultHealthPage.tsx:1466
 msgid "Login items with reused passwords"
 msgstr "使用重复密码的登录项目"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:374
+#: src/renderer/src/components/VaultHealthPage.tsx:379
 msgid "Login items without two-factor authentication have not been checked yet"
 msgstr "尚未检查未激活双重身份验证的登录项目"
 
@@ -4272,11 +4272,11 @@ msgstr "macOS 桌面应用"
 msgid "macOS grants broad Accessibility access to control the computer. BearWarden uses it only to read and fill supported browsers when you press <0/>."
 msgstr "macOS 的辅助功能权限可广泛控制电脑。BearWarden 只会在您按下 <0/> 时，用它读取支持的浏览器并运行填写。"
 
-#: src/renderer/src/components/SettingsPage.tsx:604
+#: src/renderer/src/components/SettingsPage.tsx:610
 msgid "macOS only"
 msgstr "仅限 macOS"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1339
+#: src/renderer/src/components/VaultHealthPage.tsx:1434
 msgid "Make sure the vault is still unlocked, then analyze it again."
 msgstr "请确认密码库仍处于解锁状态，然后再次分析。"
 
@@ -4296,7 +4296,7 @@ msgstr "管理 FIDO2 安全密钥"
 #~ msgid "Manage security, appearance, and sync on this device."
 #~ msgstr "管理此设备上的安全、皮肤和同步。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1414
+#: src/renderer/src/components/SettingsPage.tsx:1416
 msgid "Manage sync & accounts"
 msgstr "管理同步和账号"
 
@@ -4422,7 +4422,7 @@ msgstr "已迁移"
 msgid "Minimize"
 msgstr "最小化"
 
-#: src/renderer/src/components/SettingsPage.tsx:248
+#: src/renderer/src/components/SettingsPage.tsx:254
 msgid "Minimum 1 minute, maximum 8,760 hours; minutes must be between 0 and 59."
 msgstr "最短为 1 分钟，最长为 8,760 小时；分钟必须介于 0 和 59 之间。"
 
@@ -4442,11 +4442,11 @@ msgstr "最少特殊字符数"
 msgid "Minimum uppercase"
 msgstr "最少大写字母数"
 
-#: src/renderer/src/components/SettingsPage.tsx:280
+#: src/renderer/src/components/SettingsPage.tsx:286
 msgid "minutes"
 msgstr "分钟"
 
-#: src/renderer/src/components/SettingsPage.tsx:221
+#: src/renderer/src/components/SettingsPage.tsx:227
 msgid "Minutes must be between 0 and 59."
 msgstr "分钟必须介于 0 到 59 之间。"
 
@@ -4460,7 +4460,7 @@ msgstr "货币市场账户"
 msgid "More actions"
 msgstr "更多操作"
 
-#: src/renderer/src/components/SettingsPage.tsx:446
+#: src/renderer/src/components/SettingsPage.tsx:452
 #: src/renderer/src/components/VaultShell.tsx:205
 msgid "Most used"
 msgstr "最常使用"
@@ -4581,7 +4581,7 @@ msgstr "正与其他 {0} 个项目一起移动"
 #: src/renderer/src/components/LoginEditor.tsx:1806
 #: src/renderer/src/components/LoginEditor.tsx:3030
 #: src/renderer/src/components/SendsPage.tsx:563
-#: src/renderer/src/components/SettingsPage.tsx:447
+#: src/renderer/src/components/SettingsPage.tsx:453
 #: src/renderer/src/components/VaultItemDetailViews.tsx:245
 #: src/renderer/src/components/VaultShell.tsx:196
 msgid "Name"
@@ -4618,11 +4618,11 @@ msgid "Needs attention"
 msgstr "需要注意"
 
 #: src/renderer/src/components/LoginEditor.tsx:749
-#: src/renderer/src/components/SettingsPage.tsx:431
+#: src/renderer/src/components/SettingsPage.tsx:437
 msgid "Never"
 msgstr "从不"
 
-#: src/renderer/src/components/SettingsPage.tsx:469
+#: src/renderer/src/components/SettingsPage.tsx:475
 msgid "Never ask (approve automatically)"
 msgstr "从不询问（自动批准）"
 
@@ -4678,7 +4678,7 @@ msgstr "否"
 #~ msgid "No attachments yet"
 #~ msgstr "暂无附件"
 
-#: src/renderer/src/components/SettingsPage.tsx:1398
+#: src/renderer/src/components/SettingsPage.tsx:1400
 msgid "No Bitwarden account connected"
 msgstr "未连接 Bitwarden 账号"
 
@@ -4714,8 +4714,8 @@ msgstr "尚无生成的条目。"
 msgid "No item selected"
 msgstr "未选择项目"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:758
-#: src/renderer/src/components/VaultHealthPage.tsx:1051
+#: src/renderer/src/components/VaultHealthPage.tsx:763
+#: src/renderer/src/components/VaultHealthPage.tsx:1056
 msgid "No known breaches were found this time"
 msgstr "本次未发现已知泄露事件"
 
@@ -4760,7 +4760,7 @@ msgstr "无预览"
 msgid "No record"
 msgstr "无记录"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:160
+#: src/renderer/src/components/VaultHealthPage.tsx:165
 msgid "No reused passwords"
 msgstr "没有重复使用的密码"
 
@@ -4785,7 +4785,7 @@ msgstr "无摘要"
 msgid "No summary set"
 msgstr "未设置摘要"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:523
+#: src/renderer/src/components/VaultHealthPage.tsx:528
 msgid "No supported services without TOTP were found"
 msgstr "未找到尚未配置 TOTP 的受支持服务"
 
@@ -4793,7 +4793,7 @@ msgstr "未找到尚未配置 TOTP 的受支持服务"
 msgid "No two-factor authentication methods are enabled."
 msgstr "未激活任何双重身份验证方法。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:163
+#: src/renderer/src/components/VaultHealthPage.tsx:168
 msgid "No unsecured websites"
 msgstr "没有不安全的网站"
 
@@ -4809,7 +4809,7 @@ msgstr "未提供用户名"
 msgid "No verification method is available"
 msgstr "没有可用的验证方法"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:162
+#: src/renderer/src/components/VaultHealthPage.tsx:167
 msgid "No weak passwords"
 msgstr "没有弱密码"
 
@@ -4817,15 +4817,15 @@ msgstr "没有弱密码"
 msgid "No websites are set. You can save only a username and password."
 msgstr "未设置网站。您只能保存用户名和密码。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:526
+#: src/renderer/src/components/VaultHealthPage.tsx:531
 msgid "None of the analyzed login items matched a service in the 2fa.directory TOTP list that does not yet have TOTP configured."
 msgstr "分析的登录项目均未匹配 2fa.directory TOTP 列表中尚未配置 TOTP 的服务。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:160
+#: src/renderer/src/components/VaultHealthPage.tsx:165
 msgid "None of the analyzed login items share the same password."
 msgstr "分析的登录项目中没有任何项目使用相同的密码。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:163
+#: src/renderer/src/components/VaultHealthPage.tsx:168
 msgid "None of the valid personal login items use an http:// URI."
 msgstr "有效的个人登录项目中没有任何项目使用 http:// URI。"
 
@@ -4841,8 +4841,8 @@ msgstr "此次并非所有附件都已完成。请再次选择同一份备份并
 msgid "Not checked"
 msgstr "未检查"
 
-#: src/renderer/src/components/SettingsPage.tsx:473
-#: src/renderer/src/components/VaultHealthPage.tsx:1456
+#: src/renderer/src/components/SettingsPage.tsx:479
+#: src/renderer/src/components/VaultHealthPage.tsx:1414
 #: src/renderer/src/components/VaultShell.tsx:189
 msgid "Not configured"
 msgstr "未配置"
@@ -4929,7 +4929,7 @@ msgstr "只有您可以看到此内容。收件人无法看到。"
 msgid "Open {sidebarAccountName} menu"
 msgstr "打开 {sidebarAccountName} 菜单"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:479
+#: src/renderer/src/components/VaultHealthPage.tsx:484
 msgid "Open an item to edit it, or view the setup instructions provided by the service."
 msgstr "打开项目进行编辑，或查看服务提供的设置说明。"
 
@@ -4956,7 +4956,7 @@ msgstr "“打开 Duo”会在浏览器中批准此次登录。Duo 将你带到�
 msgid "Open sidebar"
 msgstr "打开侧边栏"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:333
+#: src/renderer/src/components/VaultHealthPage.tsx:338
 msgid "Open two-factor authentication setup instructions for {findingName}"
 msgstr "打开 {findingName} 的双重身份验证设置说明"
 
@@ -5179,7 +5179,7 @@ msgstr "密码已隐藏"
 msgid "Passwords in KeePass XML are unencrypted plaintext"
 msgstr "KeePass XML 中的密码是未加密的明文"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:142
+#: src/renderer/src/components/VaultHealthPage.tsx:147
 msgid "Passwords remain in the main process and are never sent to the renderer process or an external service."
 msgstr "密码始终保留在主进程中，绝不会发送到渲染器进程或外部服务。"
 
@@ -5236,7 +5236,7 @@ msgstr "要永久清除个人密码库吗？"
 msgid "Permanently remove local data"
 msgstr "永久移除本地数据"
 
-#: src/renderer/src/components/SettingsPage.tsx:610
+#: src/renderer/src/components/SettingsPage.tsx:616
 msgid "Permission required"
 msgstr "需要权限"
 
@@ -5292,7 +5292,7 @@ msgid "Picked up website {0} of {1}."
 msgstr "已选取第 {0} 个网站，共 {1} 个。"
 
 #: src/renderer/src/components/AuthScreen.tsx:372
-#: src/renderer/src/components/SettingsPage.tsx:1097
+#: src/renderer/src/components/SettingsPage.tsx:1099
 msgid "PIN"
 msgstr "PIN"
 
@@ -5304,11 +5304,11 @@ msgctxt "bank-account-pin"
 msgid "PIN"
 msgstr "PIN 码"
 
-#: src/renderer/src/components/SettingsPage.tsx:1040
+#: src/renderer/src/components/SettingsPage.tsx:1042
 msgid "PIN unlock"
 msgstr "PIN 解锁"
 
-#: src/renderer/src/components/SettingsPage.tsx:582
+#: src/renderer/src/components/SettingsPage.tsx:588
 msgid "PIN unlock is disabled."
 msgstr "PIN 解锁已禁用。"
 
@@ -5320,7 +5320,7 @@ msgstr "PIN 解锁已禁用。请改为输入主密码。"
 #~ msgid "PIN unlock is disabled. Use your master password instead."
 #~ msgstr "PIN 解锁已禁用。请改用主密码。"
 
-#: src/renderer/src/components/SettingsPage.tsx:563
+#: src/renderer/src/components/SettingsPage.tsx:569
 msgid "PIN unlock is enabled for this session only."
 msgstr "PIN 解锁仅对此会话激活。"
 
@@ -5361,7 +5361,7 @@ msgstr "加号地址"
 msgid "Postal code"
 msgstr "邮政编码"
 
-#: src/renderer/src/components/SettingsPage.tsx:1427
+#: src/renderer/src/components/SettingsPage.tsx:1429
 msgid "Press <0/> in a supported browser to match the current site and fill in login details."
 msgstr "在受支持的浏览器中按 <0/>，即可匹配当前网站并填充登录信息。"
 
@@ -5370,11 +5370,11 @@ msgstr "在受支持的浏览器中按 <0/>，即可匹配当前网站并填充�
 msgid "Preview {0}"
 msgstr "预览 {0}"
 
-#: src/renderer/src/components/SettingsPage.tsx:401
+#: src/renderer/src/components/SettingsPage.tsx:407
 msgid "Privacy"
 msgstr "隐私"
 
-#: src/renderer/src/components/SettingsPage.tsx:1276
+#: src/renderer/src/components/SettingsPage.tsx:1278
 msgid "Privacy & clipboard"
 msgstr "隐私和剪贴板"
 
@@ -5424,15 +5424,15 @@ msgstr "个人数据"
 msgid "Project information"
 msgstr "项目信息"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:591
+#: src/renderer/src/components/VaultHealthPage.tsx:596
 msgid "Protect queries with k-anonymity"
 msgstr "使用 k-匿名性保护查询"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1473
+#: src/renderer/src/components/VaultHealthPage.tsx:1452
 msgid "Protected items were not analyzed"
 msgstr "受保护项目未被分析"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:735
+#: src/renderer/src/components/VaultHealthPage.tsx:740
 msgid "Protected items were not queried"
 msgstr "受保护项目未被查询"
 
@@ -5465,7 +5465,7 @@ msgstr "再次清除剩余项目"
 msgid "Purpose"
 msgstr "用途"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:640
+#: src/renderer/src/components/VaultHealthPage.tsx:645
 msgid "Querying HIBP padded ranges"
 msgstr "正在查询 HIBP 填充范围"
 
@@ -5478,7 +5478,7 @@ msgstr "正在查询 HIBP 填充范围"
 msgid "Random word"
 msgstr "随机单词"
 
-#: src/renderer/src/components/SettingsPage.tsx:1450
+#: src/renderer/src/components/SettingsPage.tsx:1452
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "仅在按下快捷键时读取前台浏览器的 URL 和表单。多个匹配项会显示在迷您选择器中。"
 
@@ -5515,7 +5515,7 @@ msgstr "最近使用时间"
 
 #. Sort label for vault items that have been used most recently.
 #. Sort label for vault items that have been used most recently.
-#: src/renderer/src/components/SettingsPage.tsx:439
+#: src/renderer/src/components/SettingsPage.tsx:445
 #: src/renderer/src/components/VaultShell.tsx:198
 msgctxt "recent-items-filter"
 msgid "Recently used"
@@ -5525,7 +5525,7 @@ msgstr "最近使用"
 msgid "Recipients must actively reveal the text to see it."
 msgstr "收件人必须主动显示文本后才能查看。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1499
+#: src/renderer/src/components/SettingsPage.tsx:1501
 msgid "Recommended"
 msgstr "推荐"
 
@@ -5545,7 +5545,7 @@ msgstr "恢复代码"
 msgid "Redo"
 msgstr "重做"
 
-#: src/renderer/src/components/SettingsPage.tsx:1277
+#: src/renderer/src/components/SettingsPage.tsx:1279
 msgid "Reduce how long sensitive data remains on screen or in the clipboard."
 msgstr "缩短敏感数据在屏幕上或剪贴板中保留的时间。"
 
@@ -5561,7 +5561,7 @@ msgstr "重新生成 {generateLabel}"
 msgid "Registered security keys"
 msgstr "已注册的安全密钥"
 
-#: src/renderer/src/components/SettingsPage.tsx:865
+#: src/renderer/src/components/SettingsPage.tsx:867
 msgid "Registered, but you still need to allow BearWarden in Login Items under macOS System Settings."
 msgstr "已注册，但仍需在 macOS“系统设置”的“登录项”中允许 BearWarden。"
 
@@ -5590,7 +5590,7 @@ msgstr "重新加载"
 msgid "Reloading local accounts"
 msgstr "正在重新加载本地账号"
 
-#: src/renderer/src/components/SettingsPage.tsx:470
+#: src/renderer/src/components/SettingsPage.tsx:476
 msgid "Remember approvals until locked"
 msgstr "锁定前记住批准决定"
 
@@ -5599,7 +5599,7 @@ msgstr "锁定前记住批准决定"
 msgid "Remember this device"
 msgstr "记住此设备"
 
-#: src/renderer/src/components/SettingsPage.tsx:1627
+#: src/renderer/src/components/SettingsPage.tsx:1629
 msgid "Remember until locked distinguishes local requests. Forwarded requests must also match a verified remote host fingerprint. Approvals are cleared when the vault locks."
 msgstr "“锁定前记住批准决定”仅适用于本地请求。转发的请求还必须与已验证的远程主机指纹匹配。密码库锁定时会清除已记住的批准决定。"
 
@@ -5706,7 +5706,7 @@ msgstr "修复"
 msgid "Repaired “{0}”."
 msgstr "已修复“{0}”。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1533
+#: src/renderer/src/components/SettingsPage.tsx:1535
 msgid "Request accessibility permission"
 msgstr "请求辅助功能权限"
 
@@ -5788,9 +5788,9 @@ msgstr "已恢复 {restoredItemCount, plural, one {# 个项目} other {# 个项�
 msgid "Restoring attachments"
 msgstr "正在恢复附件"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:428
-#: src/renderer/src/components/VaultHealthPage.tsx:674
-#: src/renderer/src/components/VaultHealthPage.tsx:1343
+#: src/renderer/src/components/VaultHealthPage.tsx:433
+#: src/renderer/src/components/VaultHealthPage.tsx:679
+#: src/renderer/src/components/VaultHealthPage.tsx:1438
 msgid "Retry"
 msgstr "重试"
 
@@ -5798,7 +5798,7 @@ msgstr "重试"
 msgid "Return to BearWarden and click “Check again”."
 msgstr "返回 BearWarden，点击“重新检查”。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1374
+#: src/renderer/src/components/VaultHealthPage.tsx:1349
 msgid "Reused passwords"
 msgstr "重复使用的密码"
 
@@ -5889,7 +5889,7 @@ msgstr "已保存“{0}”。"
 msgid "Saved {0}"
 msgstr "已保存 {0}"
 
-#: src/renderer/src/components/SettingsPage.tsx:761
+#: src/renderer/src/components/SettingsPage.tsx:745
 msgid "Saving"
 msgstr "正在保存"
 
@@ -5919,8 +5919,8 @@ msgstr "SDK"
 #~ msgid "Search “{query}”"
 #~ msgstr "搜索“{query}”"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:857
-#: src/renderer/src/components/VaultHealthPage.tsx:905
+#: src/renderer/src/components/VaultHealthPage.tsx:862
+#: src/renderer/src/components/VaultHealthPage.tsx:910
 msgid "Search account breaches"
 msgstr "搜索账号泄露"
 
@@ -5980,7 +5980,7 @@ msgstr "搜索密码库项目，当前为 {query}"
 msgid "Search vault; for example, >name:github"
 msgstr "搜索密码库；例如，>name:github"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:979
+#: src/renderer/src/components/VaultHealthPage.tsx:984
 msgid "Searching account breaches"
 msgstr "正在搜索账号泄露"
 
@@ -6003,11 +6003,11 @@ msgstr "正在安全地移除本地账号"
 msgid "Securely switching accounts and restarting"
 msgstr "正在安全地切换账号并重新启动"
 
-#: src/renderer/src/components/SettingsPage.tsx:888
+#: src/renderer/src/components/SettingsPage.tsx:890
 msgid "Security"
 msgstr "安全性"
 
-#: src/renderer/src/components/SettingsPage.tsx:395
+#: src/renderer/src/components/SettingsPage.tsx:401
 msgid "Security & unlock"
 msgstr "安全性与解锁"
 
@@ -6161,7 +6161,7 @@ msgstr "服务器同步响应"
 msgid "Server URL"
 msgstr "服务器 URL"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:463
+#: src/renderer/src/components/VaultHealthPage.tsx:468
 msgid "Service domains are compared with the static list only on this device."
 msgstr "服务域名仅与此设备上的静态列表进行比较。"
 
@@ -6170,7 +6170,7 @@ msgstr "服务域名仅与此设备上的静态列表进行比较。"
 msgid "Session refresh response"
 msgstr "会话刷新响应"
 
-#: src/renderer/src/components/SettingsPage.tsx:1677
+#: src/renderer/src/components/SettingsPage.tsx:1679
 msgid "Set <0>SSH_AUTH_SOCK</0> in the terminal environment so SSH and Git use BearWarden’s local socket."
 msgstr "在终端环境中设置 <0>SSH_AUTH_SOCK</0>，使 SSH 和 Git 使用 BearWarden 的本地套接字。"
 
@@ -6186,7 +6186,7 @@ msgstr "设置辅助功能权限"
 msgid "Set up an authenticator app"
 msgstr "设置身份验证器应用"
 
-#: src/renderer/src/components/SettingsPage.tsx:1414
+#: src/renderer/src/components/SettingsPage.tsx:1416
 msgid "Set up Bitwarden sync"
 msgstr "设置 Bitwarden 同步"
 
@@ -6194,16 +6194,16 @@ msgstr "设置 Bitwarden 同步"
 msgid "Set up email two-factor authentication"
 msgstr "设置电子邮件双重身份验证"
 
-#: src/renderer/src/components/SettingsPage.tsx:1574
+#: src/renderer/src/components/SettingsPage.tsx:1576
 msgid "Setting status"
 msgstr "设置状态"
 
-#: src/renderer/src/components/SettingsPage.tsx:734
+#: src/renderer/src/components/SettingsPage.tsx:736
 #: src/renderer/src/components/VaultShellSidebar.tsx:444
 msgid "Settings"
 msgstr "设置"
 
-#: src/renderer/src/components/SettingsPage.tsx:739
+#: src/renderer/src/components/SettingsPage.tsx:753
 msgid "Settings categories"
 msgstr "设置类别"
 
@@ -6223,7 +6223,7 @@ msgstr "设置已更新"
 #~ msgid "Settings were changed on another device. The server version has been reloaded; review it before saving."
 #~ msgstr "其他设备上的设置已更改。服务器版本已重新加载；请在保存前检查。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:339
+#: src/renderer/src/components/VaultHealthPage.tsx:344
 msgid "Setup instructions"
 msgstr "设置说明"
 
@@ -6250,7 +6250,7 @@ msgstr "共享项目"
 msgid "Sharing link copied"
 msgstr "共享链接已复制"
 
-#: src/renderer/src/components/SettingsPage.tsx:608
+#: src/renderer/src/components/SettingsPage.tsx:614
 msgid "Shortcut conflict"
 msgstr "快捷键冲突"
 
@@ -6307,7 +6307,7 @@ msgstr "显示此历史密码"
 msgid "Show two-step verification"
 msgstr "显示两步验证"
 
-#: src/renderer/src/components/SettingsPage.tsx:1324
+#: src/renderer/src/components/SettingsPage.tsx:1326
 msgid "Show website icons"
 msgstr "显示网站图标"
 
@@ -6320,7 +6320,7 @@ msgstr "使用通行密钥登录"
 msgid "Sign-in token response"
 msgstr "登录令牌响应"
 
-#: src/renderer/src/components/SettingsPage.tsx:1624
+#: src/renderer/src/components/SettingsPage.tsx:1626
 msgid "Signature approval"
 msgstr "签名批准"
 
@@ -6329,7 +6329,7 @@ msgstr "签名批准"
 msgid "Signing in…"
 msgstr "正在登录…"
 
-#: src/renderer/src/components/SettingsPage.tsx:460
+#: src/renderer/src/components/SettingsPage.tsx:466
 msgid "Simplified Chinese"
 msgstr "简体中文"
 
@@ -6345,15 +6345,15 @@ msgstr "排序顺序"
 msgid "Special characters !@#$%^&*"
 msgstr "特殊字符 !@#$%^&*"
 
-#: src/renderer/src/components/SettingsPage.tsx:1589
+#: src/renderer/src/components/SettingsPage.tsx:1591
 msgid "SSH Agent"
 msgstr "SSH Agent"
 
-#: src/renderer/src/components/SettingsPage.tsx:1693
+#: src/renderer/src/components/SettingsPage.tsx:1695
 msgid "SSH Agent setup command copied"
 msgstr "已复制 SSH Agent 设置命令"
 
-#: src/renderer/src/components/SettingsPage.tsx:1687
+#: src/renderer/src/components/SettingsPage.tsx:1689
 msgid "SSH Agent terminal setup command"
 msgstr "SSH Agent 终端设置命令"
 
@@ -6474,7 +6474,7 @@ msgstr "符号、数字和字母使用不同颜色，以便更容易区分。"
 msgid "Sync"
 msgstr "同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1366
+#: src/renderer/src/components/SettingsPage.tsx:1368
 msgid "Sync & accounts"
 msgstr "同步和账号"
 
@@ -6530,14 +6530,14 @@ msgstr "正在同步"
 msgid "Syncing attachment list"
 msgstr "正在同步附件列表"
 
-#: src/renderer/src/components/SettingsPage.tsx:476
+#: src/renderer/src/components/SettingsPage.tsx:482
 #: src/renderer/src/components/SyncDialog.tsx:1087
 #: src/renderer/src/components/VaultShell.tsx:192
 msgid "Syncing…"
 msgstr "正在同步…"
 
-#: src/renderer/src/components/SettingsPage.tsx:450
-#: src/renderer/src/components/SettingsPage.tsx:458
+#: src/renderer/src/components/SettingsPage.tsx:456
+#: src/renderer/src/components/SettingsPage.tsx:464
 msgid "System"
 msgstr "系统"
 
@@ -6545,7 +6545,7 @@ msgstr "系统"
 msgid "Takeover"
 msgstr "接管"
 
-#: src/renderer/src/components/SettingsPage.tsx:1664
+#: src/renderer/src/components/SettingsPage.tsx:1666
 msgid "Terminal setup"
 msgstr "终端设置"
 
@@ -6580,7 +6580,7 @@ msgstr "该名称已被使用。请选择其他名称。"
 msgid "That password is incorrect. Check it and try again."
 msgstr "密码不正确，请检查后重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:677
+#: src/renderer/src/components/SettingsPage.tsx:683
 msgid "That shortcut is unavailable. Your previous shortcut remains active."
 msgstr "该快捷键不可用。原来的快捷键仍可使用。"
 
@@ -6589,7 +6589,7 @@ msgstr "该快捷键不可用。原来的快捷键仍可使用。"
 msgid "The {0} result is unknown. The status has been refreshed. Verify your current keys before retrying."
 msgstr "{0} 的结果未知。状态已刷新。重试前请验证您当前的密钥。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:421
+#: src/renderer/src/components/VaultHealthPage.tsx:426
 msgid "The 2fa.directory network request, service list, or response validation failed, so this result is unknown. Try again later."
 msgstr "2fa.directory 网络请求、服务列表或响应验证失败，因此此结果未知。请稍后重试。"
 
@@ -6605,7 +6605,7 @@ msgstr "激活结果未知。状态已刷新。请勿立即重试。"
 msgid "The active application is not a supported browser."
 msgstr "当前活动的应用程序不是受支持的浏览器。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1709
+#: src/renderer/src/components/SettingsPage.tsx:1711
 msgid "The Agent endpoint contains control characters that cannot be safely placed in a shell command, so no copyable command is available. Fix<0>BEARWARDEN_SSH_AUTH_SOCK</0>, then enable the Agent again."
 msgstr "Agent 端点包含无法安全放入 shell 命令的控制字符，因此没有可复制的命令可用。请修正<0>BEARWARDEN_SSH_AUTH_SOCK</0>，然后重新激活 Agent。"
 
@@ -6645,7 +6645,7 @@ msgstr "验证器应用已激活。"
 msgid "The autofill service is currently unavailable."
 msgstr "自动填充服务当前不可用。"
 
-#: src/renderer/src/components/SettingsPage.tsx:650
+#: src/renderer/src/components/SettingsPage.tsx:656
 msgid "The autofill setting could not be saved, so the shortcut status was not changed."
 msgstr "无法保存自动填充设置，因此未更改快捷键状态。"
 
@@ -6678,7 +6678,7 @@ msgstr "浏览器标签页或 URL 已更改。请返回登录字段后重试。"
 msgid "The card face was uploaded, but the list could not be refreshed. Sync again later."
 msgstr "卡面已上传，但无法刷新列表。请稍后再次同步。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:761
+#: src/renderer/src/components/VaultHealthPage.tsx:766
 msgid "The checked complete SHA-1 hashes did not appear in the HIBP response. This is only the result of the current query and does not mean the passwords will always be safe."
 msgstr "已检查的完整 SHA-1 哈希未出现在 HIBP 响应中。这仅是当前查询的结果，并不表示这些密码始终安全。"
 
@@ -6694,15 +6694,15 @@ msgstr "剪贴板内容过大，无法作为 SSH 私钥安全导入。"
 msgid "The clipboard is empty. Copy an SSH private key and try again."
 msgstr "剪贴板为空。请复制 SSH 私钥后重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:888
+#: src/renderer/src/components/VaultHealthPage.tsx:893
 msgid "The complete address is sent only after you select “Search account breaches.”"
 msgstr "仅在您选择“搜索账号泄露”后才会发送完整地址。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:705
+#: src/renderer/src/components/VaultHealthPage.tsx:710
 msgid "The complete SHA-1 is compared only in main-process memory."
 msgstr "完整 SHA-1 仅在主进程内存中进行比较。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:982
+#: src/renderer/src/components/VaultHealthPage.tsx:987
 msgid "The configured Vaultwarden server is forwarding the complete email address to HIBP."
 msgstr "已配置的 Vaultwarden 服务器正在将完整电子邮件地址转发给 HIBP。"
 
@@ -6731,11 +6731,11 @@ msgstr "当前服务器不支持账号设备列表。"
 msgid "The custom field contents could not be shown. Try again later."
 msgstr "无法显示自定义字段内容。请稍后重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:226
+#: src/renderer/src/components/SettingsPage.tsx:232
 msgid "The custom inactivity timeout cannot exceed 8,760 hours."
 msgstr "自定义非活动超时时间不能超过 8,760 小时。"
 
-#: src/renderer/src/components/SettingsPage.tsx:229
+#: src/renderer/src/components/SettingsPage.tsx:235
 msgid "The custom inactivity timeout must be at least 1 minute."
 msgstr "自定义非活动超时时间必须至少为 1 分钟。"
 
@@ -6759,15 +6759,15 @@ msgstr "显示名称不能超过 50 个 UTF-8 字节。"
 msgid "The encrypted .bwbackup contains personal items and attachments and can only be restored by a BearWarden version that supports this format. Official Bitwarden clients cannot import it directly. Trash and Sends are not included."
 msgstr "加密的 .bwbackup 包含个人项目和附件，只能由支持此格式的 BearWarden 版本还原。官方 Bitwarden 客户端无法直接导入。未包含回收站和 Sends。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1053
+#: src/renderer/src/components/SettingsPage.tsx:1055
 msgid "The encrypted PIN credential remains in memory only. You must use the master password after restarting, signing out, disconnecting, or switching accounts."
 msgstr "加密的 PIN 凭据仅保留在内存中。重启、退出登录、断开连接或切换账号后，必须使用主密码。"
 
-#: src/renderer/src/components/SettingsPage.tsx:660
+#: src/renderer/src/components/SettingsPage.tsx:666
 msgid "The global autofill shortcut is already used by another app. Disable the same shortcut in that app first."
 msgstr "全局自动填充快捷键已被其他应用使用。请先在该应用中禁用相同的快捷键。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:667
+#: src/renderer/src/components/VaultHealthPage.tsx:672
 msgid "The HIBP network request or response validation failed, so this result is unknown. BearWarden will not mark any login item as safe because of this failure."
 msgstr "HIBP 网络请求或响应验证失败，因此此结果未知。BearWarden 不会因这项失败而将任何登录项目标记为安全。"
 
@@ -6820,25 +6820,25 @@ msgstr "本地账号已移除。剩余的加密本地数据将在下次启动时
 msgid "The local data from the last removal has not completed secure cleanup. BearWarden will try again the next time it starts; it will not delete or overwrite unknown data until cleanup is complete."
 msgstr "上次移除所留下的本地数据尚未完成安全清理。BearWarden 将在下次启动时再次尝试；在清理完成前，不会删除或覆盖未知数据。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:643
+#: src/renderer/src/components/VaultHealthPage.tsx:648
 msgid "The main process is comparing each complete SHA-1. Passwords and complete hashes never leave this device."
 msgstr "主进程正在比对每个完整的 SHA-1。密码和完整哈希绝不会离开此设备。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:404
+#: src/renderer/src/components/VaultHealthPage.tsx:409
 msgid "The main process is comparing service domains locally without uploading any vault data."
 msgstr "主进程正在本地比对服务域名，不会上传任何密码库数据。"
 
 #: src/renderer/src/components/auth-screen-ui.ts:60
-#: src/renderer/src/components/SettingsPage.tsx:567
+#: src/renderer/src/components/SettingsPage.tsx:573
 #: src/renderer/src/components/SyncDialog.tsx:208
 msgid "The master password is incorrect."
 msgstr "主密码不正确。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1249
+#: src/renderer/src/components/SettingsPage.tsx:1251
 msgid "The master password is sent only to the local process for verification."
 msgstr "主密码仅会发送至本地进程进行验证。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1139
+#: src/renderer/src/components/SettingsPage.tsx:1141
 msgid "The master password is verified again in the main process each time PIN unlock is enabled."
 msgstr "每次激活 PIN 解锁时，主密码都会在主进程中再次验证。"
 
@@ -6883,7 +6883,7 @@ msgstr "另一台设备显示完全相同的短语"
 msgid "The passkey for “{0}” will be removed from this login and synced immediately. This action cannot be undone."
 msgstr "“{0}”的通行密钥将从此登录项目中移除，并立即同步。此操作无法撤销。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1088
+#: src/renderer/src/components/SettingsPage.tsx:1090
 msgid "The PIN and encrypted credential are never written to disk. You can use the PIN after a normal lock, but restarting the app always requires the master password."
 msgstr "PIN 和加密凭据绝不会写入磁盘。正常锁定后可以使用 PIN，但重启应用始终需要主密码。"
 
@@ -6892,11 +6892,11 @@ msgid "The PIN is incorrect."
 msgstr "PIN 不正确。"
 
 #: src/renderer/src/components/AuthScreen.tsx:165
-#: src/renderer/src/components/SettingsPage.tsx:545
+#: src/renderer/src/components/SettingsPage.tsx:551
 msgid "The PIN must contain at least 4 characters."
 msgstr "PIN 必须至少包含 4 个字符。"
 
-#: src/renderer/src/components/SettingsPage.tsx:549
+#: src/renderer/src/components/SettingsPage.tsx:555
 msgid "The PINs do not match."
 msgstr "两次输入的 PIN 不一致。"
 
@@ -7063,7 +7063,7 @@ msgstr "服务器响应中断，因此激活结果未知。状态已刷新。请
 msgid "The server result for this batch import is unknown"
 msgstr "此批量导入的服务器结果未知"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1015
+#: src/renderer/src/components/VaultHealthPage.tsx:1020
 msgid "The server returned a notice that its API key is not configured, not a query result. Ask the server administrator to configure an HIBP API key and try again."
 msgstr "服务器返回的是其 API 密钥未配置的通知，而非查询结果。请让服务器管理员配置 HIBP API 密钥后重试。"
 
@@ -7071,11 +7071,11 @@ msgstr "服务器返回的是其 API 密钥未配置的通知，而非查询结�
 msgid "The server returned data that BearWarden cannot process safely. Check the server version and compatibility."
 msgstr "服务器返回的数据无法由 BearWarden 安全处理。请检查服务器版本和兼容性。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:377
+#: src/renderer/src/components/VaultHealthPage.tsx:382
 msgid "The service list is loaded only after you press the button. Items in the trash, archived items, and items that already have TOTP are skipped."
 msgstr "仅在您按下按钮后加载服务列表。会跳过回收站中的项目、已归档项目及已配置 TOTP 的项目。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:472
+#: src/renderer/src/components/VaultHealthPage.tsx:477
 msgid "The service supports TOTP, but the login item is not configured"
 msgstr "该服务支持 TOTP，但登录项目尚未配置"
 
@@ -7190,7 +7190,7 @@ msgstr "密码库已锁定。请先在 BearWarden 中解锁。"
 msgid "The vault is not locked yet. Try again."
 msgstr "密码库尚未锁定。请重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:998
+#: src/renderer/src/components/VaultHealthPage.tsx:1003
 msgid "The Vaultwarden or HIBP network request or response validation failed, so this result is unknown. This does not mean the account is safe."
 msgstr "Vaultwarden 或 HIBP 的网络请求或响应验证失败，因此此结果未知。这并不表示该账号安全。"
 
@@ -7214,7 +7214,7 @@ msgstr "验证电子邮件请求已发送。如果服务器已配置电子邮件
 msgid "The website URL is invalid."
 msgstr "网站 URL 无效。"
 
-#: src/renderer/src/components/SettingsPage.tsx:792
+#: src/renderer/src/components/SettingsPage.tsx:794
 msgid "Theme"
 msgstr "主题"
 
@@ -7310,12 +7310,12 @@ msgstr "此附件"
 msgid "This change was not applied. Sync again to get the latest version, then retry."
 msgstr "未应用此更改。请再次同步以获取最新版本，然后重试。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:616
+#: src/renderer/src/components/VaultHealthPage.tsx:621
 msgid "This check connects to HIBP only after you press the button. Opening this page does not start a query automatically."
 msgstr "只有在您按下按钮后，此检查才会连接至 HIBP。打开此页面不会自动开始查询。"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:454
-#: src/renderer/src/components/SettingsPage.tsx:893
+#: src/renderer/src/components/SettingsPage.tsx:895
 msgid "This device"
 msgstr "此设备"
 
@@ -7581,15 +7581,15 @@ msgstr "正在进行的 SSH 私钥导入会话过多。请稍后重试。"
 #~ msgid "Too many SSH private key import sessions are in progress. Try again later."
 #~ msgstr "正在处理的 SSH 私钥导入会话过多。请稍后重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:413
+#: src/renderer/src/components/SettingsPage.tsx:419
 msgid "Tools & data"
 msgstr "工具和数据"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:469
+#: src/renderer/src/components/VaultHealthPage.tsx:474
 msgid "TOTP available"
 msgstr "TOTP 可用"
 
-#: src/renderer/src/components/SettingsPage.tsx:461
+#: src/renderer/src/components/SettingsPage.tsx:467
 msgid "Traditional Chinese"
 msgstr "繁体中文"
 
@@ -7653,7 +7653,7 @@ msgstr "双重身份验证"
 msgid "Two-factor authentication"
 msgstr "双重身份验证"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1395
+#: src/renderer/src/components/VaultHealthPage.tsx:1361
 msgid "Two-factor authentication not enabled"
 msgstr "未激活双重身份验证"
 
@@ -7735,7 +7735,7 @@ msgstr "无法清除生成器历史记录。"
 msgid "Unable to complete"
 msgstr "无法完成"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:418
+#: src/renderer/src/components/VaultHealthPage.tsx:423
 msgid "Unable to complete the two-factor authentication check"
 msgstr "无法完成双重身份验证检查"
 
@@ -7763,11 +7763,11 @@ msgstr "无法复制此历史记录条目。该项目可能已在其他位置更
 msgid "Unable to copy. This history entry may have changed."
 msgstr "无法复制。此历史记录条目可能已更改。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:664
+#: src/renderer/src/components/VaultHealthPage.tsx:669
 msgid "Unable to determine whether any passwords were exposed"
 msgstr "无法确定是否有任何密码已泄露"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:995
+#: src/renderer/src/components/VaultHealthPage.tsx:1000
 msgid "Unable to determine whether the account appears in a breach"
 msgstr "无法确定该账号是否出现在数据泄露事件中"
 
@@ -7775,7 +7775,7 @@ msgstr "无法确定该账号是否出现在数据泄露事件中"
 msgid "Unable to disable {providerName}. Try again later."
 msgstr "无法禁用 {providerName}。请稍后重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:584
+#: src/renderer/src/components/SettingsPage.tsx:590
 msgid "Unable to disable PIN unlock."
 msgstr "无法禁用 PIN 解锁。"
 
@@ -7791,7 +7791,7 @@ msgstr "无法下载更新"
 msgid "Unable to enable email two-factor authentication. Restart setup."
 msgstr "无法激活电子邮件双重身份验证。请重新开始设置。"
 
-#: src/renderer/src/components/SettingsPage.tsx:568
+#: src/renderer/src/components/SettingsPage.tsx:574
 msgid "Unable to enable PIN unlock."
 msgstr "无法激活 PIN 解锁。"
 
@@ -7803,7 +7803,7 @@ msgstr "无法激活验证器。请重新开始设置。"
 msgid "Unable to generate authentication code"
 msgstr "无法生成验证码"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1336
+#: src/renderer/src/components/VaultHealthPage.tsx:1431
 msgid "Unable to generate the health report"
 msgstr "无法生成健康报告"
 
@@ -7815,7 +7815,7 @@ msgstr "无法加载账号设备。请稍后重试。"
 msgid "Unable to load logins"
 msgstr "无法加载登录项"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:122
+#: src/renderer/src/components/VaultHealthPage.tsx:127
 msgid "Unable to open the two-factor authentication setup instructions"
 msgstr "无法打开双重身份验证设置说明"
 
@@ -7847,12 +7847,12 @@ msgstr "无法读取生成器历史记录。"
 msgid "Unable to read password history. Try again."
 msgstr "无法读取密码历史记录。请重试。"
 
-#: src/renderer/src/components/SettingsPage.tsx:514
-#: src/renderer/src/components/SettingsPage.tsx:638
+#: src/renderer/src/components/SettingsPage.tsx:520
+#: src/renderer/src/components/SettingsPage.tsx:644
 msgid "Unable to read the autofill status."
 msgstr "无法读取自动填充状态。"
 
-#: src/renderer/src/components/SettingsPage.tsx:534
+#: src/renderer/src/components/SettingsPage.tsx:540
 msgid "Unable to read the PIN unlock status."
 msgstr "无法读取 PIN 解锁状态。"
 
@@ -7872,7 +7872,7 @@ msgstr "无法读取更新状态。"
 #~ msgid "Unable to read vault data. Try again. If this continues, the vault file may be corrupted."
 #~ msgstr "无法读取密码库数据。请重试。如果问题持续出现，密码库文件可能已损坏。"
 
-#: src/renderer/src/components/SettingsPage.tsx:710
+#: src/renderer/src/components/SettingsPage.tsx:716
 msgid "Unable to request accessibility permission. Enable it manually in System Settings."
 msgstr "无法请求辅助功能权限。请在“系统设置”中手动激活。"
 
@@ -7932,11 +7932,11 @@ msgstr "无法启动身份验证器设置。"
 msgid "Unable to start email two-factor authentication setup."
 msgstr "无法启动电子邮件双重身份验证设置。"
 
-#: src/renderer/src/components/SettingsPage.tsx:664
+#: src/renderer/src/components/SettingsPage.tsx:670
 msgid "Unable to update the autofill setting."
 msgstr "无法更新自动填充设置。"
 
-#: src/renderer/src/components/SettingsPage.tsx:686
+#: src/renderer/src/components/SettingsPage.tsx:692
 msgid "Unable to update the autofill shortcut."
 msgstr "无法更新自动填充快捷键。"
 
@@ -7958,7 +7958,7 @@ msgstr "已取消归档“{0}”。"
 msgid "Unarchived {affectedCount} items."
 msgstr "已取消归档 {affectedCount} 个项目。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1188
+#: src/renderer/src/components/SettingsPage.tsx:1190
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:109
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:116
 msgid "Unavailable"
@@ -7976,11 +7976,11 @@ msgstr "正在开发中"
 msgid "Undo"
 msgstr "撤销"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:293
+#: src/renderer/src/components/VaultHealthPage.tsx:298
 msgid "Unencrypted connection"
 msgstr "未加密连接"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1515
+#: src/renderer/src/components/VaultHealthPage.tsx:1494
 msgid "Unencrypted connections"
 msgstr "未加密连接"
 
@@ -7998,9 +7998,9 @@ msgstr "未分类"
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:113
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:117
 #: src/renderer/src/components/SyncErrorDetailsDialog.tsx:121
-#: src/renderer/src/components/VaultHealthPage.tsx:1410
-#: src/renderer/src/components/VaultHealthPage.tsx:1433
-#: src/renderer/src/components/VaultHealthPage.tsx:1460
+#: src/renderer/src/components/VaultHealthPage.tsx:1376
+#: src/renderer/src/components/VaultHealthPage.tsx:1396
+#: src/renderer/src/components/VaultHealthPage.tsx:1418
 #: src/renderer/src/lib/vault-date.ts:16
 msgid "Unknown"
 msgstr "未知"
@@ -8049,16 +8049,16 @@ msgstr "未知类型 ({0})"
 msgid "Unlock and sync"
 msgstr "解锁并同步"
 
-#: src/renderer/src/components/SettingsPage.tsx:1183
+#: src/renderer/src/components/SettingsPage.tsx:1185
 msgid "Unlock quickly with device biometrics. Currently, only macOS Touch ID is supported."
 msgstr "使用设备生物识别快速解锁。目前仅支持 macOS Touch ID。"
 
-#: src/renderer/src/components/SettingsPage.tsx:474
+#: src/renderer/src/components/SettingsPage.tsx:480
 #: src/renderer/src/components/VaultShell.tsx:190
 msgid "Unlock required"
 msgstr "需要解锁"
 
-#: src/renderer/src/components/SettingsPage.tsx:1041
+#: src/renderer/src/components/SettingsPage.tsx:1043
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "使用临时 PIN 解锁本地密码库。"
 
@@ -8102,7 +8102,7 @@ msgstr "未命名用户"
 msgid "Unsaved"
 msgstr "未保存"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1388
+#: src/renderer/src/components/VaultHealthPage.tsx:1357
 msgid "Unsecured websites"
 msgstr "不安全的网站"
 
@@ -8114,7 +8114,7 @@ msgstr "不支持的密钥格式"
 msgid "Unsupported vault item type"
 msgstr "不支持的密码库项目类型"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:940
+#: src/renderer/src/components/VaultHealthPage.tsx:945
 msgid "Unverified"
 msgstr "未验证"
 
@@ -8177,7 +8177,7 @@ msgstr "大写字母"
 #~ msgid "Use another enabled two-step verification method, or sign in with the official Bitwarden client."
 #~ msgstr "请改用其他已启用的两步验证方式，或使用官方 Bitwarden 客户端登录。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1108
+#: src/renderer/src/components/SettingsPage.tsx:1110
 msgid "Use at least 4 characters and avoid numbers that are easy to guess."
 msgstr "请至少使用 4 个字符，并避免使用容易猜测的数字。"
 
@@ -8185,7 +8185,7 @@ msgstr "请至少使用 4 个字符，并避免使用容易猜测的数字。"
 msgid "Use bitwarden.com for Bitwarden Cloud. For Vaultwarden, use an HTTPS URL."
 msgstr "Bitwarden Cloud 请使用 bitwarden.com。Vaultwarden 请使用 HTTPS URL。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1502
+#: src/renderer/src/components/VaultHealthPage.tsx:1481
 msgid "Use long passwords created by the password generator instead."
 msgstr "请改用密码生成器创建的长密码。"
 
@@ -8244,11 +8244,11 @@ msgstr "用户名、密码和网站"
 msgid "Username: {0}"
 msgstr "用户名：{0}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:698
+#: src/renderer/src/components/VaultHealthPage.tsx:703
 msgid "Valid login passwords not protected by master password reprompt"
 msgstr "未受主密码重新提示保护的有效登录密码"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:456
+#: src/renderer/src/components/VaultHealthPage.tsx:461
 msgid "Valid personal login items included in this check"
 msgstr "此检查包含的有效个人登录项目"
 
@@ -8260,7 +8260,7 @@ msgstr "密码库"
 msgid "Vault categories"
 msgstr "密码库分类"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1316
+#: src/renderer/src/components/VaultHealthPage.tsx:1327
 msgid "Vault health report"
 msgstr "密码库健康报告"
 
@@ -8277,7 +8277,7 @@ msgstr "密码库已锁定"
 msgid "Vault navigation"
 msgstr "密码库导航"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1012
+#: src/renderer/src/components/VaultHealthPage.tsx:1017
 msgid "Vaultwarden does not have an HIBP API key configured"
 msgstr "Vaultwarden 未配置 HIBP API 密钥"
 
@@ -8303,7 +8303,7 @@ msgstr "Vaultwarden 会在激活期间再次验证您的主密码。"
 msgid "Verification phrase"
 msgstr "验证短语"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:940
+#: src/renderer/src/components/VaultHealthPage.tsx:945
 msgid "Verified"
 msgstr "已验证"
 
@@ -8340,7 +8340,7 @@ msgstr "版本 {availableVersion} 已下载完成。"
 msgid "Version {availableVersion} is available to download."
 msgstr "版本 {availableVersion} 可供下载。"
 
-#: src/renderer/src/components/SettingsPage.tsx:417
+#: src/renderer/src/components/SettingsPage.tsx:423
 msgid "Version and update information"
 msgstr "版本和更新信息"
 
@@ -8355,7 +8355,7 @@ msgstr "极弱"
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:154
 #: src/renderer/src/components/EmergencyAccessPage.tsx:136
 #: src/renderer/src/components/OrganizationsPage.tsx:307
-#: src/renderer/src/components/VaultHealthPage.tsx:203
+#: src/renderer/src/components/VaultHealthPage.tsx:208
 msgid "View"
 msgstr "查看"
 
@@ -8364,11 +8364,11 @@ msgstr "查看"
 msgid "View {0}"
 msgstr "查看 {0}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:323
+#: src/renderer/src/components/VaultHealthPage.tsx:328
 msgid "View {findingName}"
 msgstr "查看 {findingName}"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:200
+#: src/renderer/src/components/VaultHealthPage.tsx:205
 msgid "View {title}"
 msgstr "查看 {title}"
 
@@ -8381,7 +8381,7 @@ msgstr "查看详细信息"
 msgid "View device activity and trusted status on the server, and deauthorize all sessions. Device identifiers and network information are not shown."
 msgstr "查看服务器上的设备活动和受信任状态，并撤销所有会话的授权。不会显示设备标识符和网络信息。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:326
+#: src/renderer/src/components/VaultHealthPage.tsx:331
 msgid "View item"
 msgstr "查看条目"
 
@@ -8449,7 +8449,7 @@ msgctxt "master-password-strength"
 msgid "Weak"
 msgstr "弱"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:1381
+#: src/renderer/src/components/VaultHealthPage.tsx:1353
 msgid "Weak passwords"
 msgstr "弱密码"
 
@@ -8505,11 +8505,11 @@ msgstr "网站"
 msgid "Welcome back"
 msgstr "欢迎回来"
 
-#: src/renderer/src/components/SettingsPage.tsx:905
+#: src/renderer/src/components/SettingsPage.tsx:907
 msgid "When enabled, BearWarden may be hidden in Windows Remote Desktop, screen sharing, and recordings. If only the taskbar icon remains visible, turn this option off in a local session."
 msgstr "激活后，BearWarden 可能会在 Windows 远程桌面、屏幕共享和录制中隐藏。如果只剩任务栏图标可见，请在本地会话中关闭此选项。"
 
-#: src/renderer/src/components/SettingsPage.tsx:420
+#: src/renderer/src/components/SettingsPage.tsx:426
 msgid "When the app restarts"
 msgstr "应用重启时"
 
@@ -8568,7 +8568,7 @@ msgstr "每次最多可处理 {MAX_LOGIN_BATCH_IDS} 个条目。"
 msgid "You can safely delete passkeys while editing the item. Private key material is never sent to the renderer."
 msgstr "编辑条目时，您可安全删除通行密钥。私钥材料绝不会发送到渲染进程。"
 
-#: src/renderer/src/components/SettingsPage.tsx:1218
+#: src/renderer/src/components/SettingsPage.tsx:1220
 msgid "You can use biometrics to unlock after the next lock."
 msgstr "下次锁定后，您可以使用生物识别解锁。"
 
@@ -8596,7 +8596,7 @@ msgstr "您的 Bitwarden 账号需要重新登录或解锁。"
 msgid "Your Bitwarden sign-in has expired, so this request can't be handled."
 msgstr "您的 Bitwarden 登录已过期，因此无法处理此请求。"
 
-#: src/renderer/src/components/VaultHealthPage.tsx:821
+#: src/renderer/src/components/VaultHealthPage.tsx:826
 msgid "Your complete email address will leave this device"
 msgstr "您的完整电子邮件地址将离开此设备"
 

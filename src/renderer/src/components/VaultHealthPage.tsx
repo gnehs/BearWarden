@@ -42,7 +42,12 @@ import {
 } from './ui/empty'
 import { Spinner } from './ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
-import AuxiliaryPageLayout from './AuxiliaryPageLayout'
+import {
+  WorkspaceDialogContent,
+  WorkspaceDialogSidebar,
+  workspaceNavListClassName,
+  workspaceNavTriggerClassName
+} from './WorkspaceDialogLayout'
 import { Input } from './ui/input'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from './ui/field'
 import {
@@ -219,10 +224,10 @@ function HealthResultsHeader({
   count: number
 }): React.JSX.Element {
   return (
-    <div className="flex items-start justify-between gap-4 py-2 xl:col-span-2">
+    <div className="flex items-start justify-between gap-4 pt-0.5 pr-10 pb-2 xl:col-span-2">
       <div>
-        <h2 className="text-base font-medium">{title}</h2>
-        <p className="text-muted-foreground mt-1 text-sm">{description}</p>
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>
       </div>
       <Badge variant={count ? 'destructive' : 'secondary'}>
         <Plural value={count} one="# item" other="# items" />
@@ -1312,160 +1317,134 @@ export default function VaultHealthPage({
   const protectedSkippedCount = report?.totals.protectedSkippedCount ?? 0
 
   return (
-    <AuxiliaryPageLayout
-      title={t`Vault health report`}
-      titleId="health-title"
-      headerIcon={<ShieldCheck />}
-      headerActions={
-        <Button
-          variant="outline"
-          type="button"
-          disabled={loading}
-          onClick={() => void loadReport()}
-        >
-          {loading ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
-          <Trans>Analyze again</Trans>
-        </Button>
-      }
+    <Tabs
+      value={tab}
+      orientation="vertical"
+      className="min-h-0 min-w-0 flex-1 gap-0 max-[680px]:flex-col"
+      onValueChange={(value) => setTab(value as HealthTab)}
     >
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        {failed && (
-          <Alert variant="destructive">
-            <AlertTriangle />
-            <AlertTitle>
-              <Trans>Unable to generate the health report</Trans>
-            </AlertTitle>
-            <AlertDescription>
-              <Trans>Make sure the vault is still unlocked, then analyze it again.</Trans>
-            </AlertDescription>
-            <AlertAction>
-              <Button variant="outline" size="sm" type="button" onClick={() => void loadReport()}>
-                <Trans>Retry</Trans>
-              </Button>
-            </AlertAction>
-          </Alert>
-        )}
-
-        {!report && loading ? (
-          <HealthLoading />
-        ) : report ? (
-          <Tabs
-            value={tab}
-            orientation="vertical"
-            className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start"
-            onValueChange={(value) => setTab(value as HealthTab)}
+      <WorkspaceDialogSidebar
+        title={t`Vault health report`}
+        titleId="health-title"
+        footer={
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={loading}
+            onClick={() => void loadReport()}
           >
-            <Card size="sm" className="lg:sticky lg:top-0">
-              <CardHeader>
-                <CardTitle id="health-checks-title">
-                  <Trans>Checks</Trans>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TabsList
-                  variant="list"
-                  className="w-full items-stretch gap-1 p-0"
-                  aria-labelledby="health-checks-title"
+            {loading ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            <Trans>Analyze again</Trans>
+          </Button>
+        }
+      >
+        {report && (
+          <TabsList variant="list" className={workspaceNavListClassName} aria-label={t`Checks`}>
+            <TabsTrigger value="reused" className={workspaceNavTriggerClassName}>
+              <Trans>Reused passwords</Trans>
+              <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="weak" className={workspaceNavTriggerClassName}>
+              <Trans>Weak passwords</Trans>
+              <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="unsecured" className={workspaceNavTriggerClassName}>
+              <Trans>Unsecured websites</Trans>
+              <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="inactive-two-factor" className={workspaceNavTriggerClassName}>
+              <Trans>Two-factor authentication not enabled</Trans>
+              {visibleInactiveTwoFactorState.status === 'loading' ? (
+                <Spinner />
+              ) : visibleInactiveTwoFactorState.status === 'success' ? (
+                <Badge
+                  variant={
+                    visibleInactiveTwoFactorState.report.findings.length
+                      ? 'destructive'
+                      : 'secondary'
+                  }
                 >
-                  <TabsTrigger
-                    value="reused"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Reused passwords</Trans>
-                    <Badge variant="secondary">{report.totals.reusedPasswordCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="weak"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Weak passwords</Trans>
-                    <Badge variant="secondary">{report.totals.weakPasswordCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="unsecured"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Unsecured websites</Trans>
-                    <Badge variant="secondary">{report.totals.unsecuredWebsiteCount}</Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="inactive-two-factor"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Two-factor authentication not enabled</Trans>
-                    {visibleInactiveTwoFactorState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleInactiveTwoFactorState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleInactiveTwoFactorState.report.findings.length
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleInactiveTwoFactorState.report.findings.length}
-                      </Badge>
-                    ) : visibleInactiveTwoFactorState.status === 'failed' ? (
-                      <Badge variant="outline">
-                        <Trans>Unknown</Trans>
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="exposed"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Exposed passwords</Trans>
-                    {visibleExposedState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleExposedState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleExposedState.report.totals.exposedPasswordCount
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleExposedState.report.totals.exposedPasswordCount}
-                      </Badge>
-                    ) : visibleExposedState.status === 'failed' ? (
-                      <Badge variant="outline">
-                        <Trans>Unknown</Trans>
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="account"
-                    className="min-h-9 px-2 group-data-vertical/tabs:justify-between"
-                  >
-                    <Trans>Account breaches</Trans>
-                    {visibleAccountBreachState.status === 'loading' ? (
-                      <Spinner />
-                    ) : visibleAccountBreachState.status === 'success' ? (
-                      <Badge
-                        variant={
-                          visibleAccountBreachState.report.breaches.length
-                            ? 'destructive'
-                            : 'secondary'
-                        }
-                      >
-                        {visibleAccountBreachState.report.breaches.length}
-                      </Badge>
-                    ) : visibleAccountBreachState.status === 'unavailable' ? (
-                      <Badge variant="outline">
-                        <Trans>Not configured</Trans>
-                      </Badge>
-                    ) : visibleAccountBreachState.status === 'failed' ? (
-                      <Badge variant="outline">
-                        <Trans>Unknown</Trans>
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                </TabsList>
-              </CardContent>
-            </Card>
+                  {visibleInactiveTwoFactorState.report.findings.length}
+                </Badge>
+              ) : visibleInactiveTwoFactorState.status === 'failed' ? (
+                <Badge variant="outline">
+                  <Trans>Unknown</Trans>
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="exposed" className={workspaceNavTriggerClassName}>
+              <Trans>Exposed passwords</Trans>
+              {visibleExposedState.status === 'loading' ? (
+                <Spinner />
+              ) : visibleExposedState.status === 'success' ? (
+                <Badge
+                  variant={
+                    visibleExposedState.report.totals.exposedPasswordCount
+                      ? 'destructive'
+                      : 'secondary'
+                  }
+                >
+                  {visibleExposedState.report.totals.exposedPasswordCount}
+                </Badge>
+              ) : visibleExposedState.status === 'failed' ? (
+                <Badge variant="outline">
+                  <Trans>Unknown</Trans>
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="account" className={workspaceNavTriggerClassName}>
+              <Trans>Account breaches</Trans>
+              {visibleAccountBreachState.status === 'loading' ? (
+                <Spinner />
+              ) : visibleAccountBreachState.status === 'success' ? (
+                <Badge
+                  variant={
+                    visibleAccountBreachState.report.breaches.length ? 'destructive' : 'secondary'
+                  }
+                >
+                  {visibleAccountBreachState.report.breaches.length}
+                </Badge>
+              ) : visibleAccountBreachState.status === 'unavailable' ? (
+                <Badge variant="outline">
+                  <Trans>Not configured</Trans>
+                </Badge>
+              ) : visibleAccountBreachState.status === 'failed' ? (
+                <Badge variant="outline">
+                  <Trans>Unknown</Trans>
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+        )}
+      </WorkspaceDialogSidebar>
+      <WorkspaceDialogContent>
+        <div className="grid min-w-0 gap-4">
+          {failed && (
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>
+                <Trans>Unable to generate the health report</Trans>
+              </AlertTitle>
+              <AlertDescription>
+                <Trans>Make sure the vault is still unlocked, then analyze it again.</Trans>
+              </AlertDescription>
+              <AlertAction>
+                <Button variant="outline" size="sm" type="button" onClick={() => void loadReport()}>
+                  <Trans>Retry</Trans>
+                </Button>
+              </AlertAction>
+            </Alert>
+          )}
 
-            <div className="flex min-w-0 flex-col gap-5">
+          {!report && loading ? (
+            <HealthLoading />
+          ) : report ? (
+            <>
               {protectedSkippedCount > 0 && (
                 <Alert>
                   <ShieldCheck />
@@ -1556,10 +1535,10 @@ export default function VaultHealthPage({
                   onCancel={cancelAccountBreachRequest}
                 />
               </TabsContent>
-            </div>
-          </Tabs>
-        ) : null}
-      </div>
-    </AuxiliaryPageLayout>
+            </>
+          ) : null}
+        </div>
+      </WorkspaceDialogContent>
+    </Tabs>
   )
 }
