@@ -7,7 +7,7 @@ function InsetPanel({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="inset-panel"
-      className={cn('rounded-2xl bg-(--inset-surface) shadow-(--inset-shadow)', className)}
+      className={cn('rounded-nested bg-(--inset-surface) shadow-(--inset-shadow)', className)}
       {...props}
     />
   )

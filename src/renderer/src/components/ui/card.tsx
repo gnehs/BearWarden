@@ -38,10 +38,10 @@ function Card({
         data-variant={variant}
         data-tone={variant === 'folder' ? tone : undefined}
         className={cn(
-          'group/card bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-3xl py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-3xl *:[img:last-child]:rounded-b-3xl',
+          'group/card bg-card text-card-foreground rounded-nested *:[img:first-child]:rounded-t-nested *:[img:last-child]:rounded-b-nested flex flex-col gap-(--card-spacing) py-(--card-spacing) text-sm shadow-(--surface-shadow) ring-1 ring-(--surface-ring) [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0',
           variant === 'default' && 'overflow-hidden',
           variant === 'folder' && [
-            'rounded-nested relative mt-12 shadow-(--card-shadow)',
+            'relative mt-12 shadow-(--card-shadow)',
             folderToneClasses[tone]
           ],
           className
@@ -58,7 +58,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card-header"
       className={cn(
-        'group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-3xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
+        'group/card-header rounded-t-nested @container/card-header grid auto-rows-min items-start gap-1 px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
         // The tab title positions against the card, so the header must not become its containing
         // block; a header holding only that title has no in-flow content left inside the card.
         folder && '[container-type:normal] has-[>[data-slot=card-title]:only-child]:contents',
@@ -115,7 +115,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-footer"
-      className={cn('flex items-center rounded-b-3xl border-t p-(--card-spacing)', className)}
+      className={cn('rounded-b-nested flex items-center border-t p-(--card-spacing)', className)}
       {...props}
     />
   )

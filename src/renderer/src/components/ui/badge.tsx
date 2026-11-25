@@ -17,16 +17,16 @@ const badgeVariants = cva(
           'border-border bg-card text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground',
         ghost: 'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50',
         link: 'text-primary underline-offset-4 hover:underline',
-        chip: 'text-foreground bg-muted h-6 rounded-lg px-2',
+        chip: 'text-foreground bg-muted rounded-control h-6 px-2',
         success:
-          'h-6 rounded-lg bg-emerald-100/80 px-2 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300',
+          'rounded-control h-6 bg-emerald-100/80 px-2 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300',
         warning:
-          'h-6 rounded-lg bg-amber-100/90 px-2 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200',
-        info: 'h-6 rounded-lg bg-sky-100/90 px-2 text-sky-800 dark:bg-sky-400/15 dark:text-sky-200',
+          'rounded-control h-6 bg-amber-100/90 px-2 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200',
+        info: 'rounded-control h-6 bg-sky-100/90 px-2 text-sky-800 dark:bg-sky-400/15 dark:text-sky-200',
         violet:
-          'h-6 rounded-lg bg-fuchsia-100/80 px-2 text-fuchsia-800 dark:bg-fuchsia-400/15 dark:text-fuchsia-200',
+          'rounded-control h-6 bg-fuchsia-100/80 px-2 text-fuchsia-800 dark:bg-fuchsia-400/15 dark:text-fuchsia-200',
         count:
-          'border-border bg-muted text-muted-foreground h-5 min-w-6 rounded-md px-1.5 tabular-nums'
+          'border-border bg-muted text-muted-foreground rounded-control h-5 min-w-6 px-1.5 tabular-nums'
       }
     },
     defaultVariants: {

@@ -86,7 +86,7 @@ export function ThemePreviewPicker({
           <Radio.Root
             value={item.value}
             className={cn(
-              'relative block aspect-[120/76] overflow-hidden rounded-2xl shadow-(--keycap-shadow) outline-none',
+              'rounded-control relative block aspect-[120/76] overflow-hidden shadow-(--keycap-shadow) outline-none',
               'transition-[box-shadow,scale] duration-150 ease-out active:scale-[0.98]',
               'focus-visible:ring-ring/60 focus-visible:ring-3',
               'data-checked:shadow-[0_0_0_2px_var(--card),0_0_0_4px_var(--foreground)]',
