@@ -181,3 +181,6 @@ export function DetailTitleBlock({ icon, title, meta }: DetailTitleBlockProps): 
     </div>
   )
 }
+
+/** Size of the ghost icon buttons in the detail toolbar. */
+export const detailToolbarButtonClassName = 'size-7.5 min-w-7.5'

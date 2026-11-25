@@ -7,20 +7,21 @@ import { normalizeBitwardenCardBrand } from '../lib/payment-card'
 import { cn } from '../lib/utils'
 import PaymentCardBrandMark from './PaymentCardBrandMark'
 import WebsiteIcon from './WebsiteIcon'
+import { useItemTypeMeta } from '@renderer/hooks/use-item-type-meta'
 import { itemTypeIcons } from './vault-item-type-icons'
 import { Button } from './ui/button'
-import { CardContent, CardHeader } from './ui/card'
 import { Skeleton } from './ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import {
-  DetailCard,
-  DetailHeader,
-  DetailHeading,
-  DetailRowGroup,
-  detailFieldClassName,
-  detailIconClassName,
-  detailScrollClassName
-} from './VaultDetailSurface'
+  DetailGroup,
+  DetailRow,
+  DetailTimestamp,
+  DetailTimestamps,
+  DetailTitleBlock,
+  DetailToolbar,
+  detailToolbarButtonClassName
+} from './VaultDetailLayout'
+import { detailHeaderIconClassName, detailScrollClassName } from './VaultDetailSurface'
 
 export type SidebarTone =
   'blue' | 'indigo' | 'green' | 'yellow' | 'cyan' | 'red' | 'orange' | 'gray'
@@ -250,6 +251,7 @@ export function DetailPlaceholder({
   onBack
 }: DetailPlaceholderProps): JSX.Element {
   const { t } = useLingui()
+  const itemTypeMeta = useItemTypeMeta()
   const TypeIcon = itemTypeIcons[item.type]
 
   return (
@@ -257,76 +259,83 @@ export function DetailPlaceholder({
       className="flex size-full min-h-0 min-w-0 flex-col motion-reduce:[&_[data-slot=skeleton]]:animate-none"
       aria-busy="true"
     >
-      <DetailHeader>
-        <TooltipIconButton
-          variant="outline"
-          size="icon"
-          className="hidden max-[680px]:grid"
-          data-detail-back=""
-          type="button"
-          label={t`Back to item list`}
-          onClick={onBack}
-        >
-          <ArrowLeft />
-        </TooltipIconButton>
-        <span className={detailIconClassName(item.type)} data-detail-icon="" aria-hidden="true">
-          {item.type === 'login' ? (
-            <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
-          ) : item.type === 'card' ? (
-            <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
-          ) : (
-            <TypeIcon size={18} />
-          )}
-        </span>
-        <DetailHeading
-          title={item.name}
-          subtitle={
-            item.subtitle ||
-            (item.type === 'login'
-              ? hostLabel(item.uri, t`Website not set`)
-              : t`Securely stored item`)
-          }
-        />
-        <Skeleton className="rounded-control size-9 flex-none" aria-hidden="true" />
-        <Skeleton className="rounded-control size-9 flex-none" aria-hidden="true" />
+      <DetailToolbar
+        back={
+          <TooltipIconButton
+            variant="ghost"
+            size="icon-sm"
+            className={cn(detailToolbarButtonClassName, 'hidden max-[680px]:grid')}
+            data-detail-back=""
+            type="button"
+            label={t`Back to item list`}
+            onClick={onBack}
+          >
+            <ArrowLeft />
+          </TooltipIconButton>
+        }
+      >
+        {[0, 1, 2].map((action) => (
+          <span
+            className={cn(detailToolbarButtonClassName, 'grid place-items-center')}
+            key={action}
+            aria-hidden="true"
+          >
+            <Skeleton className="size-4 rounded-sm" />
+          </span>
+        ))}
         <span className="sr-only" role="status">
           <Trans>Loading item details…</Trans>
         </span>
-      </DetailHeader>
+      </DetailToolbar>
+      <DetailTitleBlock
+        icon={
+          <span
+            className={detailHeaderIconClassName(item.type)}
+            data-detail-icon=""
+            aria-hidden="true"
+          >
+            {item.type === 'login' ? (
+              <WebsiteIcon id={item.id} uri={item.uri} enabled={showWebsiteIcons} />
+            ) : item.type === 'card' ? (
+              <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
+            ) : (
+              <TypeIcon size={18} />
+            )}
+          </span>
+        }
+        title={item.name}
+        meta={
+          <>
+            <span>{itemTypeMeta[item.type].label}</span>
+            <span aria-hidden="true">·</span>
+            <Skeleton className="h-3 w-14" aria-hidden="true" />
+          </>
+        }
+      />
 
-      <div className={detailScrollClassName} aria-hidden="true">
-        <DetailCard variant="placeholder">
-          <CardHeader>
-            <Skeleton className="h-3 w-20" />
-          </CardHeader>
-          <CardContent>
-            <DetailRowGroup>
-              {[0, 1, 2].map((row) => (
-                <div className={detailFieldClassName} key={row}>
-                  <Skeleton className="h-3 w-16" />
-                  <Skeleton className={cn('h-4', row === 1 ? 'w-2/3' : 'w-1/2')} />
-                  <Skeleton className="size-8" />
-                </div>
-              ))}
-            </DetailRowGroup>
-          </CardContent>
-        </DetailCard>
-        <DetailCard variant="placeholder">
-          <CardHeader>
-            <Skeleton className="h-3 w-24" />
-          </CardHeader>
-          <CardContent>
-            <DetailRowGroup>
-              {[0, 1].map((row) => (
-                <div className={detailFieldClassName} key={row}>
-                  <Skeleton className="h-3 w-14" />
-                  <Skeleton className="h-4 w-1/3" />
-                  <span />
-                </div>
-              ))}
-            </DetailRowGroup>
-          </CardContent>
-        </DetailCard>
+      <div className={cn('flex flex-col gap-4', detailScrollClassName)} aria-hidden="true">
+        <DetailGroup>
+          {['w-1/3', 'w-1/2', 'w-2/5'].map((width) => (
+            <DetailRow
+              key={width}
+              label={<Skeleton className="my-0.5 h-3 w-16" />}
+              actions={
+                <span className="grid size-7 place-items-center">
+                  <Skeleton className="size-4 rounded-sm" />
+                </span>
+              }
+            >
+              <Skeleton className={cn('my-1 h-3.5', width)} />
+            </DetailRow>
+          ))}
+        </DetailGroup>
+        <DetailTimestamps>
+          {[0, 1, 2].map((row) => (
+            <DetailTimestamp key={row} label={<Skeleton className="my-1 h-3 w-14" />}>
+              <Skeleton className="my-1 h-3 w-40" />
+            </DetailTimestamp>
+          ))}
+        </DetailTimestamps>
       </div>
     </article>
   )

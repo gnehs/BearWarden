@@ -1,32 +1,6 @@
-import type { ComponentProps, HTMLAttributes, JSX, ReactNode } from 'react'
+import type { ComponentProps, JSX, ReactNode } from 'react'
 import type { VaultItemType } from '../../../shared/vault-contract'
 import { cn } from '../lib/utils'
-import { Card } from './ui/card'
-
-interface DetailCardProps extends Omit<ComponentProps<typeof Card>, 'variant'> {
-  variant?: 'default' | 'attachment' | 'placeholder'
-}
-
-export function DetailCard({
-  className,
-  variant = 'default',
-  ...props
-}: DetailCardProps): JSX.Element {
-  return (
-    <Card
-      variant="folder"
-      className={cn(
-        'mx-auto w-full max-w-[720px] [--card-spacing:--spacing(2.5)]',
-        '[&_[data-slot=card-description]]:ml-auto',
-        variant === 'attachment' &&
-          '[&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal',
-        variant === 'placeholder' && '[&_[data-slot=skeleton]]:opacity-72',
-        className
-      )}
-      {...props}
-    />
-  )
-}
 
 export function DetailHeader({ className, ...props }: ComponentProps<'header'>): JSX.Element {
   return (
@@ -68,46 +42,6 @@ export function DetailHeading({
   )
 }
 
-interface DetailMetaRowProps {
-  label: ReactNode
-  children: ReactNode
-  valueClassName?: string
-}
-
-interface DetailRowGroupProps extends HTMLAttributes<HTMLElement> {
-  as?: 'div' | 'dl'
-}
-
-/** One recessed well that stacks a card's rows, separated by hairlines. */
-export function DetailRowGroup({
-  as: Tag = 'div',
-  className,
-  ...props
-}: DetailRowGroupProps): JSX.Element {
-  return <Tag className={cn('m-0 -my-1 flex flex-col overflow-hidden', className)} {...props} />
-}
-
-/** A read-only label/value pair inside a `DetailRowGroup` rendered as a `<dl>`. */
-export function DetailMetaRow({
-  label,
-  children,
-  valueClassName
-}: DetailMetaRowProps): JSX.Element {
-  return (
-    <div className="grid min-h-10 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)] items-center gap-2 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 max-[430px]:grid-cols-1 max-[430px]:items-start max-[430px]:gap-1">
-      <dt className="text-muted-foreground min-w-0 text-xs leading-4 break-words">{label}</dt>
-      <dd className={cn('m-0 min-w-0 text-xs leading-4', valueClassName)}>{children}</dd>
-    </div>
-  )
-}
-
-export const detailFieldClassName =
-  'grid min-h-10 grid-cols-[minmax(90px,0.28fr)_minmax(0,1fr)_repeat(2,auto)] items-center gap-1 border-b border-(--surface-ring) py-0.5 pr-1 pl-3 last:border-b-0 [&>span]:min-w-0 [&>span]:truncate [&>span]:text-xs [&>span]:text-muted-foreground [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium [&>:nth-child(3):last-child]:col-start-[-2] max-[430px]:grid-cols-[1fr_auto_auto] max-[430px]:gap-1.5 max-[430px]:[&>span]:col-span-full max-[430px]:[&>strong]:col-start-1 max-[430px]:[&>[data-field-copy-value]]:col-start-1'
-
-/** Row actions stay quiet inside the recessed well until hovered. */
-export const detailRowActionClassName =
-  'size-7 min-w-7 rounded-control border-transparent bg-transparent shadow-none dark:bg-transparent'
-
 export const detailScrollClassName =
   'min-h-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto px-(--pane-content-inset) pt-1 pb-(--pane-content-inset)'
 
@@ -124,4 +58,10 @@ export function detailIconClassName(type?: VaultItemType): string {
     type === 'bankAccount' && 'bg-muted text-chart-1',
     (type === 'driversLicense' || type === 'passport') && 'bg-accent text-chart-5'
   )
+}
+
+/** The ~40px item icon tile of a detail header; it stays visible on narrow panes. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function detailHeaderIconClassName(type?: VaultItemType): string {
+  return cn(detailIconClassName(type), 'size-10 max-[680px]:size-10 max-[430px]:grid')
 }

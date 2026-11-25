@@ -208,7 +208,7 @@ msgid "{0} custom field types simplified to text"
 msgstr "{0} 種自訂欄位類型已簡化為文字"
 
 #. placeholder {0}: itemTypeMeta[login.type].label
-#: src/renderer/src/components/VaultItemDetailViews.tsx:616
+#: src/renderer/src/components/VaultItemDetailViews.tsx:613
 msgid "{0} details"
 msgstr "{0}詳細資料"
 
@@ -268,7 +268,7 @@ msgid "{0} password revision dates"
 msgstr "{0} 個密碼修訂日期"
 
 #. placeholder {0}: summary.passwordHistoryCount
-#: src/renderer/src/components/VaultItemDetailViews.tsx:163
+#: src/renderer/src/components/VaultItemDetailViews.tsx:156
 msgid "{0} read-only records"
 msgstr "{0} 筆唯讀記錄"
 
@@ -329,7 +329,7 @@ msgid "{count, plural, one {Permanently deleted # item.} other {Permanently dele
 msgstr "{count, plural, one {已永久刪除 # 個項目。} other {已永久刪除 # 個項目。}}"
 
 #: src/renderer/src/components/DndRows.tsx:375
-#: src/renderer/src/components/VaultShell-primitives.tsx:233
+#: src/renderer/src/components/VaultShell-primitives.tsx:234
 msgid "{count} items"
 msgstr "{count} 個項目"
 
@@ -705,7 +705,7 @@ msgstr "帳戶名稱"
 #. Masked field label for the bank account number.
 #. Masked field label for the bank account number.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:118
-#: src/renderer/src/components/VaultItemDetailViews.tsx:278
+#: src/renderer/src/components/VaultItemDetailViews.tsx:271
 msgid "Account number"
 msgstr "帳號"
 
@@ -720,7 +720,7 @@ msgstr "帳戶安全性狀態"
 #. Field label for choosing a bank account kind, such as checking or savings.
 #. Field label for choosing a bank account kind, such as checking or savings.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:307
-#: src/renderer/src/components/VaultItemDetailViews.tsx:274
+#: src/renderer/src/components/VaultItemDetailViews.tsx:267
 msgid "Account type"
 msgstr "帳戶類型"
 
@@ -812,7 +812,7 @@ msgid "Add the key below to a compatible app such as 1Password, Bitwarden, or Go
 msgstr "將下方金鑰新增至相容的應用程式，例如 1Password、Bitwarden 或 Google Authenticator。"
 
 #: src/renderer/src/components/LoginEditor.tsx:2731
-#: src/renderer/src/components/VaultItemDetailViews.tsx:485
+#: src/renderer/src/components/VaultItemDetailViews.tsx:478
 msgid "Add to favorites"
 msgstr "加入我的最愛"
 
@@ -848,19 +848,19 @@ msgstr "新增金鑰會開啟系統提示。視金鑰而定，您可能需要觸
 
 #: src/renderer/src/components/LoginEditor.tsx:659
 #: src/renderer/src/components/LoginEditor.tsx:2318
-#: src/renderer/src/components/VaultItemDetailViews.tsx:259
+#: src/renderer/src/components/VaultItemDetailViews.tsx:252
 msgid "Address"
 msgstr "地址"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:378
+#: src/renderer/src/components/VaultItemDetailViews.tsx:371
 msgid "Address 1"
 msgstr "地址 1"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:379
+#: src/renderer/src/components/VaultItemDetailViews.tsx:372
 msgid "Address 2"
 msgstr "地址 2"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:380
+#: src/renderer/src/components/VaultItemDetailViews.tsx:373
 msgid "Address 3"
 msgstr "地址 3"
 
@@ -1092,14 +1092,14 @@ msgstr "Arc 未提供目前使用中的瀏覽器視窗。"
 msgid "Arc reported that the focused field is not editable text."
 msgstr "Arc 回報焦點欄位不是可編輯的文字欄位。"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:601
+#: src/renderer/src/components/VaultItemDetailViews.tsx:598
 #: src/renderer/src/components/VaultItemListPane.tsx:341
 #: src/renderer/src/components/VaultShell.tsx:726
 #: src/renderer/src/components/VaultShellSidebar.tsx:286
 msgid "Archive"
 msgstr "封存"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:549
+#: src/renderer/src/components/VaultItemDetailViews.tsx:542
 msgid "Archive item"
 msgstr "封存項目"
 
@@ -1225,8 +1225,8 @@ msgstr "避免易混淆字元"
 msgid "Back"
 msgstr "返回"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:472
-#: src/renderer/src/components/VaultShell-primitives.tsx:267
+#: src/renderer/src/components/VaultItemDetailViews.tsx:465
+#: src/renderer/src/components/VaultShell-primitives.tsx:270
 msgid "Back to item list"
 msgstr "返回項目清單"
 
@@ -1234,7 +1234,7 @@ msgstr "返回項目清單"
 msgid "Back to review"
 msgstr "返回檢閱"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:111
+#: src/renderer/src/components/VaultItemDetailViews.tsx:104
 msgid "Back to Trash"
 msgstr "返回垃圾桶"
 
@@ -1263,14 +1263,14 @@ msgstr "銀行帳戶"
 #. Field label for the phone number of the bank in a bank account item.
 #. Field label for the phone number of the bank in a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:164
-#: src/renderer/src/components/VaultItemDetailViews.tsx:304
+#: src/renderer/src/components/VaultItemDetailViews.tsx:297
 msgid "Bank contact phone"
 msgstr "銀行聯絡電話"
 
 #. Field label for the bank of a bank account item.
 #. Field label for the bank of a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:101
-#: src/renderer/src/components/VaultItemDetailViews.tsx:266
+#: src/renderer/src/components/VaultItemDetailViews.tsx:259
 msgid "Bank name"
 msgstr "銀行名稱"
 
@@ -1421,13 +1421,13 @@ msgstr "阻止螢幕擷取"
 #. Field label for the bank branch number of a bank account item.
 #. Field label for the bank branch number of a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:133
-#: src/renderer/src/components/VaultItemDetailViews.tsx:286
+#: src/renderer/src/components/VaultItemDetailViews.tsx:279
 msgid "Branch number"
 msgstr "分行代碼"
 
 #. Field label for the payment card issuer or network brand, such as Visa or Mastercard.
-#: src/renderer/src/components/VaultItemDetailViews.tsx:246
-#: src/renderer/src/components/VaultItemDetailViews.tsx:374
+#: src/renderer/src/components/VaultItemDetailViews.tsx:239
+#: src/renderer/src/components/VaultItemDetailViews.tsx:367
 msgid "Brand"
 msgstr "品牌"
 
@@ -1549,8 +1549,8 @@ msgstr "卡面"
 
 #: src/renderer/src/components/LoginEditor.tsx:656
 #: src/renderer/src/components/LoginEditor.tsx:2224
-#: src/renderer/src/components/VaultItemDetailViews.tsx:243
-#: src/renderer/src/components/VaultItemDetailViews.tsx:375
+#: src/renderer/src/components/VaultItemDetailViews.tsx:236
+#: src/renderer/src/components/VaultItemDetailViews.tsx:368
 msgid "Card number"
 msgstr "卡號"
 
@@ -1561,8 +1561,8 @@ msgstr "已辨識卡號為 {0}"
 
 #: src/renderer/src/components/LoginEditor.tsx:651
 #: src/renderer/src/components/LoginEditor.tsx:2072
-#: src/renderer/src/components/VaultItemDetailViews.tsx:245
-#: src/renderer/src/components/VaultItemDetailViews.tsx:370
+#: src/renderer/src/components/VaultItemDetailViews.tsx:238
+#: src/renderer/src/components/VaultItemDetailViews.tsx:363
 msgid "Cardholder"
 msgstr "持卡人"
 
@@ -1790,7 +1790,7 @@ msgstr "Chrome 網頁應用程式"
 
 #: src/renderer/src/components/LoginEditor.tsx:662
 #: src/renderer/src/components/LoginEditor.tsx:2340
-#: src/renderer/src/components/VaultItemDetailViews.tsx:381
+#: src/renderer/src/components/VaultItemDetailViews.tsx:374
 msgid "City"
 msgstr "城市"
 
@@ -1913,8 +1913,8 @@ msgstr "Command 加 Option 加反斜線"
 #. Field label for the company name in an identity item.
 #: src/renderer/src/components/LoginEditor.tsx:666
 #: src/renderer/src/components/LoginEditor.tsx:2287
-#: src/renderer/src/components/VaultItemDetailViews.tsx:253
-#: src/renderer/src/components/VaultItemDetailViews.tsx:385
+#: src/renderer/src/components/VaultItemDetailViews.tsx:246
+#: src/renderer/src/components/VaultItemDetailViews.tsx:378
 msgid "Company"
 msgstr "公司"
 
@@ -2268,7 +2268,7 @@ msgstr "無法拒絕此通行密鑰要求。請等待要求逾時，或再次鎖
 msgid "Couldn't deny this signing request. Wait for it to expire or lock the vault again."
 msgstr "無法拒絕此簽署要求。請等待要求逾時，或再次鎖定保管庫。"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:384
+#: src/renderer/src/components/VaultItemDetailViews.tsx:377
 msgid "Country"
 msgstr "國家"
 
@@ -2454,7 +2454,7 @@ msgid "Custom field was not moved."
 msgstr "自訂欄位未移動。"
 
 #: src/renderer/src/components/LoginEditor.tsx:2878
-#: src/renderer/src/components/VaultItemDetailViews.tsx:655
+#: src/renderer/src/components/VaultItemDetailViews.tsx:652
 msgid "Custom fields"
 msgstr "自訂欄位"
 
@@ -2501,7 +2501,7 @@ msgstr "資料來源：<0/>"
 #. Date field for the holder's birth date on a driver's license or passport.
 #. Date field for the holder's birth date on a driver's license or passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:85
-#: src/renderer/src/components/VaultItemDetailViews.tsx:311
+#: src/renderer/src/components/VaultItemDetailViews.tsx:304
 msgid "Date of birth"
 msgstr "出生日期"
 
@@ -2569,7 +2569,7 @@ msgstr "刪除資料夾"
 msgid "Delete passkey"
 msgstr "刪除通行密鑰"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:183
+#: src/renderer/src/components/VaultItemDetailViews.tsx:176
 #: src/renderer/src/components/VaultItemListPane.tsx:286
 #: src/renderer/src/components/VaultShellDialogs.tsx:229
 msgid "Delete permanently"
@@ -2592,7 +2592,7 @@ msgstr "要刪除此通行密鑰嗎？"
 msgid "Delete this Send?"
 msgstr "要刪除此 Send 嗎？"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:169
+#: src/renderer/src/components/VaultItemDetailViews.tsx:162
 msgid "Deleted"
 msgstr "已刪除"
 
@@ -2781,8 +2781,8 @@ msgstr "可拖曳項目"
 msgid "Driver's license"
 msgstr "駕照"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:262
-#: src/renderer/src/components/VaultItemDetailViews.tsx:391
+#: src/renderer/src/components/VaultItemDetailViews.tsx:255
+#: src/renderer/src/components/VaultItemDetailViews.tsx:384
 msgid "Driver's license number"
 msgstr "駕照號碼"
 
@@ -2825,7 +2825,7 @@ msgstr "Duo 驗證未完成。可能已逾時，或貼上的網址屬於另一�
 #~ msgid "Duo verification is not supported"
 #~ msgstr "不支援 Duo 驗證"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:537
+#: src/renderer/src/components/VaultItemDetailViews.tsx:530
 msgid "Duplicate item"
 msgstr "複製項目"
 
@@ -2851,7 +2851,7 @@ msgstr "Edge 網頁應用程式"
 
 #: src/renderer/src/components/AccountProfileCard.tsx:152
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:146
-#: src/renderer/src/components/VaultItemDetailViews.tsx:498
+#: src/renderer/src/components/VaultItemDetailViews.tsx:491
 msgid "Edit"
 msgstr "編輯"
 
@@ -2903,8 +2903,8 @@ msgstr "尚無法編輯檔案 Send。"
 #: src/renderer/src/components/LoginEditor.tsx:2370
 #: src/renderer/src/components/SyncDialog.tsx:586
 #: src/renderer/src/components/SyncDialog.tsx:1160
-#: src/renderer/src/components/VaultItemDetailViews.tsx:257
-#: src/renderer/src/components/VaultItemDetailViews.tsx:386
+#: src/renderer/src/components/VaultItemDetailViews.tsx:250
+#: src/renderer/src/components/VaultItemDetailViews.tsx:379
 msgid "Email"
 msgstr "電子郵件"
 
@@ -3243,19 +3243,19 @@ msgstr "展開 {0}"
 
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:93
 #: src/renderer/src/components/SendsPage.tsx:664
-#: src/renderer/src/components/VaultItemDetailViews.tsx:251
+#: src/renderer/src/components/VaultItemDetailViews.tsx:244
 msgid "Expiration date"
 msgstr "到期日"
 
 #: src/renderer/src/components/LoginEditor.tsx:652
 #: src/renderer/src/components/LoginEditor.tsx:2248
-#: src/renderer/src/components/VaultItemDetailViews.tsx:371
+#: src/renderer/src/components/VaultItemDetailViews.tsx:364
 msgid "Expiration month"
 msgstr "到期月份"
 
 #: src/renderer/src/components/LoginEditor.tsx:653
 #: src/renderer/src/components/LoginEditor.tsx:2260
-#: src/renderer/src/components/VaultItemDetailViews.tsx:372
+#: src/renderer/src/components/VaultItemDetailViews.tsx:365
 msgid "Expiration year"
 msgstr "到期年份"
 
@@ -3393,8 +3393,8 @@ msgstr "Firefox 網頁應用程式"
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:178
 #: src/renderer/src/components/LoginEditor.tsx:673
 #: src/renderer/src/components/LoginEditor.tsx:2296
-#: src/renderer/src/components/VaultItemDetailViews.tsx:308
-#: src/renderer/src/components/VaultItemDetailViews.tsx:392
+#: src/renderer/src/components/VaultItemDetailViews.tsx:301
+#: src/renderer/src/components/VaultItemDetailViews.tsx:385
 msgid "First name"
 msgstr "名字"
 
@@ -3476,7 +3476,7 @@ msgid "Full BearWarden backup (with attachments)"
 msgstr "完整 BearWarden 備份（含附件）"
 
 #: src/renderer/src/components/LoginEditor.tsx:675
-#: src/renderer/src/components/VaultItemDetailViews.tsx:394
+#: src/renderer/src/components/VaultItemDetailViews.tsx:387
 msgid "Full name"
 msgstr "全名"
 
@@ -3555,7 +3555,7 @@ msgstr "GitHub"
 #. Field label for the given names printed on a passport.
 #. Field label for the given names printed on a passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:224
-#: src/renderer/src/components/VaultItemDetailViews.tsx:335
+#: src/renderer/src/components/VaultItemDetailViews.tsx:328
 msgid "Given name"
 msgstr "名字"
 
@@ -3686,12 +3686,12 @@ msgstr "我了解風險。允許重新傳送"
 #. Masked field label for the International Bank Account Number.
 #. Masked field label for the International Bank Account Number.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:157
-#: src/renderer/src/components/VaultItemDetailViews.tsx:300
+#: src/renderer/src/components/VaultItemDetailViews.tsx:293
 msgid "IBAN"
 msgstr "IBAN"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:260
-#: src/renderer/src/components/VaultItemDetailViews.tsx:388
+#: src/renderer/src/components/VaultItemDetailViews.tsx:253
+#: src/renderer/src/components/VaultItemDetailViews.tsx:381
 msgid "ID / Social Security number"
 msgstr "身分證號碼／社會安全號碼"
 
@@ -3808,28 +3808,28 @@ msgstr "iPhone／iPad"
 #. Date field for when a driver's license or passport was issued.
 #. Date field for when a driver's license or passport was issued.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:89
-#: src/renderer/src/components/VaultItemDetailViews.tsx:327
+#: src/renderer/src/components/VaultItemDetailViews.tsx:320
 msgid "Issue date"
 msgstr "發照日期"
 
 #. Field label for the agency that issued a driver's license or passport.
 #. Field label for the agency that issued a driver's license or passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:81
-#: src/renderer/src/components/VaultItemDetailViews.tsx:323
+#: src/renderer/src/components/VaultItemDetailViews.tsx:316
 msgid "Issuing authority"
 msgstr "發照機關"
 
 #. Field label for the country that issued a driver's license or passport.
 #. Field label for the country that issued a driver's license or passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:77
-#: src/renderer/src/components/VaultItemDetailViews.tsx:315
+#: src/renderer/src/components/VaultItemDetailViews.tsx:308
 msgid "Issuing country"
 msgstr "發照國家"
 
 #. Field label for the state or province that issued a driver's license.
 #. Field label for the state or province that issued a driver's license.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:204
-#: src/renderer/src/components/VaultItemDetailViews.tsx:319
+#: src/renderer/src/components/VaultItemDetailViews.tsx:312
 msgid "Issuing state / province"
 msgstr "發照州／省"
 
@@ -3854,7 +3854,7 @@ msgstr "項目"
 msgid "Item details"
 msgstr "項目詳細資料"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:400
+#: src/renderer/src/components/VaultItemDetailViews.tsx:393
 msgid "Item field"
 msgstr "項目欄位"
 
@@ -3934,7 +3934,7 @@ msgid "Key Connector accounts are not supported"
 msgstr "不支援 Key Connector 帳戶"
 
 #: src/renderer/src/components/LoginEditor.tsx:2545
-#: src/renderer/src/components/VaultItemDetailViews.tsx:265
+#: src/renderer/src/components/VaultItemDetailViews.tsx:258
 msgid "Key fingerprint"
 msgstr "金鑰指紋"
 
@@ -3966,8 +3966,8 @@ msgstr "上次編輯"
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:180
 #: src/renderer/src/components/LoginEditor.tsx:674
 #: src/renderer/src/components/LoginEditor.tsx:2310
-#: src/renderer/src/components/VaultItemDetailViews.tsx:310
-#: src/renderer/src/components/VaultItemDetailViews.tsx:393
+#: src/renderer/src/components/VaultItemDetailViews.tsx:303
+#: src/renderer/src/components/VaultItemDetailViews.tsx:386
 msgid "Last name"
 msgstr "姓氏"
 
@@ -4010,7 +4010,7 @@ msgstr "允許伺服器暫時略過此裝置的兩步驟驗證。"
 #. Field label for the vehicle class on a driver's license, such as C or B.
 #. Field label for the vehicle class on a driver's license, such as C or B.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:194
-#: src/renderer/src/components/VaultItemDetailViews.tsx:331
+#: src/renderer/src/components/VaultItemDetailViews.tsx:324
 msgid "License class"
 msgstr "駕照類別"
 
@@ -4048,7 +4048,7 @@ msgstr "連結至"
 msgid "Linked field"
 msgstr "已連結欄位"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:399
+#: src/renderer/src/components/VaultItemDetailViews.tsx:392
 msgid "Linked to {label}"
 msgstr "已連結至 {label}"
 
@@ -4092,7 +4092,7 @@ msgstr "正在載入緊急存取…"
 msgid "Loading image preview"
 msgstr "正在載入圖片預覽"
 
-#: src/renderer/src/components/VaultShell-primitives.tsx:293
+#: src/renderer/src/components/VaultShell-primitives.tsx:287
 msgid "Loading item details…"
 msgstr "正在載入項目詳細資料…"
 
@@ -4409,8 +4409,8 @@ msgstr "選單"
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:179
 #: src/renderer/src/components/LoginEditor.tsx:658
 #: src/renderer/src/components/LoginEditor.tsx:2303
-#: src/renderer/src/components/VaultItemDetailViews.tsx:309
-#: src/renderer/src/components/VaultItemDetailViews.tsx:377
+#: src/renderer/src/components/VaultItemDetailViews.tsx:302
+#: src/renderer/src/components/VaultItemDetailViews.tsx:370
 msgid "Middle name"
 msgstr "中間名"
 
@@ -4455,8 +4455,8 @@ msgstr "分鐘必須介於 0 到 59 之間。"
 msgid "Money market"
 msgstr "貨幣市場帳戶"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:520
-#: src/renderer/src/components/VaultItemDetailViews.tsx:530
+#: src/renderer/src/components/VaultItemDetailViews.tsx:513
+#: src/renderer/src/components/VaultItemDetailViews.tsx:523
 msgid "More actions"
 msgstr "更多操作"
 
@@ -4522,7 +4522,7 @@ msgid "Move to Archive"
 msgstr "移至封存"
 
 #: src/renderer/src/components/Dialogs.tsx:331
-#: src/renderer/src/components/VaultItemDetailViews.tsx:452
+#: src/renderer/src/components/VaultItemDetailViews.tsx:445
 msgid "Move to folder"
 msgstr "移至資料夾"
 
@@ -4530,7 +4530,7 @@ msgstr "移至資料夾"
 msgid "Move to trash"
 msgstr "移至垃圾桶"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:562
+#: src/renderer/src/components/VaultItemDetailViews.tsx:555
 #: src/renderer/src/components/VaultShell-dnd.ts:71
 #: src/renderer/src/components/VaultShellDialogs.tsx:230
 msgid "Move to Trash"
@@ -4582,7 +4582,7 @@ msgstr "正與其他 {0} 個項目一起移動"
 #: src/renderer/src/components/LoginEditor.tsx:3030
 #: src/renderer/src/components/SendsPage.tsx:563
 #: src/renderer/src/components/SettingsPage.tsx:447
-#: src/renderer/src/components/VaultItemDetailViews.tsx:252
+#: src/renderer/src/components/VaultItemDetailViews.tsx:245
 #: src/renderer/src/components/VaultShell.tsx:196
 msgid "Name"
 msgstr "名稱"
@@ -4590,7 +4590,7 @@ msgstr "名稱"
 #. Field label for the account holder name of a bank account item.
 #. Field label for the account holder name of a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:105
-#: src/renderer/src/components/VaultItemDetailViews.tsx:270
+#: src/renderer/src/components/VaultItemDetailViews.tsx:263
 msgid "Name on account"
 msgstr "戶名"
 
@@ -4602,14 +4602,14 @@ msgstr "國民身分證字號 / 社會安全號碼"
 #. Masked field label for the national identification number on a passport.
 #. Masked field label for the national identification number on a passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:270
-#: src/renderer/src/components/VaultItemDetailViews.tsx:359
+#: src/renderer/src/components/VaultItemDetailViews.tsx:352
 msgid "National ID number"
 msgstr "身分證字號"
 
 #. Field label for the nationality printed on a passport.
 #. Field label for the nationality printed on a passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:254
-#: src/renderer/src/components/VaultItemDetailViews.tsx:351
+#: src/renderer/src/components/VaultItemDetailViews.tsx:344
 msgid "Nationality"
 msgstr "國籍"
 
@@ -4670,7 +4670,7 @@ msgstr "已產生新結果"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:484
 #: src/renderer/src/components/AccountDevicesDialog.tsx:495
-#: src/renderer/src/components/VaultItemDetailViews.tsx:398
+#: src/renderer/src/components/VaultItemDetailViews.tsx:391
 msgid "No"
 msgstr "否"
 
@@ -4863,7 +4863,7 @@ msgstr "未提供"
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:114
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:117
 #: src/renderer/src/components/VaultDetailFieldRows.tsx:326
-#: src/renderer/src/components/VaultItemDetailViews.tsx:402
+#: src/renderer/src/components/VaultItemDetailViews.tsx:395
 msgid "Not set"
 msgstr "未設定"
 
@@ -5040,7 +5040,7 @@ msgstr "組織設定檔資料"
 msgid "Organizations"
 msgstr "組織"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:172
+#: src/renderer/src/components/VaultItemDetailViews.tsx:165
 msgid "Original folder"
 msgstr "原始資料夾"
 
@@ -5113,8 +5113,8 @@ msgstr "護照"
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:260
 #: src/renderer/src/components/LoginEditor.tsx:671
 #: src/renderer/src/components/LoginEditor.tsx:2393
-#: src/renderer/src/components/VaultItemDetailViews.tsx:261
-#: src/renderer/src/components/VaultItemDetailViews.tsx:390
+#: src/renderer/src/components/VaultItemDetailViews.tsx:254
+#: src/renderer/src/components/VaultItemDetailViews.tsx:383
 msgid "Passport number"
 msgstr "護照號碼"
 
@@ -5126,7 +5126,7 @@ msgstr "護照號碼、國籍與有效日期"
 #. Field label for the passport type code, such as P for an ordinary passport.
 #. Field label for the passport type code, such as P for an ordinary passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:263
-#: src/renderer/src/components/VaultItemDetailViews.tsx:355
+#: src/renderer/src/components/VaultItemDetailViews.tsx:348
 msgid "Passport type"
 msgstr "護照類型"
 
@@ -5142,8 +5142,8 @@ msgstr "護照"
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:570
 #: src/renderer/src/components/LoginEditor.tsx:650
 #: src/renderer/src/components/LoginEditor.tsx:1852
-#: src/renderer/src/components/VaultItemDetailViews.tsx:241
-#: src/renderer/src/components/VaultItemDetailViews.tsx:369
+#: src/renderer/src/components/VaultItemDetailViews.tsx:234
+#: src/renderer/src/components/VaultItemDetailViews.tsx:362
 #: src/renderer/src/components/VaultShellDialogs.tsx:248
 msgid "Password"
 msgstr "密碼"
@@ -5264,8 +5264,8 @@ msgstr "個人保管庫"
 
 #: src/renderer/src/components/LoginEditor.tsx:668
 #: src/renderer/src/components/LoginEditor.tsx:2378
-#: src/renderer/src/components/VaultItemDetailViews.tsx:258
-#: src/renderer/src/components/VaultItemDetailViews.tsx:387
+#: src/renderer/src/components/VaultItemDetailViews.tsx:251
+#: src/renderer/src/components/VaultItemDetailViews.tsx:380
 msgid "Phone"
 msgstr "電話"
 
@@ -5299,7 +5299,7 @@ msgstr "PIN"
 #. Masked field label for the PIN of a bank account or its card, not the app unlock PIN.
 #. Masked field label for the PIN of a bank account or its card, not the app unlock PIN.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:141
-#: src/renderer/src/components/VaultItemDetailViews.tsx:290
+#: src/renderer/src/components/VaultItemDetailViews.tsx:283
 msgctxt "bank-account-pin"
 msgid "PIN"
 msgstr "PIN 碼"
@@ -5331,7 +5331,7 @@ msgstr "PIN 解鎖已無法使用。請輸入主密碼。"
 #. Field label for the place of birth printed on a passport.
 #. Field label for the place of birth printed on a passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:247
-#: src/renderer/src/components/VaultItemDetailViews.tsx:347
+#: src/renderer/src/components/VaultItemDetailViews.tsx:340
 msgid "Place of birth"
 msgstr "出生地"
 
@@ -5357,7 +5357,7 @@ msgstr "加號地址"
 
 #: src/renderer/src/components/LoginEditor.tsx:664
 #: src/renderer/src/components/LoginEditor.tsx:2354
-#: src/renderer/src/components/VaultItemDetailViews.tsx:383
+#: src/renderer/src/components/VaultItemDetailViews.tsx:376
 msgid "Postal code"
 msgstr "郵遞區號"
 
@@ -5380,7 +5380,7 @@ msgstr "隱私與剪貼簿"
 
 #: src/renderer/src/components/LoginEditor.tsx:2487
 #: src/renderer/src/components/LoginEditor.tsx:2506
-#: src/renderer/src/components/VaultItemDetailViews.tsx:263
+#: src/renderer/src/components/VaultItemDetailViews.tsx:256
 #: src/renderer/src/hooks/use-selected-item-secrets.ts:234
 msgid "Private key"
 msgstr "私密金鑰"
@@ -5449,7 +5449,7 @@ msgid "Provisioned"
 msgstr "已佈建"
 
 #: src/renderer/src/components/LoginEditor.tsx:2523
-#: src/renderer/src/components/VaultItemDetailViews.tsx:264
+#: src/renderer/src/components/VaultItemDetailViews.tsx:257
 msgid "Public key"
 msgstr "公開金鑰"
 
@@ -5646,7 +5646,7 @@ msgstr "要移除 {0} 嗎？"
 msgid "Remove current password"
 msgstr "移除目前密碼"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:485
+#: src/renderer/src/components/VaultItemDetailViews.tsx:478
 msgid "Remove from favorites"
 msgstr "從最愛中移除"
 
@@ -5763,7 +5763,7 @@ msgstr "還原完成"
 msgid "Restore full backup"
 msgstr "還原完整備份"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:179
+#: src/renderer/src/components/VaultItemDetailViews.tsx:172
 msgid "Restore item"
 msgstr "還原項目"
 
@@ -5825,7 +5825,7 @@ msgstr "輪替 API 金鑰"
 #. Field label for the bank routing or sort code of a bank account item.
 #. Field label for the bank routing or sort code of a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:126
-#: src/renderer/src/components/VaultItemDetailViews.tsx:282
+#: src/renderer/src/components/VaultItemDetailViews.tsx:275
 msgid "Routing number"
 msgstr "銀行代碼"
 
@@ -5995,8 +5995,8 @@ msgid "Securely removing local account"
 msgstr "正在安全移除本機帳戶"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:287
-msgid "Securely stored item"
-msgstr "安全儲存的項目"
+#~ msgid "Securely stored item"
+#~ msgstr "安全儲存的項目"
 
 #: src/renderer/src/components/AuthScreen.tsx:454
 #: src/renderer/src/hooks/use-vault-accounts.ts:130
@@ -6013,8 +6013,8 @@ msgstr "安全性與解鎖"
 
 #: src/renderer/src/components/LoginEditor.tsx:654
 #: src/renderer/src/components/LoginEditor.tsx:2271
-#: src/renderer/src/components/VaultItemDetailViews.tsx:244
-#: src/renderer/src/components/VaultItemDetailViews.tsx:373
+#: src/renderer/src/components/VaultItemDetailViews.tsx:237
+#: src/renderer/src/components/VaultItemDetailViews.tsx:366
 msgid "Security code"
 msgstr "安全碼"
 
@@ -6234,7 +6234,7 @@ msgstr "設定金鑰已複製"
 #. Field label for the sex marker printed on a passport, such as F, M, or X.
 #. Field label for the sex marker printed on a passport, such as F, M, or X.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:238
-#: src/renderer/src/components/VaultItemDetailViews.tsx:343
+#: src/renderer/src/components/VaultItemDetailViews.tsx:336
 msgid "Sex"
 msgstr "性別"
 
@@ -6401,7 +6401,7 @@ msgstr "開頭為"
 
 #: src/renderer/src/components/LoginEditor.tsx:663
 #: src/renderer/src/components/LoginEditor.tsx:2347
-#: src/renderer/src/components/VaultItemDetailViews.tsx:382
+#: src/renderer/src/components/VaultItemDetailViews.tsx:375
 msgid "State / Province"
 msgstr "州／省"
 
@@ -6442,14 +6442,14 @@ msgstr "強"
 #. Field label for the surname printed on a passport.
 #. Field label for the surname printed on a passport.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:231
-#: src/renderer/src/components/VaultItemDetailViews.tsx:339
+#: src/renderer/src/components/VaultItemDetailViews.tsx:332
 msgid "Surname"
 msgstr "姓氏"
 
 #. Masked field label for the SWIFT/BIC code of a bank account item.
 #. Masked field label for the SWIFT/BIC code of a bank account item.
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:150
-#: src/renderer/src/components/VaultItemDetailViews.tsx:296
+#: src/renderer/src/components/VaultItemDetailViews.tsx:289
 msgid "SWIFT code"
 msgstr "SWIFT 代碼"
 
@@ -7356,8 +7356,8 @@ msgstr "這是您最後一種可用的個人雙因素驗證方式。停用後，
 msgid "This item"
 msgstr "此項目"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:141
-#: src/renderer/src/components/VaultItemDetailViews.tsx:151
+#: src/renderer/src/components/VaultItemDetailViews.tsx:134
+#: src/renderer/src/components/VaultItemDetailViews.tsx:144
 msgid "This item is in Trash"
 msgstr "此項目位於垃圾桶"
 
@@ -7533,7 +7533,7 @@ msgstr "無法取得時間"
 
 #: src/renderer/src/components/LoginEditor.tsx:657
 #: src/renderer/src/components/LoginEditor.tsx:2280
-#: src/renderer/src/components/VaultItemDetailViews.tsx:376
+#: src/renderer/src/components/VaultItemDetailViews.tsx:369
 msgid "Title"
 msgstr "標題"
 
@@ -7541,7 +7541,7 @@ msgstr "標題"
 msgid "To prevent data loss, BearWarden stopped writing changes to the server. Update the app and try again."
 msgstr "為防止資料遺失，BearWarden 已停止將變更寫入伺服器。請更新應用程式後再試一次。"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:154
+#: src/renderer/src/components/VaultItemDetailViews.tsx:147
 msgid "To protect deleted sensitive data, restore the item before viewing or editing its contents."
 msgstr "為保護已刪除的敏感資料，請先還原項目，再檢視或編輯其內容。"
 
@@ -7593,7 +7593,7 @@ msgstr "可使用 TOTP"
 msgid "Traditional Chinese"
 msgstr "繁體中文"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:130
+#: src/renderer/src/components/VaultItemDetailViews.tsx:123
 #: src/renderer/src/components/VaultShell.tsx:727
 #: src/renderer/src/components/VaultShellSidebar.tsx:300
 msgid "Trash"
@@ -7944,7 +7944,7 @@ msgstr "無法更新自動填入快速鍵。"
 msgid "Unable to verify the master password. Try again."
 msgstr "無法驗證主密碼。請再試一次。"
 
-#: src/renderer/src/components/VaultItemDetailViews.tsx:549
+#: src/renderer/src/components/VaultItemDetailViews.tsx:542
 #: src/renderer/src/components/VaultItemListPane.tsx:341
 msgid "Unarchive"
 msgstr "取消封存"
@@ -7986,9 +7986,9 @@ msgstr "未加密的連線"
 
 #: src/renderer/src/components/Dialogs.tsx:325
 #: src/renderer/src/components/LoginEditor.tsx:1704
-#: src/renderer/src/components/VaultItemDetailViews.tsx:173
-#: src/renderer/src/components/VaultItemDetailViews.tsx:413
-#: src/renderer/src/components/VaultShell-primitives.tsx:231
+#: src/renderer/src/components/VaultItemDetailViews.tsx:166
+#: src/renderer/src/components/VaultItemDetailViews.tsx:406
+#: src/renderer/src/components/VaultShell-primitives.tsx:232
 #: src/renderer/src/components/VaultShell.tsx:709
 #: src/renderer/src/hooks/use-vault-item-actions.ts:328
 msgid "Unfiled"
@@ -8229,9 +8229,9 @@ msgstr "使用者驗證"
 #: src/renderer/src/components/LoginEditor.tsx:670
 #: src/renderer/src/components/LoginEditor.tsx:1827
 #: src/renderer/src/components/LoginEditor.tsx:2387
-#: src/renderer/src/components/VaultItemDetailViews.tsx:240
-#: src/renderer/src/components/VaultItemDetailViews.tsx:368
-#: src/renderer/src/components/VaultItemDetailViews.tsx:389
+#: src/renderer/src/components/VaultItemDetailViews.tsx:233
+#: src/renderer/src/components/VaultItemDetailViews.tsx:361
+#: src/renderer/src/components/VaultItemDetailViews.tsx:382
 msgid "Username"
 msgstr "使用者名稱"
 
@@ -8455,7 +8455,7 @@ msgstr "弱密碼"
 
 #: src/renderer/src/components/LoginEditor.tsx:1923
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:246
-#: src/renderer/src/components/VaultItemDetailViews.tsx:242
+#: src/renderer/src/components/VaultItemDetailViews.tsx:235
 msgid "Website"
 msgstr "網站"
 
@@ -8476,8 +8476,8 @@ msgid "Website moved to position {0} of {1}."
 msgstr "網站已移動到第 {0} 個位置，共 {1} 個。"
 
 #: src/renderer/src/components/VaultShell-primitives.tsx:286
-msgid "Website not set"
-msgstr "尚未設定網站"
+#~ msgid "Website not set"
+#~ msgstr "尚未設定網站"
 
 #: src/renderer/src/hooks/use-selected-item-secrets.ts:363
 msgid "Website opened."
@@ -8497,7 +8497,7 @@ msgid "Website: {0}"
 msgstr "網站：{0}"
 
 #: src/renderer/src/components/LoginEditor.tsx:1860
-#: src/renderer/src/components/VaultItemDetailViews.tsx:644
+#: src/renderer/src/components/VaultItemDetailViews.tsx:641
 msgid "Websites"
 msgstr "網站"
 
@@ -8543,7 +8543,7 @@ msgstr "單字"
 
 #: src/renderer/src/components/AccountDevicesDialog.tsx:484
 #: src/renderer/src/components/AccountDevicesDialog.tsx:495
-#: src/renderer/src/components/VaultItemDetailViews.tsx:397
+#: src/renderer/src/components/VaultItemDetailViews.tsx:390
 msgid "Yes"
 msgstr "是"
 

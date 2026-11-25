@@ -16,7 +16,6 @@ import {
 import { useMemo, type ReactNode } from 'react'
 import type {
   CollectionView,
-  VaultItemType,
   FolderView,
   LoginSummary,
   OrganizationView,
@@ -61,20 +60,14 @@ import {
   DetailTimestamp,
   DetailTimestamps,
   DetailTitleBlock,
-  DetailToolbar
+  DetailToolbar,
+  detailToolbarButtonClassName
 } from './VaultDetailLayout'
-import { detailIconClassName, detailScrollClassName } from './VaultDetailSurface'
+import { detailHeaderIconClassName, detailScrollClassName } from './VaultDetailSurface'
 import { TooltipIconButton, hostLabel } from './VaultShell-primitives'
 import { hasTrashPasswordHistory } from './VaultShell-security'
 import { detailFields } from './vault-detail-view-model'
 import WebsiteIcon from './WebsiteIcon'
-
-const toolbarButtonClassName = 'size-7.5 min-w-7.5'
-
-/** The ~40px item icon tile of a detail header; it stays visible on narrow panes. */
-function headerIconClassName(type?: VaultItemType): string {
-  return cn(detailIconClassName(type), 'size-10 max-[680px]:size-10 max-[430px]:grid')
-}
 
 interface TrashedItemDetailProps {
   summary: LoginSummary
@@ -105,7 +98,7 @@ export function TrashedItemDetail({
           <TooltipIconButton
             variant="ghost"
             size="icon-sm"
-            className={cn(toolbarButtonClassName, 'hidden max-[680px]:grid')}
+            className={cn(detailToolbarButtonClassName, 'hidden max-[680px]:grid')}
             data-detail-back=""
             type="button"
             label={t`Back to Trash`}
@@ -117,7 +110,7 @@ export function TrashedItemDetail({
       />
       <DetailTitleBlock
         icon={
-          <span className={headerIconClassName()} aria-hidden="true">
+          <span className={detailHeaderIconClassName()} aria-hidden="true">
             <Trash2 />
           </span>
         }
@@ -466,7 +459,7 @@ export function SelectedItemDetail({
           <TooltipIconButton
             variant="ghost"
             size="icon-sm"
-            className={cn(toolbarButtonClassName, 'hidden max-[680px]:grid')}
+            className={cn(detailToolbarButtonClassName, 'hidden max-[680px]:grid')}
             data-detail-back=""
             type="button"
             label={t`Back to item list`}
@@ -480,7 +473,7 @@ export function SelectedItemDetail({
           <TooltipIconButton
             variant="ghost"
             size="icon-sm"
-            className={cn(toolbarButtonClassName, login.favorite && 'text-chart-4')}
+            className={cn(detailToolbarButtonClassName, login.favorite && 'text-chart-4')}
             type="button"
             label={login.favorite ? t`Remove from favorites` : t`Add to favorites`}
             aria-pressed={login.favorite}
@@ -493,7 +486,7 @@ export function SelectedItemDetail({
           <TooltipIconButton
             variant="ghost"
             size="icon-sm"
-            className={toolbarButtonClassName}
+            className={detailToolbarButtonClassName}
             type="button"
             label={t`Edit`}
             disabled={busy}
@@ -513,7 +506,7 @@ export function SelectedItemDetail({
                         variant="ghost"
                         size="icon-sm"
                         className={cn(
-                          toolbarButtonClassName,
+                          detailToolbarButtonClassName,
                           'text-muted-foreground hover:text-foreground'
                         )}
                         type="button"
@@ -568,7 +561,11 @@ export function SelectedItemDetail({
       </DetailToolbar>
       <DetailTitleBlock
         icon={
-          <span className={headerIconClassName(login.type)} data-detail-icon="" aria-hidden="true">
+          <span
+            className={detailHeaderIconClassName(login.type)}
+            data-detail-icon=""
+            aria-hidden="true"
+          >
             {login.type === 'login' ? (
               <WebsiteIcon
                 id={login.id}
