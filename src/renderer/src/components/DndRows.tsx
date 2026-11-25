@@ -130,7 +130,7 @@ export const ItemRow = memo(function ItemRow({
     >
       <button
         className={cn(
-          'grid h-16 min-w-0 items-center gap-3 px-3 text-left focus-visible:outline-none',
+          'grid h-12 min-w-0 items-center gap-2.5 px-2.5 text-left focus-visible:outline-none',
           shouldShowTotpCode
             ? 'grid-cols-[auto_minmax(0,1fr)_auto]'
             : 'grid-cols-[auto_minmax(0,1fr)]'
@@ -164,10 +164,10 @@ export const ItemRow = memo(function ItemRow({
       >
         <span
           className={cn(
-            'bg-card dark:bg-muted text-muted-foreground rounded-control grid size-10 place-items-center shadow-(--keycap-shadow) forced-colors:[forced-color-adjust:none]',
+            'bg-card dark:bg-muted text-muted-foreground rounded-control grid size-7.5 place-items-center shadow-(--keycap-shadow) forced-colors:[forced-color-adjust:none] [&>svg]:size-4',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
-              'text-chart-4 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
+              'text-chart-4 [&>span]:w-6 [&>span]:min-w-0 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
             item.type === 'identity' && 'bg-accent text-brand',
             item.type === 'secureNote' && 'text-chart-3',
             item.type === 'sshKey' && 'bg-accent text-chart-2',
@@ -187,11 +187,10 @@ export const ItemRow = memo(function ItemRow({
             <ItemIcon />
           )}
         </span>
-        <span className="grid min-w-0 gap-1">
+        <span className="grid min-w-0 gap-px">
           <strong
             className={cn(
-              'text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm font-medium',
-              selected && 'font-semibold'
+              'text-foreground flex min-w-0 items-center gap-1.5 truncate text-[13px] leading-tight font-semibold'
             )}
           >
             {item.name}
@@ -213,7 +212,7 @@ export const ItemRow = memo(function ItemRow({
                   : t`Generating authentication code`
             }
           >
-            <strong className="font-mono text-xl leading-none tracking-widest">
+            <strong className="font-mono text-lg leading-none tracking-widest">
               {totpCode && /^\d+$/.test(totpCode.code) ? (
                 <NumberFlow
                   className="tabular-nums"

@@ -1,10 +1,10 @@
+import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
   Archive,
   ArchiveRestore,
   FolderOpen,
   KeyRound,
-  ListFilter,
   Plus,
   RotateCcw,
   Search,
@@ -103,30 +103,42 @@ export function VaultItemListPane({
     )
 
   const archiveBlocked = list.archiveRequiresPremium && scope.kind !== 'archive'
+  const resultCount = plural(list.itemCount, { one: '# result', other: '# results' })
+  const summary =
+    selectedIds.size > 1
+      ? t`${selectedIds.size} selected · ${list.itemCount} items total`
+      : query
+        ? t({
+            message: `“${query}” — ${resultCount}`,
+            comment:
+              'Summary beside the item list title when a search is active. Shows the search query followed by the number of matching items, for example "“clo” — 8 results".'
+          })
+        : plural(list.itemCount, { one: '# item', other: '# items' })
 
   return (
     <>
-      <header className="flex min-h-20 items-center justify-between gap-3 px-5 pt-4 pb-3 max-[430px]:px-3">
-        <div className="grid gap-0.5">
-          <h1 className="m-0 text-2xl leading-tight font-bold tracking-tight" id="list-title">
-            {list.scopeTitle}
-          </h1>
-          <small className="text-muted-foreground text-xs">
-            {selectedIds.size > 1
-              ? t`${selectedIds.size} selected · ${list.itemCount} items total`
-              : t`${list.itemCount} items`}
-          </small>
-        </div>
+      <header className="flex min-h-11 items-center gap-2 pt-3 pr-3 pb-2 pl-5 max-[430px]:pl-3">
+        <h1
+          className="m-0 shrink-0 text-[15px] leading-tight font-semibold tracking-tight"
+          id="list-title"
+        >
+          {list.scopeTitle}
+        </h1>
+        <small
+          className="text-muted-foreground min-w-0 flex-1 truncate text-xs"
+          role={query ? 'status' : undefined}
+        >
+          {summary}
+        </small>
         <Select
           items={list.sortOptions}
           value={sortMode}
           onValueChange={(value) => setSortMode(value as VaultSortMode)}
         >
           <SelectTrigger
-            className="bg-card text-muted-foreground hover:text-foreground dark:bg-card h-9 gap-1.5 border-0 pr-2 pl-2.5 shadow-(--keycap-shadow) hover:bg-[color-mix(in_oklch,var(--card),var(--foreground)_3%)]"
+            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-overlay aria-expanded:bg-sidebar-overlay h-7 shrink-0 gap-1 border-0 bg-transparent pr-1.5 pl-2 text-xs shadow-none dark:bg-transparent"
             aria-label={t`Sort order`}
           >
-            <ListFilter aria-hidden="true" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -140,20 +152,6 @@ export function VaultItemListPane({
           </SelectContent>
         </Select>
       </header>
-      {query && (
-        <div
-          className="text-muted-foreground flex min-h-7 items-center justify-between gap-2.5 px-5 pt-0 pb-2 text-xs"
-          role="status"
-        >
-          <span>
-            <Trans>Search “{query}”</Trans>
-          </span>
-          <span>
-            <Trans>{list.itemCount} results</Trans>
-          </span>
-        </div>
-      )}
-
       {list.itemCount ? (
         <VirtualizedItemList
           groups={list.groups}

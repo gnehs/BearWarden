@@ -11,15 +11,23 @@ import { cn } from '../lib/utils'
 import { ColoredPassword } from './ColoredPassword'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { Button } from './ui/button'
-import { detailFieldClassName, detailRowActionClassName } from './VaultDetailSurface'
+import {
+  DetailRow,
+  DetailRowPair,
+  detailActionClassName,
+  detailValueButtonClassName,
+  detailValueClassName
+} from './VaultDetailLayout'
 import { TooltipIconButton } from './VaultShell-primitives'
 import type { RevealedCustomFieldsState, RevealedSecretsState } from './VaultShell-model'
 import {
+  arrangeDetailFields,
   customFieldCopyFeedbackKey,
   customFieldDisplayValue,
   detailFieldCopyFeedbackKey,
   matchesCustomFieldSource,
-  type DetailField
+  type DetailField,
+  type DetailFieldRowModel
 } from './vault-detail-view-model'
 
 interface DetailFieldCopyControls {
@@ -56,6 +64,7 @@ interface VaultDetailFieldRowsProps {
 
 interface VaultDetailFieldRowProps {
   field: DetailField
+  tag?: string
   copy: DetailFieldCopyControls
   reveal: DetailFieldRevealControls
   website: DetailFieldWebsiteControls
@@ -63,6 +72,7 @@ interface VaultDetailFieldRowProps {
 
 function VaultDetailFieldRow({
   field,
+  tag,
   copy,
   reveal,
   website
@@ -74,7 +84,6 @@ function VaultDetailFieldRow({
     field.secret && reveal.state.itemId === reveal.selectedItemId
       ? reveal.state.values[secretField]
       : undefined
-  const hasExtraAction = Boolean(field.copyable) && Boolean(field.openUri)
   const canCopyFromValue = Boolean(field.secret || field.copyable)
   const copyKey = detailFieldCopyFeedbackKey(copy.itemId, field.field, field.uriIndex)
   const valueClassName = field.secret
@@ -84,10 +93,11 @@ function VaultDetailFieldRow({
         ? 'min-w-0 select-text'
         : 'font-mono select-text'
     : undefined
+  const plainValue = !canCopyFromValue
   const displayValue =
     field.secret && revealedValue !== undefined && isPasswordField ? (
       revealedValue ? (
-        <ColoredPassword value={revealedValue} className="text-xs font-medium" />
+        <ColoredPassword value={revealedValue} className="text-[13px] font-medium" />
       ) : (
         t`Not set`
       )
@@ -123,53 +133,42 @@ function VaultDetailFieldRow({
           }
         }
       : undefined
-  const value = <strong className={valueClassName}>{displayValue}</strong>
-
-  return (
-    <div
+  const value = (
+    <strong
       className={cn(
-        detailFieldClassName,
-        !field.secret && !hasExtraAction && 'max-[430px]:grid-cols-[1fr_auto]'
+        plainValue ? 'block text-[13px] font-medium break-words' : detailValueClassName,
+        valueClassName
       )}
     >
-      <span>{field.label}</span>
-      {canCopyFromValue ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium"
-          data-field-copy-value=""
-          type="button"
-          aria-label={
-            copy.copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`
-          }
-          disabled={!field.secret && !field.value}
-          onClick={() => void copy.copyField(field.field, field.uriIndex)}
-          {...secretHoverHandlers}
-        >
-          {value}
-        </Button>
-      ) : (
-        value
-      )}
-      {field.secret ? (
-        <>
-          {isPasswordField ? (
+      {displayValue}
+    </strong>
+  )
+
+  const copyLabel = copy.copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`
+  const copyAction = (
+    <TooltipIconButton
+      className={detailActionClassName}
+      variant="ghost"
+      size="icon-sm"
+      type="button"
+      label={copyLabel}
+      disabled={!field.secret && !field.value}
+      onClick={() => void copy.copyField(field.field, field.uriIndex)}
+    >
+      <CopyFeedbackIcon copied={copy.copiedKey === copyKey} />
+    </TooltipIconButton>
+  )
+
+  return (
+    <DetailRow
+      label={field.label}
+      actions={
+        field.secret ? (
+          <>
             <TooltipIconButton
-              className={detailRowActionClassName}
-              variant="outline"
-              size="icon"
-              type="button"
-              label={t`Show password in large type`}
-              onClick={() => void reveal.openPasswordZoom()}
-            >
-              <ZoomIn />
-            </TooltipIconButton>
-          ) : (
-            <TooltipIconButton
-              className={detailRowActionClassName}
-              variant="outline"
-              size="icon"
+              className={detailActionClassName}
+              variant="ghost"
+              size="icon-sm"
               type="button"
               label={revealedValue === undefined ? t`Show ${field.label}` : t`Hide ${field.label}`}
               aria-pressed={revealedValue !== undefined}
@@ -177,49 +176,65 @@ function VaultDetailFieldRow({
             >
               {revealedValue === undefined ? <Eye /> : <EyeOff />}
             </TooltipIconButton>
-          )}
-          <TooltipIconButton
-            className={detailRowActionClassName}
-            variant="outline"
-            size="icon"
+            {isPasswordField && (
+              <TooltipIconButton
+                className={detailActionClassName}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                label={t`Show password in large type`}
+                onClick={() => void reveal.openPasswordZoom()}
+              >
+                <ZoomIn />
+              </TooltipIconButton>
+            )}
+            {copyAction}
+          </>
+        ) : (
+          <>
+            {field.copyable && copyAction}
+            {field.openUri && (
+              <TooltipIconButton
+                className={detailActionClassName}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                label={t`Open website`}
+                disabled={!field.value}
+                onClick={() => void website.openWebsite(field.uriIndex)}
+              >
+                <ArrowUpRight />
+              </TooltipIconButton>
+            )}
+          </>
+        )
+      }
+    >
+      <div className="flex min-w-0 items-center">
+        {canCopyFromValue ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(detailValueButtonClassName, tag && 'flex-initial')}
+            data-field-copy-value=""
             type="button"
-            label={copy.copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
-            onClick={() => void copy.copyField(field.field)}
+            aria-label={copyLabel}
+            disabled={!field.secret && !field.value}
+            onClick={() => void copy.copyField(field.field, field.uriIndex)}
+            {...secretHoverHandlers}
           >
-            <CopyFeedbackIcon copied={copy.copiedKey === copyKey} />
-          </TooltipIconButton>
-        </>
-      ) : (
-        <>
-          {field.copyable && (
-            <TooltipIconButton
-              className={detailRowActionClassName}
-              variant="outline"
-              size="icon"
-              type="button"
-              label={copy.copiedKey === copyKey ? t`${field.label} copied` : t`Copy ${field.label}`}
-              disabled={!field.value}
-              onClick={() => void copy.copyField(field.field, field.uriIndex)}
-            >
-              <CopyFeedbackIcon copied={copy.copiedKey === copyKey} />
-            </TooltipIconButton>
-          )}
-          {field.openUri && (
-            <TooltipIconButton
-              className={detailRowActionClassName}
-              variant="outline"
-              size="icon"
-              type="button"
-              label={t`Open website`}
-              disabled={!field.value}
-              onClick={() => void website.openWebsite(field.uriIndex)}
-            >
-              <ArrowUpRight />
-            </TooltipIconButton>
-          )}
-        </>
-      )}
-    </div>
+            {value}
+          </Button>
+        ) : (
+          value
+        )}
+        {tag && (
+          <span className="bg-muted text-muted-foreground rounded-control ml-2 flex-none px-1.5 py-0.5 text-[11px] leading-4 font-semibold">
+            {tag}
+          </span>
+        )}
+      </div>
+    </DetailRow>
   )
 }
 
@@ -229,19 +244,24 @@ export function VaultDetailFieldRows({
   reveal,
   website
 }: VaultDetailFieldRowsProps): React.JSX.Element {
-  return (
-    <>
-      {fields.map((field) => (
-        <VaultDetailFieldRow
-          key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
-          field={field}
-          copy={copy}
-          reveal={reveal}
-          website={website}
-        />
-      ))}
-    </>
-  )
+  const renderRow = (row: DetailFieldRowModel): React.JSX.Element => {
+    const cells = row.fields.map((field) => (
+      <VaultDetailFieldRow
+        key={`${field.label}:${field.field}:${field.uriIndex ?? ''}`}
+        field={field}
+        tag={row.tag}
+        copy={copy}
+        reveal={reveal}
+        website={website}
+      />
+    ))
+    return row.fields.length === 2 ? (
+      <DetailRowPair key={cells.map((cell) => cell.key).join('|')}>{cells}</DetailRowPair>
+    ) : (
+      cells[0]!
+    )
+  }
+  return <>{arrangeDetailFields(fields).map(renderRow)}</>
 }
 
 type CustomFieldLabels = Parameters<typeof customFieldDisplayValue>[1]
@@ -292,9 +312,11 @@ function VaultCustomFieldRow({
   const label = field.name || t`Unnamed field`
   const copyFeedbackKey = customFieldCopyFeedbackKey(item.id, index, field)
   const copyDisabled = field.type !== 'linked' && !field.value && !hidden
+  const copyLabel = copy.copiedKey === copyFeedbackKey ? t`${label} copied` : t`Copy ${label}`
   const value = (
     <strong
       className={cn(
+        detailValueClassName,
         hidden && (revealedValue === undefined ? 'tracking-widest' : 'font-mono select-text')
       )}
     >
@@ -307,45 +329,50 @@ function VaultCustomFieldRow({
   )
 
   return (
-    <div className={cn(detailFieldClassName, !hidden && 'max-[430px]:grid-cols-[1fr_auto]')}>
-      <span title={label}>{label}</span>
+    <DetailRow
+      label={<span title={label}>{label}</span>}
+      actions={
+        <>
+          {hidden && (
+            <TooltipIconButton
+              className={detailActionClassName}
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              label={revealedValue === undefined ? t`Show ${label}` : t`Hide ${label}`}
+              aria-pressed={revealedValue !== undefined}
+              onClick={() => void reveal.reveal(index, field)}
+            >
+              {revealedValue === undefined ? <Eye /> : <EyeOff />}
+            </TooltipIconButton>
+          )}
+          <TooltipIconButton
+            className={detailActionClassName}
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            label={copyLabel}
+            disabled={copyDisabled}
+            onClick={() => void copy.copyField(index, field)}
+          >
+            <CopyFeedbackIcon copied={copy.copiedKey === copyFeedbackKey} />
+          </TooltipIconButton>
+        </>
+      }
+    >
       <Button
         variant="ghost"
         size="sm"
-        className="-ml-2 w-[calc(100%+8px)] min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate [&>strong]:text-xs [&>strong]:font-medium"
+        className={detailValueButtonClassName}
         data-field-copy-value=""
         type="button"
-        aria-label={copy.copiedKey === copyFeedbackKey ? t`${label} copied` : t`Copy ${label}`}
+        aria-label={copyLabel}
         disabled={copyDisabled}
         onClick={() => void copy.copyField(index, field)}
       >
         {value}
       </Button>
-      {hidden && (
-        <TooltipIconButton
-          className={detailRowActionClassName}
-          variant="outline"
-          size="icon"
-          type="button"
-          label={revealedValue === undefined ? t`Show ${label}` : t`Hide ${label}`}
-          aria-pressed={revealedValue !== undefined}
-          onClick={() => void reveal.reveal(index, field)}
-        >
-          {revealedValue === undefined ? <Eye /> : <EyeOff />}
-        </TooltipIconButton>
-      )}
-      <TooltipIconButton
-        className={detailRowActionClassName}
-        variant="outline"
-        size="icon"
-        type="button"
-        label={copy.copiedKey === copyFeedbackKey ? t`${label} copied` : t`Copy ${label}`}
-        disabled={copyDisabled}
-        onClick={() => void copy.copyField(index, field)}
-      >
-        <CopyFeedbackIcon copied={copy.copiedKey === copyFeedbackKey} />
-      </TooltipIconButton>
-    </div>
+    </DetailRow>
   )
 }
 

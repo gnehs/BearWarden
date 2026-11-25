@@ -8,8 +8,8 @@ import { virtualRowScrollOffsets, visibleVirtualIndexes } from '@renderer/lib/vi
 import { ItemRow, type ItemSelectionModifiers } from './DndRows'
 import { isSharedLoginSummary } from './organizations-ui'
 
-const GROUP_HEADER_HEIGHT = 32
-const ITEM_ROW_HEIGHT = 64
+const GROUP_HEADER_HEIGHT = 28
+const ITEM_ROW_HEIGHT = 48
 
 export interface VirtualizedItemGroup {
   key: string
@@ -236,7 +236,7 @@ export function VirtualizedItemList({
             return (
               <div
                 key={virtualRow.key}
-                className="[&>h2]:text-muted-foreground m-0 overflow-hidden p-0 [&>h2]:m-0 [&>h2]:px-3 [&>h2]:pt-2 [&>h2]:pb-1.5 [&>h2]:text-xs [&>h2]:font-bold"
+                className="[&>h2]:text-muted-foreground m-0 flex items-end overflow-hidden p-0 [&>h2]:m-0 [&>h2]:px-3 [&>h2]:pb-1 [&>h2]:text-[11px] [&>h2]:leading-4 [&>h2]:font-semibold"
                 style={position}
               >
                 <h2 id={`group-${row.groupKey}`}>{row.label}</h2>

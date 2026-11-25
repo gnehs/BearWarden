@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { VaultCustomFieldView } from '../../../shared/vault-contract'
 import {
+  arrangeDetailFields,
   customFieldCopyFeedbackKey,
   customFieldDisplayValue,
   detailFields,
+  groupTotpCode,
   matchesCustomFieldSource,
   type DetailField
 } from './vault-detail-view-model'
@@ -226,5 +228,60 @@ describe('detailFields for bank accounts and identity documents', () => {
     ])
     expect(passport.map((row) => row.value)).toContain('date:1990-01-31')
     expect(passport.map((row) => row.value)).not.toContain('date:')
+  })
+})
+
+describe('arrangeDetailFields', () => {
+  const field = (id: DetailField['field'], extra: Partial<DetailField> = {}): DetailField => ({
+    field: id,
+    label: id,
+    ...extra
+  })
+
+  it('puts the card brand on the number and pairs expiry with security code', () => {
+    const rows = arrangeDetailFields(
+      detailFields(
+        makeLoginView({
+          type: 'card',
+          cardholderName: 'Sample Cardholder',
+          brand: 'Visa',
+          expMonth: '07',
+          expYear: '2030'
+        }),
+        labels
+      )
+    )
+
+    expect(rows.map((row) => row.fields.map((entry) => entry.field))).toEqual([
+      ['cardholderName'],
+      ['number'],
+      ['cardExpiration', 'code']
+    ])
+    expect(rows[1]?.tag).toBe('Visa')
+  })
+
+  it('keeps expiry and code on their own rows when one is hidden', () => {
+    const rows = arrangeDetailFields([
+      field('number', { secret: true }),
+      field('code', { secret: true })
+    ])
+
+    expect(rows.map((row) => row.fields.length)).toEqual([1, 1])
+    expect(rows[0]?.tag).toBeUndefined()
+  })
+
+  it('leaves non-card fields as one row each', () => {
+    const rows = arrangeDetailFields([field('username'), field('password', { secret: true })])
+
+    expect(rows.map((row) => row.fields[0].field)).toEqual(['username', 'password'])
+  })
+})
+
+describe('groupTotpCode', () => {
+  it('splits numeric codes in half and leaves other codes alone', () => {
+    expect(groupTotpCode('482913')).toEqual(['482', '913'])
+    expect(groupTotpCode('12345678')).toEqual(['1234', '5678'])
+    expect(groupTotpCode('ABCDE')).toEqual(['ABCDE'])
+    expect(groupTotpCode('1234')).toEqual(['1234'])
   })
 })

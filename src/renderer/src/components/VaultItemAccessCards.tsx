@@ -1,6 +1,6 @@
 import NumberFlow from '@number-flow/react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Clock3, Download, Eye, Paperclip, Trash2, Wrench, X } from 'lucide-react'
+import { Download, Eye, Paperclip, Trash2, Wrench, X } from 'lucide-react'
 import type { JSX } from 'react'
 import type {
   AttachmentProgressEvent,
@@ -8,19 +8,27 @@ import type {
   VaultAttachmentView
 } from '../../../shared/vault-contract'
 import { Button } from '@renderer/components/ui/button'
-import { CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
+import { cn } from '@renderer/lib/utils'
 import { Progress, ProgressLabel, ProgressValue } from '@renderer/components/ui/progress'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import TotpCountdownIndicator from './TotpCountdownIndicator'
+import { groupTotpCode } from './vault-detail-view-model'
 import {
   attachmentProgressPercent,
   isPreviewableImageAttachment,
   type AttachmentDeleteTarget,
   type AttachmentOperationState
 } from './vault-attachment-ui'
-import { DetailCard, DetailRowGroup, detailRowActionClassName } from './VaultDetailSurface'
+import {
+  DetailGroup,
+  DetailLeadingTile,
+  DetailRow,
+  detailActionClassName,
+  detailValueButtonClassName,
+  detailValueClassName
+} from './VaultDetailLayout'
 import { TooltipIconButton } from './VaultShell-primitives'
 
 interface VaultItemAttachmentsCardProps {
@@ -55,131 +63,120 @@ export function VaultItemAttachmentsCard({
   if (attachments.length === 0 && operation?.itemId !== itemId) return null
 
   return (
-    <DetailCard variant="attachment" tone="sky" role="region" aria-labelledby="attachments-title">
-      <CardHeader>
-        <CardTitle id="attachments-title">
-          <Paperclip aria-hidden="true" />
-          <Trans>Attachments</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {operation?.itemId === itemId && (
-          <section className="flex flex-col gap-3" aria-live="polite">
-            <Progress value={attachmentProgressPercent(operation)}>
-              <ProgressLabel>
-                {getOperationStageLabel(operation)}
-                {operation.fileName ? `：${operation.fileName}` : ''}
-              </ProgressLabel>
-              <ProgressValue>
-                {() =>
-                  attachmentProgressPercent(operation) === null
-                    ? t`Processing`
-                    : `${attachmentProgressPercent(operation)}%`
-                }
-              </ProgressValue>
-            </Progress>
-            <Button
-              className="self-end"
-              variant="outline"
-              size="sm"
-              type="button"
-              disabled={operation.canceling}
-              onClick={() => void onCancelOperation()}
+    <DetailGroup caption={<Trans>Attachments</Trans>}>
+      {operation?.itemId === itemId && (
+        <section className="flex flex-col gap-3 p-3" aria-live="polite">
+          <Progress value={attachmentProgressPercent(operation)}>
+            <ProgressLabel>
+              {getOperationStageLabel(operation)}
+              {operation.fileName ? `：${operation.fileName}` : ''}
+            </ProgressLabel>
+            <ProgressValue>
+              {() =>
+                attachmentProgressPercent(operation) === null
+                  ? t`Processing`
+                  : `${attachmentProgressPercent(operation)}%`
+              }
+            </ProgressValue>
+          </Progress>
+          <Button
+            className="self-end"
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={operation.canceling}
+            onClick={() => void onCancelOperation()}
+          >
+            {operation.canceling ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <X data-icon="inline-start" />
+            )}
+            {operation.canceling ? t`Canceling` : t`Cancel`}
+          </Button>
+        </section>
+      )}
+      {attachments.map((attachment) => (
+        <DetailRow
+          key={attachment.id}
+          leading={
+            <DetailLeadingTile>
+              <Paperclip />
+            </DetailLeadingTile>
+          }
+          actions={
+            <section
+              className="flex flex-wrap items-center justify-end"
+              aria-label={t`Attachment actions for ${attachment.fileName}`}
             >
-              {operation.canceling ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <X data-icon="inline-start" />
+              {attachment.legacy && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  disabled={busy || operation !== null || !syncReady}
+                  onClick={() => void onFixLegacy(attachment.id)}
+                >
+                  <Wrench data-icon="inline-start" />
+                  <Trans>Repair</Trans>
+                </Button>
               )}
-              {operation.canceling ? t`Canceling` : t`Cancel`}
-            </Button>
-          </section>
-        )}
-        {attachments.length > 0 && (
-          <DetailRowGroup>
-            {attachments.map((attachment) => (
-              <article
-                key={attachment.id}
-                className="[&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-(--surface-ring) px-3 py-2 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
+              {isPreviewableImageAttachment(attachment.fileName) && (
+                <TooltipIconButton
+                  className={detailActionClassName}
+                  variant="ghost"
+                  size="icon-sm"
+                  type="button"
+                  label={t`Preview ${attachment.fileName}`}
+                  disabled={busy || operation !== null || !syncReady || attachment.legacy}
+                  onClick={() => void onPreview(attachment.id)}
+                >
+                  <Eye />
+                </TooltipIconButton>
+              )}
+              <TooltipIconButton
+                className={detailActionClassName}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                label={t`Download ${attachment.fileName}`}
+                disabled={busy || operation !== null || !syncReady}
+                onClick={() => void onDownload(attachment.id)}
               >
-                <span
-                  className="text-brand bg-card rounded-control grid size-8 place-items-center shadow-(--surface-shadow)"
-                  aria-hidden="true"
-                >
-                  <Paperclip size={16} />
-                </span>
-                <div>
-                  <strong>{attachment.fileName}</strong>
-                  <span>
-                    {attachment.sizeName}
-                    {attachment.legacy ? t` · Legacy unauthenticated encryption` : ''}
-                  </span>
-                </div>
-                <section
-                  className="flex flex-wrap items-center justify-end gap-1"
-                  aria-label={t`Attachment actions for ${attachment.fileName}`}
-                >
-                  {attachment.legacy && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      disabled={busy || operation !== null || !syncReady}
-                      onClick={() => void onFixLegacy(attachment.id)}
-                    >
-                      <Wrench data-icon="inline-start" />
-                      <Trans>Repair</Trans>
-                    </Button>
-                  )}
-                  {isPreviewableImageAttachment(attachment.fileName) && (
-                    <TooltipIconButton
-                      variant="outline"
-                      size="icon"
-                      type="button"
-                      label={t`Preview ${attachment.fileName}`}
-                      disabled={busy || operation !== null || !syncReady || attachment.legacy}
-                      onClick={() => void onPreview(attachment.id)}
-                    >
-                      <Eye data-icon="inline-start" />
-                    </TooltipIconButton>
-                  )}
-                  <TooltipIconButton
-                    variant="outline"
-                    size="icon"
-                    type="button"
-                    label={t`Download ${attachment.fileName}`}
-                    disabled={busy || operation !== null || !syncReady}
-                    onClick={() => void onDownload(attachment.id)}
-                  >
-                    <Download data-icon="inline-start" />
-                  </TooltipIconButton>
-                  <TooltipIconButton
-                    variant="destructive"
-                    size="icon"
-                    type="button"
-                    label={t`Delete ${attachment.fileName}`}
-                    disabled={busy || operation !== null || !syncReady}
-                    onClick={() =>
-                      onDelete({
-                        itemId,
-                        attachmentId: attachment.id,
-                        fileName: attachment.fileName
-                      })
-                    }
-                  >
-                    <Trash2 data-icon="inline-start" />
-                  </TooltipIconButton>
-                </section>
-              </article>
-            ))}
-          </DetailRowGroup>
-        )}
-      </CardContent>
-    </DetailCard>
+                <Download />
+              </TooltipIconButton>
+              <TooltipIconButton
+                className={cn(detailActionClassName, 'text-destructive hover:text-destructive')}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                label={t`Delete ${attachment.fileName}`}
+                disabled={busy || operation !== null || !syncReady}
+                onClick={() =>
+                  onDelete({
+                    itemId,
+                    attachmentId: attachment.id,
+                    fileName: attachment.fileName
+                  })
+                }
+              >
+                <Trash2 />
+              </TooltipIconButton>
+            </section>
+          }
+        >
+          <strong className={cn(detailValueClassName, 'block')}>{attachment.fileName}</strong>
+          <span className="text-muted-foreground block truncate text-[11px] leading-4">
+            {attachment.sizeName}
+            {attachment.legacy ? t` · Legacy unauthenticated encryption` : ''}
+          </span>
+        </DetailRow>
+      ))}
+    </DetailGroup>
   )
 }
 
-interface VaultItemTotpCardProps {
+interface VaultItemTotpRowProps {
   code: TotpCodeView | null
   generationError: 'unsupported' | null
   revealReady: boolean
@@ -191,7 +188,8 @@ interface VaultItemTotpCardProps {
   onCopy: () => void | Promise<void>
 }
 
-export function VaultItemTotpCard({
+/** The one-time code row of the primary card, with its countdown ring and copy action. */
+export function VaultItemTotpRow({
   code,
   generationError,
   revealReady,
@@ -201,87 +199,91 @@ export function VaultItemTotpCard({
   copied,
   defaultCountdownPeriodSeconds,
   onCopy
-}: VaultItemTotpCardProps): JSX.Element {
+}: VaultItemTotpRowProps): JSX.Element {
   const { t } = useLingui()
+  const copyLabel = copied
+    ? t`One-time verification code copied`
+    : t`Copy one-time verification code`
 
   return (
-    <DetailCard tone="brand" role="region" aria-labelledby="totp-title" aria-busy={!revealReady}>
-      <CardHeader>
-        <CardTitle id="totp-title">
-          <Clock3 aria-hidden="true" />
-          <Trans>One-time verification code</Trans>
-        </CardTitle>
-        {generationError === 'unsupported' && (
-          <CardDescription>
-            <Trans>Unsupported key format</Trans>
-          </CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pr-2 pl-1.5 [&_strong]:font-mono [&_strong]:text-2xl [&_strong]:font-semibold [&_strong]:tracking-widest">
-        {!revealReady && (
-          <span className="sr-only">
-            <Trans>Generating…</Trans>
-          </span>
-        )}
-        {code ? (
-          <Button
+    <DetailRow
+      label={<Trans>One-time verification code</Trans>}
+      aria-busy={!revealReady}
+      actions={
+        <>
+          {!generationError && showCountdown && (
+            <span className="mr-1 flex">
+              <TotpCountdownIndicator
+                key={codeCycle ?? 'loading'}
+                remainingSeconds={code?.remainingSeconds ?? null}
+                period={code?.period ?? defaultCountdownPeriodSeconds}
+                compact
+              />
+            </span>
+          )}
+          <TooltipIconButton
+            className={detailActionClassName}
             variant="ghost"
-            className="h-11 min-w-0 justify-start overflow-hidden px-2 [&>strong]:min-w-0 [&>strong]:truncate"
-            data-field-copy-value=""
+            size="icon-sm"
             type="button"
-            aria-label={
-              copied ? t`One-time verification code copied` : t`Copy one-time verification code`
-            }
-            disabled={generationError !== null}
+            label={copyLabel}
+            disabled={!code || generationError !== null}
             onClick={() => void onCopy()}
           >
-            <strong>
-              {/^\d+$/.test(code.code) ? (
+            <CopyFeedbackIcon copied={copied} />
+          </TooltipIconButton>
+        </>
+      }
+    >
+      {!revealReady && (
+        <span className="sr-only">
+          <Trans>Generating…</Trans>
+        </span>
+      )}
+      {code ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            detailValueButtonClassName,
+            'text-brand hover:text-brand font-mono text-[17px] font-semibold tracking-wider [&>strong]:text-[17px]'
+          )}
+          data-field-copy-value=""
+          type="button"
+          aria-label={copyLabel}
+          disabled={generationError !== null}
+          onClick={() => void onCopy()}
+        >
+          <strong className="flex min-w-0 gap-[0.5ch] truncate">
+            {groupTotpCode(code.code).map((group, index) =>
+              /^\d+$/.test(group) ? (
                 <NumberFlow
+                  key={index}
                   className="tabular-nums"
-                  value={Number(code.code)}
-                  format={{
-                    useGrouping: false,
-                    minimumIntegerDigits: code.code.length
-                  }}
+                  value={Number(group)}
+                  format={{ useGrouping: false, minimumIntegerDigits: group.length }}
                   trend={0}
                 />
               ) : (
-                code.code
-              )}
-            </strong>
-          </Button>
-        ) : (
-          <div className="flex h-11 min-w-0 items-center px-2">
-            {generationError ? (
-              <strong>—</strong>
-            ) : showSkeleton ? (
-              <Skeleton className="h-8 w-36" aria-hidden="true" />
-            ) : null}
-          </div>
-        )}
-        {!generationError && showCountdown ? (
-          <TotpCountdownIndicator
-            key={codeCycle ?? 'loading'}
-            remainingSeconds={code?.remainingSeconds ?? null}
-            period={code?.period ?? defaultCountdownPeriodSeconds}
-            compact
-          />
-        ) : (
-          <span aria-hidden="true" />
-        )}
-        <TooltipIconButton
-          className={detailRowActionClassName}
-          variant="outline"
-          size="icon"
-          type="button"
-          label={copied ? t`One-time verification code copied` : t`Copy one-time verification code`}
-          disabled={!code || generationError !== null}
-          onClick={() => void onCopy()}
-        >
-          <CopyFeedbackIcon copied={copied} />
-        </TooltipIconButton>
-      </CardContent>
-    </DetailCard>
+                <span key={index}>{group}</span>
+              )
+            )}
+          </strong>
+        </Button>
+      ) : (
+        <div className="flex h-7 min-w-0 items-center gap-2">
+          {generationError ? (
+            <>
+              <strong className="text-[17px] font-semibold">—</strong>
+              <span className="text-muted-foreground text-[11px]">
+                <Trans>Unsupported key format</Trans>
+              </span>
+            </>
+          ) : showSkeleton ? (
+            <Skeleton className="h-5 w-24" aria-hidden="true" />
+          ) : null}
+        </div>
+      )}
+    </DetailRow>
   )
 }

@@ -248,3 +248,54 @@ function documentDates(
     value: login[field] && format.date(login[field])
   }))
 }
+
+/** One visual row of the primary card: a single field, or two fields sharing a row. */
+export interface DetailFieldRowModel {
+  fields: [DetailField] | [DetailField, DetailField]
+  /** Short quiet tag shown beside the value, such as a card brand. */
+  tag?: string
+}
+
+const cardLayoutFields = new Set<DetailField['field']>([
+  'cardholderName',
+  'number',
+  'cardExpiration',
+  'code',
+  'brand'
+])
+
+/**
+ * Lays out visible fields as rows. A card shows its brand as a tag on the number and puts the
+ * expiry and security code side by side; every other field keeps its own row in order.
+ */
+export function arrangeDetailFields(fields: readonly DetailField[]): DetailFieldRowModel[] {
+  const isCard = fields.some((field) => field.field === 'number')
+  if (!isCard) return fields.map((field) => ({ fields: [field] }))
+
+  const find = (id: DetailField['field']): DetailField | undefined =>
+    fields.find((field) => field.field === id)
+  const cardholder = find('cardholderName')
+  const number = find('number')
+  const expiration = find('cardExpiration')
+  const code = find('code')
+  const brand = find('brand')?.value || undefined
+  const rows: DetailFieldRowModel[] = []
+  if (cardholder) rows.push({ fields: [cardholder] })
+  if (number) rows.push({ fields: [number], tag: brand })
+  if (expiration && code) rows.push({ fields: [expiration, code] })
+  else {
+    if (expiration) rows.push({ fields: [expiration] })
+    if (code) rows.push({ fields: [code] })
+  }
+  for (const field of fields) {
+    if (!cardLayoutFields.has(field.field)) rows.push({ fields: [field] })
+  }
+  return rows
+}
+
+/** Splits a numeric one-time code into two display groups, such as "482 913". */
+export function groupTotpCode(code: string): string[] {
+  if (!/^\d{6,}$/.test(code)) return [code]
+  const half = Math.ceil(code.length / 2)
+  return [code.slice(0, half), code.slice(half)]
+}
