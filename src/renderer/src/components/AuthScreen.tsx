@@ -456,7 +456,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               )}
 
               <Button
-                className="h-10 w-full"
+                className="w-full"
                 type="submit"
                 disabled={submitting || accountSwitching}
               >
@@ -473,7 +473,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               </Button>
               {!isSetup && pinStatus.available && (
                 <Button
-                  className="h-10 w-full"
+                  className="w-full"
                   variant="outline"
                   type="button"
                   disabled={submitting || accountSwitching}
@@ -490,7 +490,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
               )}
               {!isSetup && isMac && settings?.touchIdEnabled && (
                 <Button
-                  className="h-10 w-full"
+                  className="w-full"
                   variant="secondary"
                   type="button"
                   disabled={submitting || accountSwitching}
