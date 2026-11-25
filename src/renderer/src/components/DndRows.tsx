@@ -190,7 +190,7 @@ export const ItemRow = memo(function ItemRow({
         <span className="grid min-w-0 gap-px">
           <strong
             className={cn(
-              'text-foreground flex min-w-0 items-center gap-1.5 truncate text-[13px] leading-tight font-semibold'
+              'text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm leading-tight font-semibold'
             )}
           >
             {item.name}

@@ -77,7 +77,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
       className={cn(
         'text-base leading-snug font-medium group-data-[size=sm]/card:text-sm',
         folder &&
-          "text-foreground absolute bottom-[calc(100%+0.5rem)] left-1 flex h-6 max-w-[calc(100%-0.5rem)] items-center gap-2 truncate text-[0.8125rem] font-semibold whitespace-nowrap [&_svg]:shrink-0 [&_svg]:text-(--tab-icon) [&_svg:not([class*='size-'])]:size-4",
+          "text-foreground absolute bottom-[calc(100%+0.5rem)] left-1 flex h-6 max-w-[calc(100%-0.5rem)] items-center gap-2 truncate text-sm font-semibold whitespace-nowrap [&_svg]:shrink-0 [&_svg]:text-(--tab-icon) [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

@@ -86,7 +86,7 @@ export function Modal({
           <div>
             <DialogTitle className="m-0 text-lg">{title}</DialogTitle>
             {description && (
-              <DialogDescription className="mt-1.5 mb-0 text-xs leading-normal">
+              <DialogDescription className="mt-1.5 mb-0 leading-normal">
                 {description}
               </DialogDescription>
             )}

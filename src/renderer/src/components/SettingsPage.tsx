@@ -288,7 +288,7 @@ function VaultTimeoutCustomFields({
           <Trans>Apply</Trans>
         </Button>
         {validationMessage && (
-          <p className="text-destructive text-sm" role="alert">
+          <p className="text-destructive text-xs" role="alert">
             {validationMessage}
           </p>
         )}
@@ -744,7 +744,7 @@ function SettingsPage({
                 key={id}
                 value={id}
                 title={description}
-                className="data-active:bg-primary! data-active:text-primary-foreground dark:data-active:text-primary-foreground h-8 flex-none justify-start gap-2 px-2 text-[13px] data-active:font-semibold max-[680px]:min-w-max"
+                className="data-active:bg-primary! data-active:text-primary-foreground! h-8 flex-none justify-start gap-2 px-2 text-sm data-active:font-semibold max-[680px]:min-w-max"
               >
                 <Icon aria-hidden="true" />
                 {label}
@@ -1389,7 +1389,9 @@ function SettingsPage({
                       <Cloud />
                     </span>
                     <div className="grid min-w-0 gap-0.5">
-                      <strong className="text-xs">{localizedSyncLabels[syncStatus.state]}</strong>
+                      <strong className="text-sm font-medium">
+                        {localizedSyncLabels[syncStatus.state]}
+                      </strong>
                       <small className="text-muted-foreground truncate text-xs">
                         {syncStatus.email ??
                           syncStatus.serverUrl ??

@@ -97,7 +97,7 @@ function VaultDetailFieldRow({
   const displayValue =
     field.secret && revealedValue !== undefined && isPasswordField ? (
       revealedValue ? (
-        <ColoredPassword value={revealedValue} className="text-[13px] font-medium" />
+        <ColoredPassword value={revealedValue} className="text-sm font-medium" />
       ) : (
         t`Not set`
       )
@@ -136,7 +136,7 @@ function VaultDetailFieldRow({
   const value = (
     <strong
       className={cn(
-        plainValue ? 'block text-[13px] font-medium break-words' : detailValueClassName,
+        plainValue ? 'block text-sm font-medium break-words' : detailValueClassName,
         valueClassName
       )}
     >

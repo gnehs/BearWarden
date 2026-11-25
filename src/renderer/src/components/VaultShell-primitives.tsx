@@ -134,7 +134,7 @@ export function SidebarCategoryTile({
       </span>
       <small
         className={cn(
-          'self-start justify-self-end pt-0.5 text-[0.8125rem] font-semibold tabular-nums',
+          'self-start justify-self-end pt-0.5 text-sm font-semibold tabular-nums',
           active ? 'text-white/85' : 'text-muted-foreground'
         )}
       >
@@ -149,13 +149,13 @@ export function SidebarCategoryTile({
 
 /** Sidebar rows sit on the window canvas, so the selected row lifts into a white keycap. */
 export const sidebarRowClassName =
-  'text-sidebar-foreground min-h-9 rounded-control text-[0.8125rem] font-medium transition-[background-color,box-shadow] duration-150'
+  'text-sidebar-foreground min-h-9 rounded-control text-sm font-medium transition-[background-color,box-shadow] duration-150'
 export const sidebarRowSelectedClassName =
   'bg-card shadow-(--keycap-shadow) dark:bg-(--segment-thumb)'
 export const sidebarRowDropClassName =
   'bg-sidebar-overlay-active shadow-[inset_0_0_0_1.5px_color-mix(in_oklch,var(--brand)_60%,transparent)] forced-colors:outline-2 forced-colors:-outline-offset-2 forced-colors:outline-[Highlight]'
 export const sidebarCountClassName =
-  'text-muted-foreground min-w-6 text-right text-[0.8125rem] font-medium tabular-nums'
+  'text-muted-foreground min-w-6 text-right text-sm font-medium tabular-nums'
 
 export function SidebarLink({
   icon,
@@ -222,7 +222,7 @@ export function UnfiledRow({ selected, count, onSelect }: UnfiledRowProps): JSX.
       </span>
       <Button
         variant="sidebar"
-        className="grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-inherit hover:bg-transparent aria-expanded:bg-transparent [&>span]:truncate"
+        className="grid h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-0 bg-transparent p-0 text-left text-sm text-inherit hover:bg-transparent aria-expanded:bg-transparent [&>span]:truncate"
         type="button"
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}

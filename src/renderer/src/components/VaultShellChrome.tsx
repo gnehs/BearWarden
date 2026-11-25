@@ -325,7 +325,7 @@ export function VaultSearchDialog({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate">{item.name}</strong>
+                      <strong className="block truncate font-semibold">{item.name}</strong>
                       <small className="text-muted-foreground block truncate text-xs">
                         {item.subtitle || item.username || item.uri || t`No summary`}
                       </small>

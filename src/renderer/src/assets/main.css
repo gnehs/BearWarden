@@ -5,6 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Body text is 13px across the app; 12px is secondary and 11px captions. */
+  --text-sm: 0.8125rem;
   --font-sans:
     'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC',
     sans-serif;
@@ -387,7 +389,7 @@ body:not([data-window-mode='autofill']) #root::before {
 }
 
 body {
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 button:not([data-slot]),

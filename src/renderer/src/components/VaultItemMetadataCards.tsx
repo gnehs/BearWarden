@@ -110,7 +110,7 @@ export function VaultItemSharedContextGroup({
         </strong>
       </DetailRow>
       <DetailRow label={<Trans>Collections</Trans>}>
-        <strong className="block text-[13px] font-medium break-words">
+        <strong className="block text-sm font-medium break-words">
           {collections.length > 0
             ? collections.map((collection) => collection.name).join(' · ')
             : t`Unavailable`}

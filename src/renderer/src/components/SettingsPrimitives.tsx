@@ -15,7 +15,7 @@ function SettingsCard({
       variant="folder"
       tone={tone}
       className={cn(
-        'gap-0 py-0 [--card-spacing:--spacing(5)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-14 [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-normal [&_[data-slot=field-label]]:text-sm [&_[data-slot=field-label]]:font-semibold [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:pt-(--card-spacing) [&>[data-slot=card-header]]:pb-1',
+        'gap-0 py-0 [--card-spacing:--spacing(5)] [&_[data-slot=card-description]]:mt-0.5 [&_[data-slot=card-description]]:text-xs [&_[data-slot=card-description]]:leading-normal [&_[data-slot=card-footer]]:justify-end [&_[data-slot=card-title]]:scroll-mt-14 [&_[data-slot=field-description]]:max-w-[64ch] [&_[data-slot=field-description]]:text-xs [&_[data-slot=field-description]]:leading-normal [&>[data-slot=card-header]]:items-center [&>[data-slot=card-header]]:pt-(--card-spacing) [&>[data-slot=card-header]]:pb-1',
         className
       )}
       {...props}

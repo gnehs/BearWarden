@@ -147,7 +147,7 @@ export function TrashedItemDetail({
             }
             className="py-2.5"
           >
-            <strong className="block text-[13px] font-medium">
+            <strong className="block text-sm font-medium">
               <Trans>This item is in Trash</Trans>
             </strong>
             <p className="text-muted-foreground m-0 text-xs leading-normal">

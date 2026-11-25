@@ -58,7 +58,7 @@ export function DetailHeading({
     <div className="grid min-w-0 flex-1 gap-1">
       <h2
         id={titleId}
-        className="m-0 truncate text-xl leading-tight font-semibold tracking-tight max-[680px]:text-base"
+        className="m-0 truncate text-lg leading-tight font-semibold tracking-tight max-[680px]:text-base"
       >
         {title}
       </h2>

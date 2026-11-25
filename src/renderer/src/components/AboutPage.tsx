@@ -144,7 +144,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
         <SettingsCardContent className="grid gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="grid gap-0.5">
-              <strong className="text-xs">{t`Current version`}</strong>
+              <strong className="text-sm font-medium">{t`Current version`}</strong>
               <span className="text-muted-foreground text-xs">{t`BearWarden Desktop`}</span>
             </div>
             <Badge variant="outline" className="font-mono tabular-nums">
@@ -154,7 +154,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
           <Separator />
           <div className="flex items-start justify-between gap-4 max-[680px]:flex-col">
             <div className="grid min-w-0 gap-1">
-              <strong className="text-xs">{t`Version updates`}</strong>
+              <strong className="text-sm font-medium">{t`Version updates`}</strong>
               <p className="text-muted-foreground m-0 text-xs leading-[1.5]">{updateDescription}</p>
             </div>
             {updateState.status === 'available' ? (
@@ -214,7 +214,7 @@ export default function AboutPage({ onOpenRepository }: AboutPageProps): React.J
           <Separator />
           <div className="flex items-start justify-between gap-4 max-[680px]:flex-col">
             <div className="grid min-w-0 gap-1">
-              <strong className="text-xs">{t`Diagnostic logs`}</strong>
+              <strong className="text-sm font-medium">{t`Diagnostic logs`}</strong>
               <p className="text-muted-foreground m-0 text-xs leading-[1.5]">
                 {t`BearWarden stores local error logs for troubleshooting. Open the log in ${fileManagerName} when you need to inspect or share diagnostics.`}
               </p>

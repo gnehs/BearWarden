@@ -212,9 +212,11 @@ const paymentCardBrands: Exclude<PaymentCardBrand, 'unknown'>[] = [
   'american-express'
 ]
 
+const editorTypeScaleClassName =
+  '[&_[data-slot=field-description]]:text-xs [&_[data-slot=empty-title]]:text-sm [&_[data-slot=empty-description]]:text-xs'
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3'
 const checkFieldClassName =
-  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--brand)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]_[data-slot=field-label]]:text-xs [&_[data-slot=field-description]]:text-xs'
+  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--brand)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1'
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -1713,7 +1715,7 @@ function LoginEditor({
 
   return (
     <form
-      className="flex size-full min-h-0 min-w-0 flex-col"
+      className={cn('flex size-full min-h-0 min-w-0 flex-col', editorTypeScaleClassName)}
       data-vault-editor=""
       onSubmit={submit}
       aria-labelledby="editor-title"
@@ -2678,7 +2680,7 @@ function LoginEditor({
                               </label>
                             ))
                           ) : (
-                            <p className="text-muted-foreground text-sm">
+                            <p className="text-muted-foreground text-xs">
                               <Trans>No Collections are available for this organization.</Trans>
                             </p>
                           )}
@@ -2879,7 +2881,7 @@ function LoginEditor({
               icon={<ListPlus aria-hidden="true" />}
             >
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <p className="text-muted-foreground m-0 text-sm">
+                <p className="text-muted-foreground m-0 text-xs">
                   <Trans>Add text, hidden text, checkboxes, or links to existing item data.</Trans>
                 </p>
                 {draft.customFields.length > 0 && customFieldAddMenu()}

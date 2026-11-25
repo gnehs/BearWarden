@@ -5,11 +5,11 @@ import { cn } from '../lib/utils'
 export const detailActionClassName = 'size-7 min-w-7'
 
 /** Value text of a stacked row; copy buttons and plain values share it. */
-export const detailValueClassName = 'min-w-0 truncate text-[13px] font-medium'
+export const detailValueClassName = 'min-w-0 truncate text-sm font-medium'
 
 /** The value of a row that copies on click: flush with the label above, quiet until hovered. */
 export const detailValueButtonClassName =
-  '-mx-1.5 h-auto min-w-0 flex-1 justify-start overflow-hidden px-1.5 py-0.5 text-[13px]'
+  '-mx-1.5 h-auto min-w-0 flex-1 justify-start overflow-hidden px-1.5 py-0.5 text-sm'
 
 interface DetailGroupProps extends Omit<ComponentProps<'section'>, 'children'> {
   /** Small caption above the card; omit for the primary card. */
@@ -111,7 +111,7 @@ export function DetailWrappedText({ className, ...props }: ComponentProps<'p'>):
   return (
     <p
       className={cn(
-        'm-0 py-0.5 text-[13px] leading-relaxed break-words whitespace-pre-wrap select-text',
+        'm-0 py-0.5 text-sm leading-relaxed break-words whitespace-pre-wrap select-text',
         className
       )}
       {...props}
