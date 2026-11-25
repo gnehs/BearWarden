@@ -1,5 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro'
-import { ArrowLeft, Menu, Plus, Search, X, type LucideIcon } from 'lucide-react'
+import { Menu, Plus, Search, X, type LucideIcon } from 'lucide-react'
 import type { RefObject } from 'react'
 import {
   MAX_LOGIN_SEARCH_QUERY_LENGTH,
@@ -97,8 +97,6 @@ interface VaultShellTitlebarProps {
     isMac: boolean
   }
   navigation: {
-    auxiliaryPageOpen: boolean
-    closeAuxiliaryPage: (() => void) | null
     sidebarOpen: boolean
     onToggleSidebar: () => void
   }
@@ -129,38 +127,30 @@ export function VaultShellTitlebar({
   return (
     <header className={titlebarClassName}>
       <ApplicationTitlebarMenu onLockVault={onLockVault} />
-      {!navigation.auxiliaryPageOpen && (
-        <TooltipIconButton
-          variant="outline"
-          size="icon"
-          className="hidden max-[880px]:grid"
-          type="button"
-          label={navigation.sidebarOpen ? t`Close sidebar` : t`Open sidebar`}
-          aria-expanded={navigation.sidebarOpen}
-          onClick={navigation.onToggleSidebar}
+      <TooltipIconButton
+        variant="outline"
+        size="icon"
+        className="hidden max-[880px]:grid"
+        type="button"
+        label={navigation.sidebarOpen ? t`Close sidebar` : t`Open sidebar`}
+        aria-expanded={navigation.sidebarOpen}
+        onClick={navigation.onToggleSidebar}
+      >
+        <span
+          className="group/icon-swap relative inline-grid"
+          data-state={navigation.sidebarOpen ? 'b' : 'a'}
+          aria-hidden="true"
         >
-          <span
-            className="group/icon-swap relative inline-grid"
-            data-state={navigation.sidebarOpen ? 'b' : 'a'}
-            aria-hidden="true"
-          >
-            <Menu
-              className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=a]/icon-swap:scale-100 group-data-[state=a]/icon-swap:opacity-100 group-data-[state=a]/icon-swap:blur-none motion-reduce:transition-none"
-              data-icon="a"
-            />
-            <X
-              className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=b]/icon-swap:scale-100 group-data-[state=b]/icon-swap:opacity-100 group-data-[state=b]/icon-swap:blur-none motion-reduce:transition-none"
-              data-icon="b"
-            />
-          </span>
-        </TooltipIconButton>
-      )}
-      {navigation.closeAuxiliaryPage && (
-        <Button variant="outline" size="sm" type="button" onClick={navigation.closeAuxiliaryPage}>
-          <ArrowLeft data-icon="inline-start" />
-          <Trans>Vault</Trans>
-        </Button>
-      )}
+          <Menu
+            className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=a]/icon-swap:scale-100 group-data-[state=a]/icon-swap:opacity-100 group-data-[state=a]/icon-swap:blur-none motion-reduce:transition-none"
+            data-icon="a"
+          />
+          <X
+            className="col-start-1 row-start-1 scale-(--icon-swap-start-scale) opacity-0 blur-(--icon-swap-blur) transition-[opacity,filter,transform] duration-(--icon-swap-dur) ease-(--icon-swap-ease) will-change-[opacity,filter,transform] group-data-[state=b]/icon-swap:scale-100 group-data-[state=b]/icon-swap:opacity-100 group-data-[state=b]/icon-swap:blur-none motion-reduce:transition-none"
+            data-icon="b"
+          />
+        </span>
+      </TooltipIconButton>
       {appearance.isMac && (
         <div className="inline-flex items-center gap-2 max-[680px]:hidden">
           <BrandMark hideMark />
@@ -169,51 +159,46 @@ export function VaultShellTitlebar({
           </Badge>
         </div>
       )}
-      {!navigation.auxiliaryPageOpen && (
-        <InputGroup
-          className={cn(
-            'text-muted-foreground hover:text-foreground focus-within:border-ring absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-full border border-(--glass-ring) bg-(--glass-surface) py-0 pr-2 pl-3 backdrop-blur-xl backdrop-saturate-150 hover:bg-(--segment-thumb) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
-            'shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)] hover:shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)]',
-            '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
-          )}
+      <InputGroup
+        className={cn(
+          'text-muted-foreground hover:text-foreground focus-within:border-ring absolute left-1/2 h-10 w-[clamp(300px,44vw,560px)] min-w-0 -translate-x-1/2 gap-2 rounded-full border border-(--glass-ring) bg-(--glass-surface) py-0 pr-2 pl-3 backdrop-blur-xl backdrop-saturate-150 hover:bg-(--segment-thumb) max-[880px]:static max-[880px]:max-w-none max-[880px]:flex-1 max-[880px]:translate-x-0 max-[680px]:[&_kbd]:hidden',
+          'shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)] hover:shadow-[0_1px_2px_color-mix(in_oklch,var(--shadow-color)_6%,transparent)]',
+          '[-webkit-app-region:no-drag] **:[-webkit-app-region:no-drag]'
+        )}
+      >
+        <Button
+          variant="ghost"
+          className="text-foreground hover:text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent hover:shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
+          type="button"
+          aria-label={query ? t`Search vault items, currently ${query}` : t`Search vault items`}
+          aria-haspopup="dialog"
+          aria-expanded={search.open}
+          onClick={search.onOpen}
         >
-          <Button
-            variant="ghost"
-            className="text-foreground hover:text-foreground h-full min-w-0 flex-1 justify-start bg-transparent p-0 text-xs font-normal shadow-none hover:bg-transparent hover:shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none aria-expanded:bg-transparent [&>span]:w-full [&>span]:min-w-0 [&>span]:text-left"
-            type="button"
-            aria-label={query ? t`Search vault items, currently ${query}` : t`Search vault items`}
-            aria-haspopup="dialog"
-            aria-expanded={search.open}
-            onClick={search.onOpen}
-          >
-            <span className={cn('truncate', !search.query && 'text-muted-foreground')}>
-              {search.query || t`Search vault`}
-            </span>
-          </Button>
-          <InputGroupAddon align="inline-start">
-            <Search aria-hidden="true" />
-          </InputGroupAddon>
-          {search.query && (
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton
-                size="icon-xs"
-                type="button"
-                aria-label={t`Clear search`}
-                onClick={search.onClear}
-              >
-                <X />
-              </InputGroupButton>
-            </InputGroupAddon>
-          )}
+          <span className={cn('truncate', !search.query && 'text-muted-foreground')}>
+            {search.query || t`Search vault`}
+          </span>
+        </Button>
+        <InputGroupAddon align="inline-start">
+          <Search aria-hidden="true" />
+        </InputGroupAddon>
+        {search.query && (
           <InputGroupAddon align="inline-end">
-            <Kbd>{search.shortcutLabel} F</Kbd>
+            <InputGroupButton
+              size="icon-xs"
+              type="button"
+              aria-label={t`Clear search`}
+              onClick={search.onClear}
+            >
+              <X />
+            </InputGroupButton>
           </InputGroupAddon>
-        </InputGroup>
-      )}
-      <div
-        className={cn('flex-1 self-stretch', !navigation.auxiliaryPageOpen && 'max-[880px]:hidden')}
-        aria-hidden="true"
-      />
+        )}
+        <InputGroupAddon align="inline-end">
+          <Kbd>{search.shortcutLabel} F</Kbd>
+        </InputGroupAddon>
+      </InputGroup>
+      <div className="flex-1 self-stretch max-[880px]:hidden" aria-hidden="true" />
       {itemCreation.visible && (
         <TooltipIconButton
           variant="outline"

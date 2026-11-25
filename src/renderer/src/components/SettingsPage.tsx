@@ -12,7 +12,6 @@ import {
   LockKeyhole,
   LockKeyholeOpen,
   Palette,
-  Settings2,
   ShieldCheck,
   Upload
 } from 'lucide-react'
@@ -77,7 +76,6 @@ import EquivalentDomainsDialog from './EquivalentDomainsDialog'
 import MasterPasswordChangeDialog from './MasterPasswordChangeDialog'
 import AccountSwitcherCard from './AccountSwitcherCard'
 import PersonalVaultPurgeDialog from './PersonalVaultPurgeDialog'
-import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import AboutPage from './AboutPage'
 import { ThemePreviewPicker } from './ThemePreviewPicker'
 import { AutofillAccessibilityGuide } from './AutofillAccessibilityGuide'
@@ -720,52 +718,53 @@ function SettingsPage({
   return (
     <Tabs
       value={activeSettingsCategory}
-      className="min-h-0 min-w-0 flex-1 gap-0"
+      orientation="vertical"
+      className="min-h-0 min-w-0 flex-1 gap-0 max-[680px]:flex-col"
       onValueChange={(value) => {
         if (typeof value !== 'string') return
         setActiveSettingsCategory(value as SettingsCategoryId)
         settingsScrollRef.current?.scrollTo({ top: 0 })
       }}
     >
-      <AuxiliaryPageLayout
-        title={t`Settings`}
-        titleId="settings-title"
-        subtitle={t`Manage security, appearance, and sync on this device.`}
-        headerIcon={<Settings2 />}
-        scrollRef={settingsScrollRef}
-        scrollClassName="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none"
-        headerNavigation={
-          settings ? (
-            <TabsList
-              sliding
-              aria-label={t`Settings categories`}
-              className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none max-w-full justify-start gap-0.5 overflow-x-auto"
-            >
-              {localizedSettingsCategories.map(({ id, label, description, icon: Icon }) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  title={description}
-                  className="min-w-max gap-2 px-3"
-                >
-                  <Icon aria-hidden="true" />
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          ) : undefined
-        }
-        headerActions={
-          settingsBusy ? (
-            <span
-              className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-xs"
-              role="status"
-            >
-              <Spinner />
-              <Trans>Saving</Trans>
-            </span>
-          ) : undefined
-        }
+      <div className="flex w-52 shrink-0 flex-col gap-3 border-r border-(--surface-ring) p-3 max-[680px]:w-full max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pr-14">
+        <h1
+          id="settings-title"
+          className="m-0 px-2 pt-1.5 text-base leading-tight font-semibold tracking-tight"
+        >
+          <Trans>Settings</Trans>
+        </h1>
+        {settings && (
+          <TabsList
+            variant="list"
+            aria-label={t`Settings categories`}
+            className="scroll-fade-x scroll-fade-4 forced-colors:scroll-fade-none w-full items-stretch max-[680px]:flex-row max-[680px]:justify-start max-[680px]:overflow-x-auto"
+          >
+            {localizedSettingsCategories.map(({ id, label, description, icon: Icon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                title={description}
+                className="data-active:bg-primary! data-active:text-primary-foreground dark:data-active:text-primary-foreground h-8 flex-none justify-start gap-2 px-2 text-[13px] data-active:font-semibold max-[680px]:min-w-max"
+              >
+                <Icon aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
+        {settingsBusy && (
+          <span
+            className="text-muted-foreground mt-auto inline-flex items-center gap-1.5 px-2 pb-1 text-xs max-[680px]:hidden"
+            role="status"
+          >
+            <Spinner />
+            <Trans>Saving</Trans>
+          </span>
+        )}
+      </div>
+      <div
+        ref={settingsScrollRef}
+        className="scroll-fade scroll-fade-4 forced-colors:scroll-fade-none min-h-0 min-w-0 flex-1 [scrollbar-color:var(--ring)_transparent] overflow-auto bg-(--canvas) p-5 max-[680px]:p-3"
       >
         {!settings ? (
           <div
@@ -775,7 +774,7 @@ function SettingsPage({
             <Spinner /> <Trans>Loading settings…</Trans>
           </div>
         ) : (
-          <AuxiliaryPageContent className="max-w-4xl !grid-cols-[minmax(0,1fr)] gap-4">
+          <div className="grid min-w-0 gap-4">
             <SettingsCategoryContent value="general">
               <SettingsCard aria-labelledby="general-settings-title">
                 <CardHeader>
@@ -1774,9 +1773,9 @@ function SettingsPage({
             <SettingsCategoryContent value="about">
               <AboutPage onOpenRepository={() => window.bearwarden.updater.openRepositoryPage()} />
             </SettingsCategoryContent>
-          </AuxiliaryPageContent>
+          </div>
         )}
-      </AuxiliaryPageLayout>
+      </div>
     </Tabs>
   )
 }

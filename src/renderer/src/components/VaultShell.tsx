@@ -150,6 +150,9 @@ interface VaultShellProps {
   onSyncSetupPromptHandled: () => void
 }
 
+const workspaceDialogClassName =
+  'flex h-[min(44rem,calc(100%-3rem))] w-[calc(100%-3rem)] gap-0 overflow-hidden p-0 sm:max-w-240'
+
 function VaultShellContent({
   onLocked,
   promptSyncSetup,
@@ -861,7 +864,6 @@ function VaultShellContent({
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
-      clearItemSelection()
       resetReveals()
     })
   }
@@ -873,7 +875,6 @@ function VaultShellContent({
       setSidebarOpen(false)
       setEditorMode(null)
       setMoveSnapshot(null)
-      clearItemSelection()
       resetReveals()
     })
   }
@@ -975,18 +976,15 @@ function VaultShellContent({
     setSelectedLogin(login)
   }
 
-  const closeAuxiliaryPage = healthOpen
-    ? closeHealth
+  const workspaceDialog = healthOpen
+    ? { titleId: 'health-title', close: closeHealth }
     : organizationsOpen
-      ? closeOrganizations
+      ? { titleId: 'organizations-title', close: closeOrganizations }
       : emergencyAccessOpen
-        ? closeEmergencyAccess
+        ? { titleId: 'emergency-access-title', close: closeEmergencyAccess }
         : sendsOpen
-          ? closeSends
-          : settingsOpen
-            ? closeSettings
-            : null
-  const auxiliaryPageOpen = closeAuxiliaryPage !== null
+          ? { titleId: 'sends-title', close: closeSends }
+          : null
 
   if (loading) {
     return <VaultShellLoading appearance={{ isMac, usesWindowControlsOverlay }} />
@@ -1014,8 +1012,6 @@ function VaultShellContent({
         <VaultShellTitlebar
           appearance={{ isMac }}
           navigation={{
-            auxiliaryPageOpen,
-            closeAuxiliaryPage,
             sidebarOpen,
             onToggleSidebar: () => setSidebarOpen((open) => !open)
           }}
@@ -1027,11 +1023,7 @@ function VaultShellContent({
             onClear: () => setQuery('')
           }}
           itemCreation={{
-            visible:
-              !auxiliaryPageOpen &&
-              !sharedScope &&
-              scope.kind !== 'archive' &&
-              scope.kind !== 'trash',
+            visible: !sharedScope && scope.kind !== 'archive' && scope.kind !== 'trash',
             onCreate: () => openEditor('create')
           }}
           onLockVault={lockVault}
@@ -1074,12 +1066,9 @@ function VaultShellContent({
           className={cn(
             'relative grid min-h-0 min-w-0 flex-1 overflow-hidden max-[680px]:block',
 
-            auxiliaryPageOpen
-              ? 'grid-cols-[minmax(0,1fr)] [&>[data-vault-pane-group]>[data-vault-detail-pane]]:hidden [&>[data-vault-pane-group]>[data-vault-list-pane]]:border-r-0 [&>[data-vault-sidebar]]:hidden'
-              : 'grid-cols-[260px_minmax(0,1fr)] max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)]',
+            'grid-cols-[260px_minmax(0,1fr)] max-[1050px]:grid-cols-[220px_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(0,1fr)]',
 
-            (isMac || isWindows) && 'gap-3 overflow-visible pr-3 pb-3 max-[880px]:pl-3',
-            auxiliaryPageOpen && (isMac || isWindows) && 'pl-3'
+            (isMac || isWindows) && 'gap-3 overflow-visible pr-3 pb-3 max-[880px]:pl-3'
           )}
         >
           <VaultShellSidebar
@@ -1125,9 +1114,7 @@ function VaultShellContent({
             className={cn(
               'bg-card grid min-h-0 min-w-0 overflow-hidden max-[680px]:block max-[680px]:size-full',
 
-              auxiliaryPageOpen
-                ? 'grid-cols-[minmax(0,1fr)]'
-                : 'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
+              'grid-cols-[minmax(340px,390px)_minmax(0,1fr)] max-[1050px]:grid-cols-[minmax(290px,330px)_minmax(0,1fr)] max-[880px]:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]',
 
               (isMac || isWindows) && 'gap-3 overflow-visible bg-transparent max-[680px]:gap-0'
             )}
@@ -1140,95 +1127,38 @@ function VaultShellContent({
                   'rounded-pane overflow-hidden border-0 bg-(--glass-surface) shadow-(--surface-shadow) ring-1 ring-(--surface-ring) backdrop-blur-2xl backdrop-saturate-150'
               )}
               data-vault-list-pane=""
-              aria-labelledby={
-                healthOpen
-                  ? 'health-title'
-                  : organizationsOpen
-                    ? 'organizations-title'
-                    : emergencyAccessOpen
-                      ? 'emergency-access-title'
-                      : sendsOpen
-                        ? 'sends-title'
-                        : settingsOpen
-                          ? 'settings-title'
-                          : 'list-title'
-              }
+              aria-labelledby="list-title"
             >
-              {healthOpen ? (
-                <VaultHealthPage revision={healthRevision} onOpenItem={openHealthItem} />
-              ) : organizationsOpen ? (
-                <OrganizationsPage />
-              ) : emergencyAccessOpen ? (
-                <EmergencyAccessPage />
-              ) : sendsOpen ? (
-                <SendsPage />
-              ) : settingsOpen ? (
-                <SettingsPage
-                  settings={settings}
-                  settingsBusy={settingsBusy}
-                  syncStatus={syncStatus}
-                  touchIdPassword={touchIdPassword}
-                  onUpdate={updateSettings}
-                  onTouchIdPasswordChange={setTouchIdPassword}
-                  onEnableTouchId={enableTouchId}
-                  onDisableTouchId={disableTouchId}
-                  onOpenSync={() => setSyncDialogOpen(true)}
-                  onVaultPurged={async () => {
-                    await Promise.allSettled([vaultData.load(), refreshSyncStatus()])
-                  }}
-                  onExportVault={() => setPortabilityDialogMode('export')}
-                  onImportVault={() => setPortabilityDialogMode('import')}
-                  accountStatus={accountStatus}
-                  accountBusy={accountBusy}
-                  accountBusyLabel={accountBusyLabel}
-                  accountError={accountError}
-                  onRequestAccountAdd={(proceed) =>
-                    requestAccountAction(requestEditorTransition, proceed)
-                  }
-                  onRequestAccountSwitch={(proceed) =>
-                    requestAccountAction(requestEditorTransition, proceed)
-                  }
-                  onRequestAccountRemove={(proceed) =>
-                    requestAccountAction(requestEditorTransition, proceed)
-                  }
-                  onAddAccount={addLocalAccount}
-                  onSwitchAccount={switchLocalAccount}
-                  onRenameAccount={renameLocalAccount}
-                  onReorderAccounts={reorderLocalAccounts}
-                  onRemoveAccount={removeLocalAccount}
-                />
-              ) : (
-                <VaultItemListPane
-                  list={{
-                    scopeTitle,
-                    itemCount: scopedItems.length,
-                    groups: itemGroups,
-                    cardCoverPreviews: cardCoverListPreviews,
-                    sortOptions: sortItemsOptions,
-                    showWebsiteIcons: settings?.showWebsiteIcons ?? false,
-                    totpCodes: totpList.codes,
-                    totpCountdown: totpList.countdown,
-                    trashItemCount: trashItems.length,
-                    readOnly: sharedScope,
-                    archiveRequiresPremium: actions.archiveRequiresPremium
-                  }}
-                  selection={{
-                    selectedItemCount: selectedSummaries.length
-                  }}
-                  actions={{
-                    onPrefetch: detailCache.prefetch,
-                    onSelect: selectItems,
-                    onToggleFavorite: actions.toggleFavorite,
-                    onContextMenu: secrets.showLoginContextMenu,
-                    onOpenCreate: () => openEditor('create'),
-                    snapshotBulkAction: actions.snapshotBulkAction,
-                    onPerformBulkAction: actions.performBulkAction,
-                    onSetPendingBulkAction: setPendingBulkAction,
-                    onOpenMove: openMoveDialogForSelection,
-                    onEmptyTrash: () => setEmptyTrashDialogOpen(true)
-                  }}
-                />
-              )}
+              <VaultItemListPane
+                list={{
+                  scopeTitle,
+                  itemCount: scopedItems.length,
+                  groups: itemGroups,
+                  cardCoverPreviews: cardCoverListPreviews,
+                  sortOptions: sortItemsOptions,
+                  showWebsiteIcons: settings?.showWebsiteIcons ?? false,
+                  totpCodes: totpList.codes,
+                  totpCountdown: totpList.countdown,
+                  trashItemCount: trashItems.length,
+                  readOnly: sharedScope,
+                  archiveRequiresPremium: actions.archiveRequiresPremium
+                }}
+                selection={{
+                  selectedItemCount: selectedSummaries.length
+                }}
+                actions={{
+                  onPrefetch: detailCache.prefetch,
+                  onSelect: selectItems,
+                  onToggleFavorite: actions.toggleFavorite,
+                  onContextMenu: secrets.showLoginContextMenu,
+                  onOpenCreate: () => openEditor('create'),
+                  snapshotBulkAction: actions.snapshotBulkAction,
+                  onPerformBulkAction: actions.performBulkAction,
+                  onSetPendingBulkAction: setPendingBulkAction,
+                  onOpenMove: openMoveDialogForSelection,
+                  onEmptyTrash: () => setEmptyTrashDialogOpen(true)
+                }}
+              />
             </section>
 
             <section
@@ -1486,6 +1416,70 @@ function VaultShellContent({
                 />
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={workspaceDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) workspaceDialog?.close()
+          }}
+        >
+          <DialogContent
+            className={workspaceDialogClassName}
+            aria-labelledby={workspaceDialog?.titleId}
+          >
+            {healthOpen ? (
+              <VaultHealthPage revision={healthRevision} onOpenItem={openHealthItem} />
+            ) : organizationsOpen ? (
+              <OrganizationsPage />
+            ) : emergencyAccessOpen ? (
+              <EmergencyAccessPage />
+            ) : sendsOpen ? (
+              <SendsPage />
+            ) : null}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            if (!open && !syncDialogOpen && portabilityDialogMode === null) closeSettings()
+          }}
+        >
+          <DialogContent className={workspaceDialogClassName} aria-labelledby="settings-title">
+            <SettingsPage
+              settings={settings}
+              settingsBusy={settingsBusy}
+              syncStatus={syncStatus}
+              touchIdPassword={touchIdPassword}
+              onUpdate={updateSettings}
+              onTouchIdPasswordChange={setTouchIdPassword}
+              onEnableTouchId={enableTouchId}
+              onDisableTouchId={disableTouchId}
+              onOpenSync={() => setSyncDialogOpen(true)}
+              onVaultPurged={async () => {
+                await Promise.allSettled([vaultData.load(), refreshSyncStatus()])
+              }}
+              onExportVault={() => setPortabilityDialogMode('export')}
+              onImportVault={() => setPortabilityDialogMode('import')}
+              accountStatus={accountStatus}
+              accountBusy={accountBusy}
+              accountBusyLabel={accountBusyLabel}
+              accountError={accountError}
+              onRequestAccountAdd={(proceed) =>
+                requestAccountAction(requestEditorTransition, proceed)
+              }
+              onRequestAccountSwitch={(proceed) =>
+                requestAccountAction(requestEditorTransition, proceed)
+              }
+              onRequestAccountRemove={(proceed) =>
+                requestAccountAction(requestEditorTransition, proceed)
+              }
+              onAddAccount={addLocalAccount}
+              onSwitchAccount={switchLocalAccount}
+              onRenameAccount={renameLocalAccount}
+              onReorderAccounts={reorderLocalAccounts}
+              onRemoveAccount={removeLocalAccount}
+            />
           </DialogContent>
         </Dialog>
       </main>
