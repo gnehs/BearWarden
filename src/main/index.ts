@@ -436,6 +436,8 @@ const EXPORT_DIALOG_EXTENSIONS = Object.keys(EXPORT_DIALOGS) as (keyof typeof EX
 
 const sensitiveClipboard = new SensitiveClipboard(clipboard)
 const focusTouchIdUnlockControllers = new WeakMap<BrowserWindow, FocusTouchIdUnlockController>()
+// `app.isActive()` exists only on macOS; elsewhere a focused window already means the app is active.
+const isAppActive = (): boolean => process.platform !== 'darwin' || app.isActive()
 
 async function openAllowedExternalUrl(value: string): Promise<void> {
   let url: URL
@@ -705,7 +707,7 @@ function createWindow(): BrowserWindow {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   const focusTouchIdUnlock = new FocusTouchIdUnlockController({
-    isActive: () => app.isActive(),
+    isActive: isAppActive,
     isFocused: () => window.isFocused(),
     isDestroyed: () => window.isDestroyed(),
     lockGeneration: () => vaultLockGeneration,
@@ -1155,7 +1157,7 @@ if (hasSingleInstanceLock)
         isTrustedVaultSender(event, window) &&
         window?.isVisible() &&
         window.isFocused() &&
-        app.isActive()
+        isAppActive()
       )
     }
     const unavailableAutofillStatus: AutofillFeatureStatus = {
