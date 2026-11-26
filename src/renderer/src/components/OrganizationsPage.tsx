@@ -1,4 +1,5 @@
 import { FolderOpen, LockKeyhole, RefreshCw, TriangleAlert, UsersRound } from 'lucide-react'
+import { plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import type {
   CollectionView,
@@ -23,9 +24,19 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
-import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
+import {
+  WorkspaceDialogContent,
+  WorkspaceDialogHeading,
+  WorkspaceDialogSidebar,
+  workspaceNavListClassName,
+  workspaceNavTriggerClassName
+} from './WorkspaceDialogLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 import { useOrganizationWorkspace } from '@renderer/hooks/use-organization-workspace'
+
+/** Tab value for the unfiltered view; organization ids are server UUIDs. */
+const allOrganizationsTab = 'all-organizations'
 
 function OrganizationRoleBadge({ type }: Pick<OrganizationView, 'type'>): React.JSX.Element {
   return (
@@ -160,261 +171,280 @@ function OrganizationsPage(): React.JSX.Element {
     ? collections.filter((collection) => selected.collectionIds.includes(collection.id))
     : []
 
+  const selectedOrganization =
+    organizations.find((organization) => organization.id === organizationId) ?? null
+  const listReady = !loading && !loadError && organizations.length > 0
+
   return (
-    <AuxiliaryPageLayout
-      title={t`Organization items`}
-      titleId="organizations-title"
-      subtitle={t`A read-only mirror of shared items. The server determines permissions and password visibility.`}
+    <Tabs
+      value={organizationId ?? allOrganizationsTab}
+      orientation="vertical"
+      className="min-h-0 min-w-0 flex-1 gap-0 max-[680px]:flex-col"
+      onValueChange={(value) =>
+        selectOrganization(value === allOrganizationsTab ? null : (value as string))
+      }
     >
-      <FeatureUnderConstructionNotice>
-        <Trans>
-          You can currently browse synced organizations and shared items in read-only mode.
-          Creating, editing, deleting, sharing, and other management actions are not supported yet.
-        </Trans>
-      </FeatureUnderConstructionNotice>
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-16" role="status">
-          <Spinner />
-          <Trans>Loading organization items…</Trans>
-        </div>
-      ) : loadError ? (
-        <Alert variant="destructive">
-          <TriangleAlert aria-hidden="true" />
-          <AlertTitle>
-            <Trans>Could not load organization items</Trans>
-          </AlertTitle>
-          <AlertDescription>
-            <p>
-              <Trans>Confirm that the vault is unlocked, then try again later.</Trans>
-            </p>
-            <Button type="button" variant="outline" onClick={() => void load()}>
-              <RefreshCw data-icon="inline-start" />
-              <Trans>Try again</Trans>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : organizations.length === 0 ? (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UsersRound />
-            </EmptyMedia>
-            <EmptyTitle>
-              <Trans>No organizations have been synced</Trans>
-            </EmptyTitle>
-            <EmptyDescription>
-              <Trans>
-                After Bitwarden sync completes, shared items that you have permission to access will
-                appear here.
-              </Trans>
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <AuxiliaryPageContent>
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <Trans>Organizations</Trans>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              <Button
-                variant={organizationId === null ? 'secondary' : 'ghost'}
-                className="justify-start"
-                type="button"
-                aria-pressed={organizationId === null}
-                onClick={() => selectOrganization(null)}
-              >
-                <Trans>All organizations</Trans>
-              </Button>
-              {organizations.map((organization) => (
-                <div key={organization.id} className="flex flex-col gap-1">
-                  <Button
-                    variant={organizationId === organization.id ? 'secondary' : 'ghost'}
-                    className="justify-start"
-                    type="button"
-                    aria-pressed={organizationId === organization.id}
-                    onClick={() => selectOrganization(organization.id)}
-                  >
-                    <UsersRound data-icon="inline-start" />
-                    {organization.name}
-                  </Button>
-                  <div className="flex flex-wrap gap-1 px-2">
-                    <OrganizationRoleBadge type={organization.type} />
-                    <OrganizationStatusBadge organization={organization} />
-                  </div>
+      <WorkspaceDialogSidebar title={t`Organization items`} titleId="organizations-title">
+        <TabsList
+          variant="list"
+          className={workspaceNavListClassName}
+          aria-label={t`Organizations`}
+        >
+          <TabsTrigger value={allOrganizationsTab} className={workspaceNavTriggerClassName}>
+            <Trans>All organizations</Trans>
+          </TabsTrigger>
+          {organizations.map((organization) => (
+            <TabsTrigger
+              key={organization.id}
+              value={organization.id}
+              className={workspaceNavTriggerClassName}
+            >
+              <UsersRound aria-hidden="true" />
+              <span className="truncate">{organization.name}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </WorkspaceDialogSidebar>
+      <WorkspaceDialogContent>
+        <TabsContent
+          value={organizationId ?? allOrganizationsTab}
+          className="grid min-w-0 content-start gap-4"
+        >
+          <WorkspaceDialogHeading
+            title={selectedOrganization?.name ?? t`All organizations`}
+            description={
+              listReady
+                ? t({
+                    message: plural(visibleItems.length, {
+                      one: '# shared item',
+                      other: '# shared items'
+                    })
+                  })
+                : undefined
+            }
+            actions={
+              selectedOrganization && (
+                <div className="flex flex-wrap gap-1">
+                  <OrganizationRoleBadge type={selectedOrganization.type} />
+                  <OrganizationStatusBadge organization={selectedOrganization} />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-          <div className="grid content-start gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  <Trans>Collections</Trans>
-                </CardTitle>
-                <CardDescription>
-                  <Trans>Filter shared items by Collection.</Trans>
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button
-                  variant={collectionId === null ? 'secondary' : 'outline'}
-                  type="button"
-                  aria-pressed={collectionId === null}
-                  onClick={() => selectCollection(null)}
-                >
-                  <Trans>All</Trans>
-                </Button>
-                {visibleCollections.map((collection) => (
-                  <Button
-                    key={collection.id}
-                    variant={collectionId === collection.id ? 'secondary' : 'outline'}
-                    className="h-auto whitespace-normal"
-                    type="button"
-                    aria-pressed={collectionId === collection.id}
-                    onClick={() => selectCollection(collection.id)}
-                  >
-                    <FolderOpen data-icon="inline-start" />
-                    {collection.name}
-                    <Badge variant="outline">
-                      <CollectionPermissionLabel collection={collection} />
-                    </Badge>
-                    <CollectionAssignmentBadge collection={collection} />
-                  </Button>
-                ))}
-              </CardContent>
-            </Card>
-            <div className="grid gap-3">
-              {visibleItems.map((item) => (
-                <Card key={item.id}>
-                  <CardHeader className="flex-row items-start justify-between gap-4">
-                    <div className="flex min-w-0 flex-col gap-2">
-                      <CardTitle>{item.name}</CardTitle>
-                      <CardDescription>
-                        {item.subtitle || item.username || <Trans>Shared item</Trans>}
-                      </CardDescription>
-                      <SharedItemPermissionBadges item={item} />
-                    </div>
-                    <Button
-                      type="button"
-                      variant={selectedItemId === item.id ? 'secondary' : 'outline'}
-                      aria-pressed={selectedItemId === item.id}
-                      aria-label={t`View ${item.name}`}
-                      onClick={() => void selectItem(item)}
-                    >
-                      <Trans>View</Trans>
-                    </Button>
-                  </CardHeader>
-                </Card>
-              ))}
-              {visibleItems.length === 0 && (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <FolderOpen />
-                    </EmptyMedia>
-                    <EmptyTitle>
-                      <Trans>No shared items</Trans>
-                    </EmptyTitle>
-                    <EmptyDescription>
-                      <Trans>
-                        The current organization or Collection has no items you can read.
-                      </Trans>
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
+              )
+            }
+          />
+          <FeatureUnderConstructionNotice>
+            <Trans>
+              You can currently browse synced organizations and shared items in read-only mode.
+              Creating, editing, deleting, sharing, and other management actions are not supported
+              yet.
+            </Trans>
+          </FeatureUnderConstructionNotice>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16" role="status">
+              <Spinner />
+              <Trans>Loading organization items…</Trans>
             </div>
-            {selectedLoading && (
-              <div className="flex items-center gap-2" role="status">
-                <Spinner />
-                <Trans>Loading shared item…</Trans>
-              </div>
-            )}
-            {selectedError && selectedItemId && (
-              <Alert variant="destructive">
-                <TriangleAlert aria-hidden="true" />
-                <AlertTitle>
-                  <Trans>Could not load shared item</Trans>
-                </AlertTitle>
-                <AlertDescription>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      const item = items.find((candidate) => candidate.id === selectedItemId)
-                      if (item) void selectItem(item)
-                    }}
-                  >
-                    <RefreshCw data-icon="inline-start" />
-                    <Trans>Try again</Trans>
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-            {selected && (
+          ) : loadError ? (
+            <Alert variant="destructive">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle>
+                <Trans>Could not load organization items</Trans>
+              </AlertTitle>
+              <AlertDescription>
+                <p>
+                  <Trans>Confirm that the vault is unlocked, then try again later.</Trans>
+                </p>
+                <Button type="button" variant="outline" onClick={() => void load()}>
+                  <RefreshCw data-icon="inline-start" />
+                  <Trans>Try again</Trans>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : organizations.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <UsersRound />
+                </EmptyMedia>
+                <EmptyTitle>
+                  <Trans>No organizations have been synced</Trans>
+                </EmptyTitle>
+                <EmptyDescription>
+                  <Trans>
+                    After Bitwarden sync completes, shared items that you have permission to access
+                    will appear here.
+                  </Trans>
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="grid content-start gap-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>{selected.name}</CardTitle>
+                  <CardTitle>
+                    <Trans>Collections</Trans>
+                  </CardTitle>
                   <CardDescription>
-                    {selected.viewPassword ? (
-                      <Trans>
-                        The server allows standard viewing. This read-only page does not show or
-                        copy passwords.
-                      </Trans>
-                    ) : (
-                      <Trans>
-                        The server applies hidden-password permissions, so sensitive fields are
-                        masked.
-                      </Trans>
-                    )}
+                    <Trans>Filter shared items by Collection.</Trans>
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <LockKeyhole className="size-4" aria-hidden="true" />
-                    <span>
-                      {selected.viewPassword ? (
-                        <Trans>Standard view permission</Trans>
-                      ) : (
-                        <Trans>Passwords and sensitive fields are masked</Trans>
-                      )}
-                    </span>
-                  </div>
-                  {selected.username && (
-                    <div>
-                      <Trans>Username: {selected.username}</Trans>
-                    </div>
-                  )}
-                  {selected.uri && (
-                    <div className="truncate">
-                      <Trans>Website: {selected.uri}</Trans>
-                    </div>
-                  )}
-                  {selectedCollections.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      <span>
-                        <Trans>Collection:</Trans>
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedCollections.map((collection) => (
-                          <Badge key={collection.id} variant="outline">
-                            {collection.name} ·{' '}
-                            <CollectionPermissionLabel collection={collection} />
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                <CardContent className="flex flex-wrap gap-2">
+                  <Button
+                    variant={collectionId === null ? 'secondary' : 'outline'}
+                    type="button"
+                    aria-pressed={collectionId === null}
+                    onClick={() => selectCollection(null)}
+                  >
+                    <Trans>All</Trans>
+                  </Button>
+                  {visibleCollections.map((collection) => (
+                    <Button
+                      key={collection.id}
+                      variant={collectionId === collection.id ? 'secondary' : 'outline'}
+                      className="h-auto whitespace-normal"
+                      type="button"
+                      aria-pressed={collectionId === collection.id}
+                      onClick={() => selectCollection(collection.id)}
+                    >
+                      <FolderOpen data-icon="inline-start" />
+                      {collection.name}
+                      <Badge variant="outline">
+                        <CollectionPermissionLabel collection={collection} />
+                      </Badge>
+                      <CollectionAssignmentBadge collection={collection} />
+                    </Button>
+                  ))}
                 </CardContent>
               </Card>
-            )}
-          </div>
-        </AuxiliaryPageContent>
-      )}
-    </AuxiliaryPageLayout>
+              <div className="grid gap-3">
+                {visibleItems.map((item) => (
+                  <Card key={item.id}>
+                    <CardHeader className="flex-row items-start justify-between gap-4">
+                      <div className="flex min-w-0 flex-col gap-2">
+                        <CardTitle>{item.name}</CardTitle>
+                        <CardDescription>
+                          {item.subtitle || item.username || <Trans>Shared item</Trans>}
+                        </CardDescription>
+                        <SharedItemPermissionBadges item={item} />
+                      </div>
+                      <Button
+                        type="button"
+                        variant={selectedItemId === item.id ? 'secondary' : 'outline'}
+                        aria-pressed={selectedItemId === item.id}
+                        aria-label={t`View ${item.name}`}
+                        onClick={() => void selectItem(item)}
+                      >
+                        <Trans>View</Trans>
+                      </Button>
+                    </CardHeader>
+                  </Card>
+                ))}
+                {visibleItems.length === 0 && (
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <FolderOpen />
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        <Trans>No shared items</Trans>
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        <Trans>
+                          The current organization or Collection has no items you can read.
+                        </Trans>
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
+              </div>
+              {selectedLoading && (
+                <div className="flex items-center gap-2" role="status">
+                  <Spinner />
+                  <Trans>Loading shared item…</Trans>
+                </div>
+              )}
+              {selectedError && selectedItemId && (
+                <Alert variant="destructive">
+                  <TriangleAlert aria-hidden="true" />
+                  <AlertTitle>
+                    <Trans>Could not load shared item</Trans>
+                  </AlertTitle>
+                  <AlertDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const item = items.find((candidate) => candidate.id === selectedItemId)
+                        if (item) void selectItem(item)
+                      }}
+                    >
+                      <RefreshCw data-icon="inline-start" />
+                      <Trans>Try again</Trans>
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {selected && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{selected.name}</CardTitle>
+                    <CardDescription>
+                      {selected.viewPassword ? (
+                        <Trans>
+                          The server allows standard viewing. This read-only page does not show or
+                          copy passwords.
+                        </Trans>
+                      ) : (
+                        <Trans>
+                          The server applies hidden-password permissions, so sensitive fields are
+                          masked.
+                        </Trans>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <LockKeyhole className="size-4" aria-hidden="true" />
+                      <span>
+                        {selected.viewPassword ? (
+                          <Trans>Standard view permission</Trans>
+                        ) : (
+                          <Trans>Passwords and sensitive fields are masked</Trans>
+                        )}
+                      </span>
+                    </div>
+                    {selected.username && (
+                      <div>
+                        <Trans>Username: {selected.username}</Trans>
+                      </div>
+                    )}
+                    {selected.uri && (
+                      <div className="truncate">
+                        <Trans>Website: {selected.uri}</Trans>
+                      </div>
+                    )}
+                    {selectedCollections.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          <Trans>Collection:</Trans>
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedCollections.map((collection) => (
+                            <Badge key={collection.id} variant="outline">
+                              {collection.name} ·{' '}
+                              <CollectionPermissionLabel collection={collection} />
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </TabsContent>
+      </WorkspaceDialogContent>
+    </Tabs>
   )
 }
 

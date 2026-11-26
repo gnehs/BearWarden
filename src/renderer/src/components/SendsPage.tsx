@@ -7,7 +7,6 @@ import {
   Plus,
   RefreshCw,
   Save,
-  Send as SendIcon,
   Trash2
 } from 'lucide-react'
 import type { MessageDescriptor } from '@lingui/core'
@@ -45,6 +44,7 @@ import {
 import { Input } from '@renderer/components/ui/input'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@renderer/components/ui/alert'
 import {
@@ -65,10 +65,16 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import AuxiliaryPageLayout, { AuxiliaryPageContent } from './AuxiliaryPageLayout'
 import { CopyFeedbackIcon } from './CopyFeedbackIcon'
 import { SendPasswordDialog } from './SendPasswordDialog'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
+import {
+  WorkspaceDialogContent,
+  WorkspaceDialogHeading,
+  WorkspaceDialogSidebar,
+  workspaceNavListClassName,
+  workspaceNavTriggerClassName
+} from './WorkspaceDialogLayout'
 import {
   dateTimeLocalToIso,
   dateTimeLocalValue,
@@ -78,6 +84,25 @@ import {
   type SendStatusKey,
   usesEmailVerification
 } from './send-ui'
+
+type SendFilter = 'all' | 'text' | 'file'
+
+const sendFilters: SendFilter[] = ['all', 'text', 'file']
+
+const sendFilterLabels: Record<SendFilter, MessageDescriptor> = {
+  all: msg({
+    message: 'All Sends',
+    comment: 'Sends dialog sidebar category and pane heading: every Send regardless of type.'
+  }),
+  text: msg({
+    message: 'Text Sends',
+    comment: 'Sends dialog sidebar category and pane heading: Sends that share text.'
+  }),
+  file: msg({
+    message: 'File Sends',
+    comment: 'Sends dialog sidebar category and pane heading: Sends that share a file.'
+  })
+}
 
 const emptyDraft: SendCreateRequest = {
   name: '',
@@ -138,10 +163,18 @@ function SendsPage(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<SendView | null>(null)
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [createMode, setCreateMode] = useState<'text' | 'file'>('text')
+  const [filter, setFilter] = useState<SendFilter>('all')
 
   const fileDownload = useFileSendDownload(setBusy)
 
   const selected = sends.find((send) => send.id === selectedId) ?? null
+  const visibleSends = filter === 'all' ? sends : sends.filter((send) => send.type === filter)
+  const listReady = !loading && !loadError
+  const sendCounts: Record<SendFilter, number> = {
+    all: sends.length,
+    text: sends.filter((send) => send.type === 'text').length,
+    file: sends.filter((send) => send.type === 'file').length
+  }
 
   async function retryLoad(): Promise<void> {
     setLoading(true)
@@ -333,498 +366,541 @@ function SendsPage(): React.JSX.Element {
   }
 
   return (
-    <AuxiliaryPageLayout
-      title={t`Sends`}
-      headerIcon={<SendIcon />}
-      titleId="sends-title"
-      subtitle={t`Text and file Send metadata is decrypted in the main process first.`}
-      headerActions={
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => startCreate('file')}
-            disabled={busy}
-          >
-            <FilePlus data-icon="inline-start" />
-            <Trans>Create file Send</Trans>
-          </Button>
-          <Button type="button" onClick={() => startCreate()} disabled={busy}>
-            <Plus data-icon="inline-start" />
-            <Trans>Create text Send</Trans>
-          </Button>
-        </div>
-      }
+    <Tabs
+      value={filter}
+      orientation="vertical"
+      className="min-h-0 min-w-0 flex-1 gap-0 max-[680px]:flex-col"
+      onValueChange={(value) => setFilter(value as SendFilter)}
     >
-      <FeatureUnderConstructionNotice>
-        <Trans>
-          Core text and file Send workflows are available. File editing, advanced verification, and
-          the complete public receiving flow are still in development.
-        </Trans>
-      </FeatureUnderConstructionNotice>
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-16" role="status">
-          <Spinner />
-          <Trans>Loading Sends…</Trans>
-        </div>
-      ) : loadError ? (
-        <Alert variant="destructive">
-          <AlertTriangle aria-hidden="true" />
-          <AlertTitle>
-            <Trans>Could not load Sends</Trans>
-          </AlertTitle>
-          <AlertDescription>
-            <Trans>
-              Confirm that sync is connected and try again. Existing data has not been changed.
-            </Trans>
-          </AlertDescription>
-          <AlertAction>
-            <Button size="sm" variant="outline" type="button" onClick={() => void retryLoad()}>
-              <RefreshCw data-icon="inline-start" />
-              <Trans>Try again</Trans>
-            </Button>
-          </AlertAction>
-        </Alert>
-      ) : (
-        <AuxiliaryPageContent>
-          <main className="col-start-2 flex min-w-0 flex-col gap-4 max-[880px]:col-start-1">
-            {sends.length === 0 ? (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyTitle>
-                    <Trans>No Sends yet</Trans>
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    <Trans>Create a text Send to securely share one-time content.</Trans>
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button type="button" onClick={() => startCreate()}>
-                    <Plus data-icon="inline-start" />
-                    <Trans>Create your first Send</Trans>
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            ) : (
-              sends.map((send) => (
-                <Card
-                  key={send.id}
-                  className={selectedId === send.id ? 'border-primary' : undefined}
+      <WorkspaceDialogSidebar title={t`Sends`} titleId="sends-title">
+        <TabsList variant="list" className={workspaceNavListClassName} aria-label={t`Send types`}>
+          {sendFilters.map((value) => (
+            <TabsTrigger key={value} value={value} className={workspaceNavTriggerClassName}>
+              {i18n._(sendFilterLabels[value])}
+              {listReady && <Badge variant="secondary">{sendCounts[value]}</Badge>}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </WorkspaceDialogSidebar>
+      <WorkspaceDialogContent>
+        <TabsContent value={filter} className="grid min-w-0 content-start gap-4">
+          <WorkspaceDialogHeading
+            title={i18n._(sendFilterLabels[filter])}
+            description={
+              listReady
+                ? t({
+                    message: plural(visibleSends.length, { one: '# Send', other: '# Sends' })
+                  })
+                : undefined
+            }
+            actions={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => startCreate('file')}
+                  disabled={busy}
                 >
-                  <CardHeader>
-                    <CardTitle className="flex flex-wrap items-center gap-2">
-                      {send.type === 'file' && <FileText aria-hidden="true" />}
-                      {send.name}
-                      {sendStatuses(send).map((status) => (
-                        <SendStatusBadge key={status} status={status} />
-                      ))}
-                    </CardTitle>
-                    <CardDescription>
-                      {t({
-                        message: plural(send.accessCount, { one: '# access', other: '# accesses' })
-                      })}
-                      {send.maxAccessCount
-                        ? t` / maximum ${new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)}`
-                        : ''}
-                    </CardDescription>
-                    <CardAction className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        type="button"
-                        onClick={() => void copyLink(send)}
-                        aria-label={
-                          copiedKey === send.id ? t`Sharing link copied` : t`Copy sharing link`
-                        }
-                      >
-                        <CopyFeedbackIcon copied={copiedKey === send.id} />
+                  <FilePlus data-icon="inline-start" />
+                  <Trans>Create file Send</Trans>
+                </Button>
+                <Button size="sm" type="button" onClick={() => startCreate()} disabled={busy}>
+                  <Plus data-icon="inline-start" />
+                  <Trans>Create text Send</Trans>
+                </Button>
+              </div>
+            }
+          />
+          <FeatureUnderConstructionNotice>
+            <Trans>
+              Core text and file Send workflows are available. File editing, advanced verification,
+              and the complete public receiving flow are still in development.
+            </Trans>
+          </FeatureUnderConstructionNotice>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16" role="status">
+              <Spinner />
+              <Trans>Loading Sends…</Trans>
+            </div>
+          ) : loadError ? (
+            <Alert variant="destructive">
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>
+                <Trans>Could not load Sends</Trans>
+              </AlertTitle>
+              <AlertDescription>
+                <Trans>
+                  Confirm that sync is connected and try again. Existing data has not been changed.
+                </Trans>
+              </AlertDescription>
+              <AlertAction>
+                <Button size="sm" variant="outline" type="button" onClick={() => void retryLoad()}>
+                  <RefreshCw data-icon="inline-start" />
+                  <Trans>Try again</Trans>
+                </Button>
+              </AlertAction>
+            </Alert>
+          ) : (
+            <div className="flex min-w-0 flex-col gap-3">
+              {visibleSends.length === 0 ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      {filter === 'file' ? (
+                        <Trans>No file Sends yet</Trans>
+                      ) : (
+                        <Trans>No Sends yet</Trans>
+                      )}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {filter === 'file' ? (
+                        <Trans>Create a file Send to securely share a file.</Trans>
+                      ) : (
+                        <Trans>Create a text Send to securely share one-time content.</Trans>
+                      )}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    {filter === 'file' ? (
+                      <Button type="button" onClick={() => startCreate('file')}>
+                        <FilePlus data-icon="inline-start" />
+                        <Trans>Create file Send</Trans>
                       </Button>
-                      {send.type === 'file' && (
+                    ) : (
+                      <Button type="button" onClick={() => startCreate()}>
+                        <Plus data-icon="inline-start" />
+                        {sends.length === 0 ? (
+                          <Trans>Create your first Send</Trans>
+                        ) : (
+                          <Trans>Create text Send</Trans>
+                        )}
+                      </Button>
+                    )}
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                visibleSends.map((send) => (
+                  <Card
+                    key={send.id}
+                    className={selectedId === send.id ? 'border-primary' : undefined}
+                  >
+                    <CardHeader>
+                      <CardTitle className="flex flex-wrap items-center gap-2">
+                        {send.type === 'file' && <FileText aria-hidden="true" />}
+                        {send.name}
+                        {sendStatuses(send).map((status) => (
+                          <SendStatusBadge key={status} status={status} />
+                        ))}
+                      </CardTitle>
+                      <CardDescription>
+                        {t({
+                          message: plural(send.accessCount, {
+                            one: '# access',
+                            other: '# accesses'
+                          })
+                        })}
+                        {send.maxAccessCount
+                          ? t` / maximum ${new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)}`
+                          : ''}
+                      </CardDescription>
+                      <CardAction className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           type="button"
-                          onClick={() => downloadFile(send)}
-                          aria-label={t`Download file Send`}
-                          disabled={busy || usesEmailVerification(send)}
+                          onClick={() => void copyLink(send)}
+                          aria-label={
+                            copiedKey === send.id ? t`Sharing link copied` : t`Copy sharing link`
+                          }
                         >
-                          <Download />
+                          <CopyFeedbackIcon copied={copiedKey === send.id} />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        type="button"
-                        onClick={() => startEdit(send)}
-                        aria-label={t`Edit Send`}
-                        disabled={send.type === 'file' || usesEmailVerification(send)}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        type="button"
-                        onClick={() => setDeleteTarget(send)}
-                        aria-label={t`Delete Send`}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>
-                    {usesEmailVerification(send) && (
-                      <Alert className="mb-3">
-                        <AlertTriangle aria-hidden="true" />
-                        <AlertTitle>
-                          <Trans>Email-verified Send</Trans>
-                        </AlertTitle>
-                        <AlertDescription>
-                          <Trans>
-                            BearWarden does not yet support recipient OTP. To avoid removing
-                            verification requirements, this Send cannot be edited or downloaded.
-                          </Trans>
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    {send.type === 'file' && send.file ? (
-                      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                        <FileText aria-hidden="true" />
-                        <span className="truncate">{send.file.fileName}</span>
-                        <span className="shrink-0">
-                          {send.file.sizeName ?? (
+                        {send.type === 'file' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            type="button"
+                            onClick={() => downloadFile(send)}
+                            aria-label={t`Download file Send`}
+                            disabled={busy || usesEmailVerification(send)}
+                          >
+                            <Download />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          type="button"
+                          onClick={() => startEdit(send)}
+                          aria-label={t`Edit Send`}
+                          disabled={send.type === 'file' || usesEmailVerification(send)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          type="button"
+                          onClick={() => setDeleteTarget(send)}
+                          aria-label={t`Delete Send`}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                      {usesEmailVerification(send) && (
+                        <Alert className="mb-3">
+                          <AlertTriangle aria-hidden="true" />
+                          <AlertTitle>
+                            <Trans>Email-verified Send</Trans>
+                          </AlertTitle>
+                          <AlertDescription>
                             <Trans>
-                              {new Intl.NumberFormat(i18n.locale).format(send.file.size)} bytes
+                              BearWarden does not yet support recipient OTP. To avoid removing
+                              verification requirements, this Send cannot be edited or downloaded.
                             </Trans>
-                          )}
-                        </span>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
-                        {send.text}
-                      </p>
-                    )}
-                    {send.notes && (
-                      <div className="mt-3 flex flex-col gap-1 text-sm">
-                        <span className="font-medium">
-                          <Trans>Private notes</Trans>
-                        </span>
-                        <p className="text-muted-foreground whitespace-pre-wrap">{send.notes}</p>
-                      </div>
-                    )}
-                    <dl className="text-muted-foreground mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
-                      <div className="flex justify-between gap-2">
-                        <dt>
-                          <Trans>Expires</Trans>
-                        </dt>
-                        <dd>{formatSendDate(send.expirationDate)}</dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt>
-                          <Trans>Deletes</Trans>
-                        </dt>
-                        <dd>{formatSendDate(send.deletionDate)}</dd>
-                      </div>
-                      <div className="flex justify-between gap-2 sm:col-span-2">
-                        <dt>
-                          <Trans>Last revised</Trans>
-                        </dt>
-                        <dd>{formatSendDate(send.revisionDate)}</dd>
-                      </div>
-                    </dl>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </main>
-
-          <Dialog
-            open={sendDialogOpen}
-            onOpenChange={(open) => {
-              if (busy) return
-              setSendDialogOpen(open)
-            }}
-          >
-            <DialogContent className="max-h-[calc(100%-2rem)] max-w-2xl overflow-hidden p-0">
-              <DialogHeader className="border-b px-5 pt-5 pb-4">
-                <DialogTitle>
-                  {selected ? <Trans>Edit Send</Trans> : <Trans>Create Send</Trans>}
-                </DialogTitle>
-                <DialogDescription>
-                  <Trans>
-                    Content is encrypted in the main process before it is sent to the server.
-                  </Trans>
-                </DialogDescription>
-              </DialogHeader>
-              <div className="max-h-[min(68vh,640px)] overflow-auto px-5 py-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="send-name">
-                      <Trans>Name</Trans>
-                    </FieldLabel>
-                    <Input
-                      id="send-name"
-                      value={draft.name}
-                      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                    />
-                  </Field>
-                  {createMode === 'text' && (
-                    <Field>
-                      <FieldLabel htmlFor="send-text">
-                        <Trans>Content</Trans>
-                      </FieldLabel>
-                      <Textarea
-                        id="send-text"
-                        rows={8}
-                        value={draft.text}
-                        onChange={(event) => setDraft({ ...draft, text: event.target.value })}
-                      />
-                      <FieldDescription>
-                        <Trans>Text content is not included in the sharing link.</Trans>
-                      </FieldDescription>
-                    </Field>
-                  )}
-                  <Field>
-                    <FieldLabel htmlFor="send-password">
-                      {selected ? (
-                        <Trans>Access password (leave blank to keep the current password)</Trans>
-                      ) : (
-                        <Trans>Access password (optional)</Trans>
+                          </AlertDescription>
+                        </Alert>
                       )}
-                    </FieldLabel>
-                    <Input
-                      id="send-password"
-                      type="password"
-                      value={draft.password ?? ''}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          password:
-                            event.target.value.length > 0
-                              ? event.target.value
-                              : selected
-                                ? undefined
-                                : null
-                        })
-                      }
-                      autoComplete="new-password"
-                    />
-                    {selected?.passwordProtected && (
-                      <Button
-                        variant="outline"
-                        type="button"
-                        onClick={() => void removePassword()}
-                        disabled={busy}
-                      >
-                        <Trans>Remove current password</Trans>
-                      </Button>
-                    )}
-                  </Field>
+                      {send.type === 'file' && send.file ? (
+                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                          <FileText aria-hidden="true" />
+                          <span className="truncate">{send.file.fileName}</span>
+                          <span className="shrink-0">
+                            {send.file.sizeName ?? (
+                              <Trans>
+                                {new Intl.NumberFormat(i18n.locale).format(send.file.size)} bytes
+                              </Trans>
+                            )}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground line-clamp-3 text-sm whitespace-pre-wrap">
+                          {send.text}
+                        </p>
+                      )}
+                      {send.notes && (
+                        <div className="mt-3 flex flex-col gap-1 text-sm">
+                          <span className="font-medium">
+                            <Trans>Private notes</Trans>
+                          </span>
+                          <p className="text-muted-foreground whitespace-pre-wrap">{send.notes}</p>
+                        </div>
+                      )}
+                      <dl className="text-muted-foreground mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+                        <div className="flex justify-between gap-2">
+                          <dt>
+                            <Trans>Expires</Trans>
+                          </dt>
+                          <dd>{formatSendDate(send.expirationDate)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>
+                            <Trans>Deletes</Trans>
+                          </dt>
+                          <dd>{formatSendDate(send.deletionDate)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2 sm:col-span-2">
+                          <dt>
+                            <Trans>Last revised</Trans>
+                          </dt>
+                          <dd>{formatSendDate(send.revisionDate)}</dd>
+                        </div>
+                      </dl>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <Dialog
+          open={sendDialogOpen}
+          onOpenChange={(open) => {
+            if (busy) return
+            setSendDialogOpen(open)
+          }}
+        >
+          <DialogContent className="max-h-[calc(100%-2rem)] max-w-2xl overflow-hidden p-0">
+            <DialogHeader className="border-b px-5 pt-5 pb-4">
+              <DialogTitle>
+                {selected ? <Trans>Edit Send</Trans> : <Trans>Create Send</Trans>}
+              </DialogTitle>
+              <DialogDescription>
+                <Trans>
+                  Content is encrypted in the main process before it is sent to the server.
+                </Trans>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[min(68vh,640px)] overflow-auto px-5 py-4">
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="send-name">
+                    <Trans>Name</Trans>
+                  </FieldLabel>
+                  <Input
+                    id="send-name"
+                    value={draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  />
+                </Field>
+                {createMode === 'text' && (
                   <Field>
-                    <FieldLabel htmlFor="send-notes">
-                      <Trans>Private notes</Trans>
+                    <FieldLabel htmlFor="send-text">
+                      <Trans>Content</Trans>
                     </FieldLabel>
                     <Textarea
-                      id="send-notes"
-                      rows={3}
-                      value={draft.notes ?? ''}
-                      onChange={(event) =>
-                        setDraft({ ...draft, notes: event.target.value || null })
-                      }
+                      id="send-text"
+                      rows={8}
+                      value={draft.text}
+                      onChange={(event) => setDraft({ ...draft, text: event.target.value })}
                     />
                     <FieldDescription>
-                      <Trans>Only you can see this. It is not shown to recipients.</Trans>
+                      <Trans>Text content is not included in the sharing link.</Trans>
                     </FieldDescription>
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="send-max-access-count">
-                      <Trans>Maximum access count</Trans>
-                    </FieldLabel>
-                    <Input
-                      id="send-max-access-count"
-                      type="number"
-                      min={1}
-                      max={2_147_483_647}
-                      step={1}
-                      value={draft.maxAccessCount ?? ''}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          maxAccessCount:
-                            event.target.value === '' ? null : Number(event.target.value)
-                        })
-                      }
-                    />
-                    <FieldDescription>
-                      <Trans>Leave blank for no limit.</Trans>
-                    </FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="send-expiration-date">
-                      <Trans>Expiration date</Trans>
-                    </FieldLabel>
-                    <Input
-                      id="send-expiration-date"
-                      type="datetime-local"
-                      value={dateTimeLocalValue(draft.expirationDate ?? null)}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          expirationDate: dateTimeLocalToIso(event.target.value)
-                        })
-                      }
-                    />
-                    <FieldDescription>
-                      <Trans>
-                        After this date, the link stops accepting access, but the Send is not
-                        immediately deleted.
-                      </Trans>
-                    </FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="send-deletion-date">
-                      <Trans>Deletion date</Trans>
-                    </FieldLabel>
-                    <Input
-                      id="send-deletion-date"
-                      type="datetime-local"
-                      value={dateTimeLocalValue(draft.deletionDate ?? null)}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          deletionDate: dateTimeLocalToIso(event.target.value)
-                        })
-                      }
-                    />
-                    <FieldDescription>
-                      <Trans>After this time, the server permanently removes the Send.</Trans>
-                    </FieldDescription>
-                  </Field>
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="send-hidden">
-                        <Trans>Hide text by default</Trans>
-                      </FieldLabel>
-                      <FieldDescription>
-                        <Trans>Recipients must actively reveal the text to see it.</Trans>
-                      </FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="send-hidden"
-                      checked={draft.hidden ?? false}
-                      onCheckedChange={(checked) => setDraft({ ...draft, hidden: checked })}
-                    />
-                  </Field>
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="send-disabled">
-                        <Trans>Disable Send</Trans>
-                      </FieldLabel>
-                      <FieldDescription>
-                        <Trans>Keep the Send but prevent all recipient access.</Trans>
-                      </FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="send-disabled"
-                      checked={draft.disabled ?? false}
-                      onCheckedChange={(checked) => setDraft({ ...draft, disabled: checked })}
-                    />
-                  </Field>
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="send-hide-email">
-                        <Trans>Hide sender email</Trans>
-                      </FieldLabel>
-                      <FieldDescription>
-                        <Trans>Do not show your account email to recipients.</Trans>
-                      </FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="send-hide-email"
-                      checked={draft.hideEmail ?? false}
-                      onCheckedChange={(checked) => setDraft({ ...draft, hideEmail: checked })}
-                    />
-                  </Field>
-                </FieldGroup>
-              </div>
-              <DialogFooter className="px-5 py-4">
-                <Button
-                  type="button"
-                  onClick={() => void (createMode === 'file' && !selected ? createFile() : save())}
-                  disabled={busy}
-                >
-                  {createMode === 'file' && !selected ? (
-                    <FilePlus data-icon="inline-start" />
-                  ) : (
-                    <Save data-icon="inline-start" />
+                )}
+                <Field>
+                  <FieldLabel htmlFor="send-password">
+                    {selected ? (
+                      <Trans>Access password (leave blank to keep the current password)</Trans>
+                    ) : (
+                      <Trans>Access password (optional)</Trans>
+                    )}
+                  </FieldLabel>
+                  <Input
+                    id="send-password"
+                    type="password"
+                    value={draft.password ?? ''}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        password:
+                          event.target.value.length > 0
+                            ? event.target.value
+                            : selected
+                              ? undefined
+                              : null
+                      })
+                    }
+                    autoComplete="new-password"
+                  />
+                  {selected?.passwordProtected && (
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => void removePassword()}
+                      disabled={busy}
+                    >
+                      <Trans>Remove current password</Trans>
+                    </Button>
                   )}
-                  {busy ? (
-                    <Trans>Saving…</Trans>
-                  ) : createMode === 'file' && !selected ? (
-                    <Trans>Create file Send</Trans>
-                  ) : (
-                    <Trans>Save</Trans>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => setSendDialogOpen(false)}
-                  disabled={busy}
-                >
-                  <Trans>Cancel</Trans>
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </AuxiliaryPageContent>
-      )}
-      {fileDownload.prompt && (
-        <SendPasswordDialog
-          sendName={fileDownload.prompt.send.name}
-          reason={fileDownload.prompt.reason}
-          busy={busy}
-          onSubmit={fileDownload.submitPassword}
-          onCancel={fileDownload.cancel}
-        />
-      )}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !busy) setDeleteTarget(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              <Trans>Delete this Send?</Trans>
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              <Trans>
-                “{deleteTarget?.name ?? ''}” will be removed from Vaultwarden and cannot be restored
-                from the trash.
-              </Trans>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>
-              <Trans>Cancel</Trans>
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy || deleteTarget === null}
-              onClick={(event) => {
-                event.preventDefault()
-                const target = deleteTarget
-                if (!target) return
-                void remove(target).finally(() => setDeleteTarget(null))
-              }}
-            >
-              <Trans>Delete</Trans>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </AuxiliaryPageLayout>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="send-notes">
+                    <Trans>Private notes</Trans>
+                  </FieldLabel>
+                  <Textarea
+                    id="send-notes"
+                    rows={3}
+                    value={draft.notes ?? ''}
+                    onChange={(event) => setDraft({ ...draft, notes: event.target.value || null })}
+                  />
+                  <FieldDescription>
+                    <Trans>Only you can see this. It is not shown to recipients.</Trans>
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="send-max-access-count">
+                    <Trans>Maximum access count</Trans>
+                  </FieldLabel>
+                  <Input
+                    id="send-max-access-count"
+                    type="number"
+                    min={1}
+                    max={2_147_483_647}
+                    step={1}
+                    value={draft.maxAccessCount ?? ''}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        maxAccessCount:
+                          event.target.value === '' ? null : Number(event.target.value)
+                      })
+                    }
+                  />
+                  <FieldDescription>
+                    <Trans>Leave blank for no limit.</Trans>
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="send-expiration-date">
+                    <Trans>Expiration date</Trans>
+                  </FieldLabel>
+                  <Input
+                    id="send-expiration-date"
+                    type="datetime-local"
+                    value={dateTimeLocalValue(draft.expirationDate ?? null)}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        expirationDate: dateTimeLocalToIso(event.target.value)
+                      })
+                    }
+                  />
+                  <FieldDescription>
+                    <Trans>
+                      After this date, the link stops accepting access, but the Send is not
+                      immediately deleted.
+                    </Trans>
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="send-deletion-date">
+                    <Trans>Deletion date</Trans>
+                  </FieldLabel>
+                  <Input
+                    id="send-deletion-date"
+                    type="datetime-local"
+                    value={dateTimeLocalValue(draft.deletionDate ?? null)}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        deletionDate: dateTimeLocalToIso(event.target.value)
+                      })
+                    }
+                  />
+                  <FieldDescription>
+                    <Trans>After this time, the server permanently removes the Send.</Trans>
+                  </FieldDescription>
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldLabel htmlFor="send-hidden">
+                      <Trans>Hide text by default</Trans>
+                    </FieldLabel>
+                    <FieldDescription>
+                      <Trans>Recipients must actively reveal the text to see it.</Trans>
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="send-hidden"
+                    checked={draft.hidden ?? false}
+                    onCheckedChange={(checked) => setDraft({ ...draft, hidden: checked })}
+                  />
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldLabel htmlFor="send-disabled">
+                      <Trans>Disable Send</Trans>
+                    </FieldLabel>
+                    <FieldDescription>
+                      <Trans>Keep the Send but prevent all recipient access.</Trans>
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="send-disabled"
+                    checked={draft.disabled ?? false}
+                    onCheckedChange={(checked) => setDraft({ ...draft, disabled: checked })}
+                  />
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldLabel htmlFor="send-hide-email">
+                      <Trans>Hide sender email</Trans>
+                    </FieldLabel>
+                    <FieldDescription>
+                      <Trans>Do not show your account email to recipients.</Trans>
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="send-hide-email"
+                    checked={draft.hideEmail ?? false}
+                    onCheckedChange={(checked) => setDraft({ ...draft, hideEmail: checked })}
+                  />
+                </Field>
+              </FieldGroup>
+            </div>
+            <DialogFooter className="px-5 py-4">
+              <Button
+                type="button"
+                onClick={() => void (createMode === 'file' && !selected ? createFile() : save())}
+                disabled={busy}
+              >
+                {createMode === 'file' && !selected ? (
+                  <FilePlus data-icon="inline-start" />
+                ) : (
+                  <Save data-icon="inline-start" />
+                )}
+                {busy ? (
+                  <Trans>Saving…</Trans>
+                ) : createMode === 'file' && !selected ? (
+                  <Trans>Create file Send</Trans>
+                ) : (
+                  <Trans>Save</Trans>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setSendDialogOpen(false)}
+                disabled={busy}
+              >
+                <Trans>Cancel</Trans>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {fileDownload.prompt && (
+          <SendPasswordDialog
+            sendName={fileDownload.prompt.send.name}
+            reason={fileDownload.prompt.reason}
+            busy={busy}
+            onSubmit={fileDownload.submitPassword}
+            onCancel={fileDownload.cancel}
+          />
+        )}
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !busy) setDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                <Trans>Delete this Send?</Trans>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                <Trans>
+                  “{deleteTarget?.name ?? ''}” will be removed from Vaultwarden and cannot be
+                  restored from the trash.
+                </Trans>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={busy}>
+                <Trans>Cancel</Trans>
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={busy || deleteTarget === null}
+                onClick={(event) => {
+                  event.preventDefault()
+                  const target = deleteTarget
+                  if (!target) return
+                  void remove(target).finally(() => setDeleteTarget(null))
+                }}
+              >
+                <Trans>Delete</Trans>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </WorkspaceDialogContent>
+    </Tabs>
   )
 }
 

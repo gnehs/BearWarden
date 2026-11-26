@@ -1,5 +1,6 @@
 import { CalendarDays, Clock3, RefreshCw, ShieldAlert } from 'lucide-react'
-import { plural } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg, plural } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -23,9 +24,36 @@ import {
   EmptyTitle
 } from '@renderer/components/ui/empty'
 import { Spinner } from '@renderer/components/ui/spinner'
-import AuxiliaryPageLayout from './AuxiliaryPageLayout'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
+import {
+  WorkspaceDialogContent,
+  WorkspaceDialogHeading,
+  WorkspaceDialogSidebar,
+  workspaceNavListClassName,
+  workspaceNavTriggerClassName
+} from './WorkspaceDialogLayout'
 import FeatureUnderConstructionNotice from './FeatureUnderConstructionNotice'
 import { emergencyAccessDisplayName, safeEmergencyAccessAvatarColor } from './emergency-access-ui'
+
+type EmergencyAccessFilter = 'all' | EmergencyAccessView['role']
+
+const emergencyAccessFilters: EmergencyAccessFilter[] = ['all', 'trusted', 'granted']
+
+const emergencyAccessFilterLabels: Record<EmergencyAccessFilter, MessageDescriptor> = {
+  all: msg({
+    message: 'All grants',
+    comment:
+      'Emergency Access dialog sidebar category and pane heading: every emergency access grant in either direction.'
+  }),
+  trusted: msg`Granted by me`,
+  granted: msg`Granted to me`
+}
+
+const emergencyAccessFilterDescriptions: Record<EmergencyAccessFilter, MessageDescriptor> = {
+  all: msg`Trusted contacts you chose and accounts that chose you.`,
+  trusted: msg`Contacts who can request access to your vault.`,
+  granted: msg`Accounts whose vault you can request access to.`
+}
 
 interface EmergencyAccessContentProps {
   entries: EmergencyAccessView[]
@@ -173,7 +201,8 @@ export function EmergencyAccessContent({
 }
 
 function EmergencyAccessPage(): React.JSX.Element {
-  const { t } = useLingui()
+  const { i18n, t } = useLingui()
+  const [filter, setFilter] = useState<EmergencyAccessFilter>('all')
   const [entries, setEntries] = useState<EmergencyAccessView[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -206,21 +235,74 @@ function EmergencyAccessPage(): React.JSX.Element {
     setLoadAttempt((attempt) => attempt + 1)
   }
 
+  const visibleEntries =
+    filter === 'all' ? entries : entries.filter((entry) => entry.role === filter)
+  const listReady = !loading && !failed
+  const counts: Record<EmergencyAccessFilter, number> = {
+    all: entries.length,
+    trusted: entries.filter((entry) => entry.role === 'trusted').length,
+    granted: entries.filter((entry) => entry.role === 'granted').length
+  }
+
   return (
-    <AuxiliaryPageLayout
-      title={t`Emergency Access`}
-      headerIcon={<ShieldAlert />}
-      titleId="emergency-access-title"
-      subtitle={t`Currently read-only. Inviting, confirming, viewing, and taking over are not available yet.`}
+    <Tabs
+      value={filter}
+      orientation="vertical"
+      className="min-h-0 min-w-0 flex-1 gap-0 max-[680px]:flex-col"
+      onValueChange={(value) => setFilter(value as EmergencyAccessFilter)}
     >
-      <FeatureUnderConstructionNotice>
-        <Trans>
-          Currently you can only view Emergency Access grants and statuses. Inviting, accepting,
-          confirming, accessing, taking over grants, and key rotation are not supported yet.
-        </Trans>
-      </FeatureUnderConstructionNotice>
-      <EmergencyAccessContent entries={entries} loading={loading} failed={failed} onRetry={retry} />
-    </AuxiliaryPageLayout>
+      <WorkspaceDialogSidebar title={t`Emergency Access`} titleId="emergency-access-title">
+        <TabsList
+          variant="list"
+          className={workspaceNavListClassName}
+          aria-label={t`Grant directions`}
+        >
+          {emergencyAccessFilters.map((value) => (
+            <TabsTrigger key={value} value={value} className={workspaceNavTriggerClassName}>
+              {i18n._(emergencyAccessFilterLabels[value])}
+              {listReady && <Badge variant="secondary">{counts[value]}</Badge>}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </WorkspaceDialogSidebar>
+      <WorkspaceDialogContent>
+        <TabsContent value={filter} className="grid min-w-0 content-start gap-4">
+          <WorkspaceDialogHeading
+            title={i18n._(emergencyAccessFilterLabels[filter])}
+            description={i18n._(emergencyAccessFilterDescriptions[filter])}
+          />
+          <FeatureUnderConstructionNotice>
+            <Trans>
+              Currently you can only view Emergency Access grants and statuses. Inviting, accepting,
+              confirming, accessing, taking over grants, and key rotation are not supported yet.
+            </Trans>
+          </FeatureUnderConstructionNotice>
+          {listReady && entries.length > 0 && visibleEntries.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ShieldAlert />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {filter === 'trusted' ? (
+                    <Trans>You have not granted anyone access</Trans>
+                  ) : (
+                    <Trans>Nobody has granted you access</Trans>
+                  )}
+                </EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <EmergencyAccessContent
+              entries={visibleEntries}
+              loading={loading}
+              failed={failed}
+              onRetry={retry}
+            />
+          )}
+        </TabsContent>
+      </WorkspaceDialogContent>
+    </Tabs>
   )
 }
 

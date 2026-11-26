@@ -62,3 +62,26 @@ export function WorkspaceDialogContent({
     </div>
   )
 }
+
+interface WorkspaceDialogHeadingProps {
+  title: ReactNode
+  description?: ReactNode
+  actions?: ReactNode
+}
+
+/** Heading of the right column: the active category, its summary, and its actions. */
+export function WorkspaceDialogHeading({
+  title,
+  description,
+  actions
+}: WorkspaceDialogHeadingProps): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pt-0.5 pr-10 max-[680px]:pr-0">
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {description && <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>}
+      </div>
+      {actions}
+    </div>
+  )
+}

@@ -22,7 +22,7 @@ msgid " · Legacy unauthenticated encryption"
 msgstr " ・旧式の認証なし暗号化"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.maxAccessCount)
-#: src/renderer/src/components/SendsPage.tsx:427
+#: src/renderer/src/components/SendsPage.tsx:504
 msgid " / maximum {0}"
 msgstr " / 最大 {0}"
 
@@ -94,7 +94,7 @@ msgid "“{0}” will be permanently deleted from Bitwarden and cannot be recove
 msgstr "“{0}” は Bitwarden から完全に削除され、復元できません。"
 
 #. placeholder {0}: deleteTarget?.name ?? ''
-#: src/renderer/src/components/SendsPage.tsx:803
+#: src/renderer/src/components/SendsPage.tsx:878
 msgid "“{0}” will be removed from Vaultwarden and cannot be restored from the trash."
 msgstr "“{0}” は Vaultwarden から削除され、ゴミ箱から復元できません。"
 
@@ -124,7 +124,7 @@ msgid "{0, plural, one {{base} You have # attempt remaining.} other {{base} You 
 msgstr "{0, plural, one {{base} 残りの試行回数は # 回です。} other {{base} 残りの試行回数は # 回です。}}"
 
 #. placeholder {0}: send.accessCount
-#: src/renderer/src/components/SendsPage.tsx:423
+#: src/renderer/src/components/SendsPage.tsx:497
 msgid "{0, plural, one {# access} other {# accesses}}"
 msgstr "{0, plural, one {# 回のアクセス} other {# 回のアクセス}}"
 
@@ -148,6 +148,16 @@ msgstr "{0, plural, one {保護されたアイテム # 件} other {保護され�
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, other {検索結果 # 件}}"
 
+#. placeholder {0}: visibleSends.length
+#: src/renderer/src/components/SendsPage.tsx:391
+msgid "{0, plural, one {# Send} other {# Sends}}"
+msgstr "{0, plural, other {# 件の Send}}"
+
+#. placeholder {0}: visibleItems.length
+#: src/renderer/src/components/OrganizationsPage.tsx:217
+msgid "{0, plural, one {# shared item} other {# shared items}}"
+msgstr "{0, plural, other {# 件の共有アイテム}}"
+
 #. placeholder {0}: sshAgentStatus.identityCount
 #: src/renderer/src/components/SettingsPage.tsx:1739
 msgid "{0, plural, one {# SSH key is available. Private keys and signing data are never sent to the renderer process.} other {# SSH keys are available. Private keys and signing data are never sent to the renderer process.}}"
@@ -159,7 +169,7 @@ msgid "{0, plural, one {PIN unlock is disabled after 5 consecutive failures. You
 msgstr "{0, plural, one {PIN ロック解除は 5 回連続で失敗すると無効になります。残りの試行回数は # 回です。} other {PIN ロック解除は 5 回連続で失敗すると無効になります。残りの試行回数は # 回です。}}"
 
 #. placeholder {0}: entry.waitTimeDays
-#: src/renderer/src/components/EmergencyAccessPage.tsx:100
+#: src/renderer/src/components/EmergencyAccessPage.tsx:128
 msgid "{0, plural, one {Wait # day} other {Wait # days}}"
 msgstr "{0, plural, one {# 日待機} other {# 日待機}}"
 
@@ -193,7 +203,7 @@ msgid "{0} autofill settings"
 msgstr "自動入力設定 {0} 件"
 
 #. placeholder {0}: new Intl.NumberFormat(i18n.locale).format(send.file.size)
-#: src/renderer/src/components/SendsPage.tsx:496
+#: src/renderer/src/components/SendsPage.tsx:573
 msgid "{0} bytes"
 msgstr "{0} バイト"
 
@@ -563,8 +573,8 @@ msgid "A password is required when adding a login item."
 msgstr "ログインアイテムを追加するにはパスワードが必要です。"
 
 #: src/renderer/src/components/OrganizationsPage.tsx:167
-msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
-msgstr "共有アイテムの読み取り専用ミラーです。権限とパスワードの表示可否はサーバーによって決まります。"
+#~ msgid "A read-only mirror of shared items. The server determines permissions and password visibility."
+#~ msgstr "共有アイテムの読み取り専用ミラーです。権限とパスワードの表示可否はサーバーによって決まります。"
 
 #: src/renderer/src/components/SyncDialog.tsx:1093
 msgid "A sync issue needs attention"
@@ -583,15 +593,15 @@ msgstr "情報"
 msgid "About BearWarden"
 msgstr "BearWarden について"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:64
+#: src/renderer/src/components/OrganizationsPage.tsx:75
 msgid "Accepted"
 msgstr "承諾済み"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:154
+#: src/renderer/src/components/EmergencyAccessPage.tsx:182
 msgid "Access approved"
 msgstr "アクセスが承認されました"
 
-#: src/renderer/src/components/SendsPage.tsx:118
+#: src/renderer/src/components/SendsPage.tsx:143
 msgid "Access limit reached"
 msgstr "アクセス上限に達しました"
 
@@ -600,15 +610,15 @@ msgstr "アクセス上限に達しました"
 msgid "Access password"
 msgstr "アクセスパスワード"
 
-#: src/renderer/src/components/SendsPage.tsx:590
+#: src/renderer/src/components/SendsPage.tsx:669
 msgid "Access password (leave blank to keep the current password)"
 msgstr "アクセスパスワード（現在のパスワードを維持する場合は空欄）"
 
-#: src/renderer/src/components/SendsPage.tsx:592
+#: src/renderer/src/components/SendsPage.tsx:671
 msgid "Access password (optional)"
 msgstr "アクセスパスワード（任意）"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:152
+#: src/renderer/src/components/EmergencyAccessPage.tsx:180
 msgid "Access requested"
 msgstr "アクセスがリクエストされました"
 
@@ -732,6 +742,10 @@ msgstr "口座番号、金融機関コード、IBAN"
 #: src/renderer/src/components/SettingsPage.tsx:413
 msgid "Accounts & sync"
 msgstr "アカウントと同期"
+
+#: src/renderer/src/components/EmergencyAccessPage.tsx:55
+msgid "Accounts whose vault you can request access to."
+msgstr "保管庫へのアクセスを申請できるアカウントです。"
 
 #. Field label showing what the website is asking the user to do with a passkey, such as sign in or register.
 #: src/renderer/src/components/PasskeyApprovalDialog.tsx:252
@@ -874,7 +888,7 @@ msgstr "住所（2行目）"
 msgid "Address line 3"
 msgstr "住所（3行目）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:38
+#: src/renderer/src/components/OrganizationsPage.tsx:49
 msgid "Administrator"
 msgstr "管理者"
 
@@ -902,7 +916,7 @@ msgstr "30 秒後"
 msgid "After 5 minutes of system inactivity"
 msgstr "システムの無操作が 5 分続いた後"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:206
+#: src/renderer/src/components/OrganizationsPage.tsx:272
 #: src/renderer/src/components/VaultItemListPane.tsx:203
 msgid "After Bitwarden sync completes, shared items that you have permission to access will appear here."
 msgstr "Bitwarden の同期が完了すると、アクセス権のある共有アイテムがここに表示されます。"
@@ -911,11 +925,11 @@ msgstr "Bitwarden の同期が完了すると、アクセス権のある共有�
 msgid "After previewing, new local owner verification is required before syncing and restoring begin."
 msgstr "プレビュー後、同期と復元を開始するには新たにローカル所有者の確認が必要です。"
 
-#: src/renderer/src/components/SendsPage.tsx:678
+#: src/renderer/src/components/SendsPage.tsx:755
 msgid "After this date, the link stops accepting access, but the Send is not immediately deleted."
 msgstr "この日付以降、リンクではアクセスできなくなりますが、Send は直ちには削除されません。"
 
-#: src/renderer/src/components/SendsPage.tsx:700
+#: src/renderer/src/components/SendsPage.tsx:777
 msgid "After this time, the server permanently removes the Send."
 msgstr "この時刻以降、サーバーは Send を完全に削除します。"
 
@@ -939,7 +953,7 @@ msgstr "確認を開始すると、メインプロセスは 2fa.directory から
 msgid "Agent could not start"
 msgstr "エージェントを開始できませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:268
+#: src/renderer/src/components/OrganizationsPage.tsx:297
 #: src/renderer/src/components/VaultShell.tsx:165
 msgid "All"
 msgstr "すべて"
@@ -952,13 +966,24 @@ msgstr "分析したログインアイテムはすべて、弱いパスワード
 msgid "All data is decrypted on this device."
 msgstr "すべてのデータはこのデバイスで復号されます。"
 
+#. Emergency Access dialog sidebar category and pane heading: every emergency access grant in either direction.
+#: src/renderer/src/components/EmergencyAccessPage.tsx:43
+msgid "All grants"
+msgstr "すべての付与"
+
 #: src/renderer/src/components/VaultShell.tsx:733
 msgid "All items"
 msgstr "すべてのアイテム"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:229
+#: src/renderer/src/components/OrganizationsPage.tsx:194
+#: src/renderer/src/components/OrganizationsPage.tsx:214
 msgid "All organizations"
 msgstr "すべての組織"
+
+#. Sends dialog sidebar category and pane heading: every Send regardless of type.
+#: src/renderer/src/components/SendsPage.tsx:93
+msgid "All Sends"
+msgstr "すべての Send"
 
 #: src/renderer/src/components/VaultOrganizationSidebarSection.tsx:57
 msgid "All shared items"
@@ -1314,7 +1339,7 @@ msgstr "BearWarden は保管庫サービスを読み込めませんでした。�
 msgid "BearWarden Desktop"
 msgstr "BearWarden Desktop"
 
-#: src/renderer/src/components/SendsPage.tsx:483
+#: src/renderer/src/components/SendsPage.tsx:560
 msgid "BearWarden does not yet support recipient OTP. To avoid removing verification requirements, this Send cannot be edited or downloaded."
 msgstr "BearWarden は受信者 OTP にまだ対応していません。確認要件が失われることを避けるため、この Send は編集またはダウンロードできません。"
 
@@ -1447,15 +1472,15 @@ msgstr "組み込みのグローバルルール"
 msgid "Bulk actions for selected items"
 msgstr "選択したアイテムの一括操作"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:120
+#: src/renderer/src/components/OrganizationsPage.tsx:131
 msgid "Can delete"
 msgstr "削除可能"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:114
+#: src/renderer/src/components/OrganizationsPage.tsx:125
 msgid "Can edit"
 msgstr "編集可能"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:123
+#: src/renderer/src/components/OrganizationsPage.tsx:134
 msgid "Can restore"
 msgstr "復元可能"
 
@@ -1476,8 +1501,8 @@ msgstr "復元可能"
 #: src/renderer/src/components/LoginEditor.tsx:3235
 #: src/renderer/src/components/LoginEditor.tsx:3469
 #: src/renderer/src/components/SendPasswordDialog.tsx:101
-#: src/renderer/src/components/SendsPage.tsx:775
-#: src/renderer/src/components/SendsPage.tsx:811
+#: src/renderer/src/components/SendsPage.tsx:852
+#: src/renderer/src/components/SendsPage.tsx:886
 #: src/renderer/src/components/SyncDialog.tsx:1521
 #: src/renderer/src/components/VaultItemAccessCards.tsx:95
 #: src/renderer/src/components/VaultPortabilityDialog.tsx:603
@@ -1507,11 +1532,11 @@ msgstr "クエリをキャンセル"
 msgid "Canceling"
 msgstr "キャンセル中"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:120
+#: src/renderer/src/components/OrganizationsPage.tsx:131
 msgid "Cannot delete"
 msgstr "削除できません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:123
+#: src/renderer/src/components/OrganizationsPage.tsx:134
 msgid "Cannot restore"
 msgstr "復元できません"
 
@@ -1642,7 +1667,7 @@ msgstr "BearWarden の新しいバージョンを手動で確認します。"
 msgid "Check the domain format. Use commas or line breaks to separate each row."
 msgstr "ドメイン形式を確認してください。各行はコンマまたは改行で区切ります。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:64
+#: src/renderer/src/components/EmergencyAccessPage.tsx:92
 msgid "Check the network connection and server status, then try again."
 msgstr "ネットワーク接続とサーバーの状態を確認してから、もう一度お試しください。"
 
@@ -1887,13 +1912,13 @@ msgctxt "organization-collection"
 msgid "Collection"
 msgstr "コレクション"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:399
+#: src/renderer/src/components/OrganizationsPage.tsx:428
 msgid "Collection:"
 msgstr "コレクション:"
 
 #: src/renderer/src/components/LoginEditor.tsx:2613
 #: src/renderer/src/components/LoginEditor.tsx:2656
-#: src/renderer/src/components/OrganizationsPage.tsx:255
+#: src/renderer/src/components/OrganizationsPage.tsx:284
 #: src/renderer/src/components/VaultItemMetadataCards.tsx:112
 msgid "Collections"
 msgstr "コレクション"
@@ -1974,11 +1999,11 @@ msgstr "リモートの結果を確認"
 msgid "Confirm removing security key"
 msgstr "セキュリティキーの削除を確認"
 
-#: src/renderer/src/components/SendsPage.tsx:377
+#: src/renderer/src/components/SendsPage.tsx:433
 msgid "Confirm that sync is connected and try again. Existing data has not been changed."
 msgstr "同期が接続されていることを確認して、もう一度お試しください。既存のデータは変更されていません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:188
+#: src/renderer/src/components/OrganizationsPage.tsx:254
 msgid "Confirm that the vault is unlocked, then try again later."
 msgstr "保管庫のロックが解除されていることを確認して、後でもう一度お試しください。"
 
@@ -1994,8 +2019,8 @@ msgstr "リモートの結果を確認して既存の変更を復元"
 msgid "Confirm your master password before approving."
 msgstr "承認する前にマスターパスワードを確認してください。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:150
-#: src/renderer/src/components/OrganizationsPage.tsx:66
+#: src/renderer/src/components/EmergencyAccessPage.tsx:178
+#: src/renderer/src/components/OrganizationsPage.tsx:77
 msgid "Confirmed"
 msgstr "確認済み"
 
@@ -2036,14 +2061,18 @@ msgstr "接続済み、保管庫はロック中"
 msgid "Connected, vault unlocked"
 msgstr "接続済み、保管庫はロック解除済み"
 
+#: src/renderer/src/components/EmergencyAccessPage.tsx:54
+msgid "Contacts who can request access to your vault."
+msgstr "あなたの保管庫へのアクセスを申請できる連絡先です。"
+
 #: src/renderer/src/components/LoginEditor.tsx:2421
 #: src/renderer/src/components/LoginEditor.tsx:3086
 #: src/renderer/src/components/LoginEditor.tsx:3106
-#: src/renderer/src/components/SendsPage.tsx:574
+#: src/renderer/src/components/SendsPage.tsx:653
 msgid "Content"
 msgstr "内容"
 
-#: src/renderer/src/components/SendsPage.tsx:554
+#: src/renderer/src/components/SendsPage.tsx:633
 msgid "Content is encrypted in the main process before it is sent to the server."
 msgstr "内容はサーバーに送信される前にメインプロセスで暗号化されます。"
 
@@ -2126,7 +2155,7 @@ msgstr "リカバリーコードをコピー"
 msgid "Copy setup key"
 msgstr "セットアップキーをコピー"
 
-#: src/renderer/src/components/SendsPage.tsx:437
+#: src/renderer/src/components/SendsPage.tsx:514
 msgid "Copy sharing link"
 msgstr "共有リンクをコピー"
 
@@ -2158,7 +2187,7 @@ msgstr "認証コードをコピー"
 msgid "Copy website"
 msgstr "ウェブサイトをコピー"
 
-#: src/renderer/src/components/SendsPage.tsx:360
+#: src/renderer/src/components/SendsPage.tsx:416
 msgid "Core text and file Send workflows are available. File editing, advanced verification, and the complete public receiving flow are still in development."
 msgstr "基本的なテキストおよびファイル Send のワークフローを利用できます。ファイルの編集、高度な検証、完全な公開受信フローは現在開発中です。"
 
@@ -2178,7 +2207,7 @@ msgstr "同期サーバーに接続できませんでした。ネットワーク
 msgid "Could not copy the diagnostic summary. Select the text and copy it manually."
 msgstr "診断概要をコピーできませんでした。テキストを選択して手動でコピーしてください。"
 
-#: src/renderer/src/components/SendsPage.tsx:303
+#: src/renderer/src/components/SendsPage.tsx:336
 msgid "Could not copy the sharing link."
 msgstr "共有リンクをコピーできませんでした。"
 
@@ -2190,7 +2219,7 @@ msgstr "バックアップを作成できませんでした。マスターパス
 msgid "Could not create the CSV. Check the master password and save location, then try again."
 msgstr "CSV を作成できませんでした。マスターパスワードと保存場所を確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/SendsPage.tsx:273
+#: src/renderer/src/components/SendsPage.tsx:306
 msgid "Could not create the file Send. Confirm that sync is connected."
 msgstr "ファイル Send を作成できませんでした。同期が接続されていることを確認してください。"
 
@@ -2198,7 +2227,7 @@ msgstr "ファイル Send を作成できませんでした。同期が接続さ
 msgid "Could not create the ZIP. Check the master password, save location, and attachment status, then try again."
 msgstr "ZIP を作成できませんでした。マスターパスワード、保存場所、添付ファイルの状態を確認してから、もう一度お試しください。"
 
-#: src/renderer/src/components/SendsPage.tsx:291
+#: src/renderer/src/components/SendsPage.tsx:324
 msgid "Could not delete the Send."
 msgstr "Send を削除できませんでした。"
 
@@ -2219,20 +2248,20 @@ msgstr "ファイルをインポートできませんでした。マスターパ
 msgid "Could not import the KeePass XML. Check the master password and make sure the file is a complete XML export from KeePass 2."
 msgstr "KeePass XML をインポートできませんでした。マスターパスワードを確認し、ファイルが KeePass 2 から完全にエクスポートされた XML であることを確認してください。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:61
-#: src/renderer/src/components/EmergencyAccessPage.tsx:195
+#: src/renderer/src/components/EmergencyAccessPage.tsx:89
+#: src/renderer/src/components/EmergencyAccessPage.tsx:224
 msgid "Could not load Emergency Access"
 msgstr "緊急アクセスを読み込めませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:184
+#: src/renderer/src/components/OrganizationsPage.tsx:250
 msgid "Could not load organization items"
 msgstr "組織のアイテムを読み込めませんでした"
 
-#: src/renderer/src/components/SendsPage.tsx:374
+#: src/renderer/src/components/SendsPage.tsx:430
 msgid "Could not load Sends"
 msgstr "Send を読み込めませんでした"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:340
+#: src/renderer/src/components/OrganizationsPage.tsx:369
 msgid "Could not load shared item"
 msgstr "共有アイテムを読み込めませんでした"
 
@@ -2240,11 +2269,11 @@ msgstr "共有アイテムを読み込めませんでした"
 msgid "Could not load the account security status."
 msgstr "アカウントのセキュリティ状態を読み込めませんでした。"
 
-#: src/renderer/src/components/SendsPage.tsx:329
+#: src/renderer/src/components/SendsPage.tsx:362
 msgid "Could not remove the Send password."
 msgstr "Send のパスワードを削除できませんでした。"
 
-#: src/renderer/src/components/SendsPage.tsx:236
+#: src/renderer/src/components/SendsPage.tsx:269
 msgid "Could not save the Send. Confirm that sync is connected."
 msgstr "Send を保存できませんでした。同期が接続されていることを確認してください。"
 
@@ -2277,6 +2306,10 @@ msgstr "国"
 msgid "Country / Region"
 msgstr "国 / 地域"
 
+#: src/renderer/src/components/SendsPage.tsx:458
+msgid "Create a file Send to securely share a file."
+msgstr "ファイルを安全に共有するファイル Send を作成します。"
+
 #: src/renderer/src/components/AccountApiKeyDialog.tsx:180
 msgid "Create a new Client Secret. The old value becomes invalid immediately."
 msgstr "新しいクライアントシークレットを作成します。古い値は直ちに無効になります。"
@@ -2297,24 +2330,26 @@ msgstr "Bitwarden にインポートできるログインとセキュアノー�
 msgid "Create a plaintext copy of your personal vault and attachments that Bitwarden-compatible tools can extract."
 msgstr "Bitwarden 互換ツールで抽出できる、個人用保管庫と添付ファイルのプレーンテキストコピーを作成します。"
 
-#: src/renderer/src/components/SendsPage.tsx:398
+#: src/renderer/src/components/SendsPage.tsx:460
 msgid "Create a text Send to securely share one-time content."
 msgstr "一度限りの内容を安全に共有するテキスト Send を作成します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:469
+#: src/renderer/src/components/AuthScreen.tsx:465
 msgid "Create and unlock"
 msgstr "作成してロックを解除"
 
-#: src/renderer/src/components/SendsPage.tsx:350
-#: src/renderer/src/components/SendsPage.tsx:764
+#: src/renderer/src/components/SendsPage.tsx:406
+#: src/renderer/src/components/SendsPage.tsx:468
+#: src/renderer/src/components/SendsPage.tsx:841
 msgid "Create file Send"
 msgstr "ファイル Send を作成"
 
-#: src/renderer/src/components/SendsPage.tsx:551
+#: src/renderer/src/components/SendsPage.tsx:630
 msgid "Create Send"
 msgstr "Send を作成"
 
-#: src/renderer/src/components/SendsPage.tsx:354
+#: src/renderer/src/components/SendsPage.tsx:410
+#: src/renderer/src/components/SendsPage.tsx:476
 msgid "Create text Send"
 msgstr "テキストSendを作成"
 
@@ -2322,7 +2357,7 @@ msgstr "テキストSendを作成"
 msgid "Create unique passwords for the most frequently reused items first."
 msgstr "最も頻繁に再利用されている項目から、一意のパスワードを作成してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:404
+#: src/renderer/src/components/SendsPage.tsx:474
 msgid "Create your first Send"
 msgstr "最初のSendを作成"
 
@@ -2356,7 +2391,7 @@ msgstr "作成日時"
 msgid "Created “{0}”."
 msgstr "「{0}」を作成しました。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:164
+#: src/renderer/src/components/EmergencyAccessPage.tsx:192
 msgid "Created {creationLabel}"
 msgstr "作成: {creationLabel}"
 
@@ -2410,10 +2445,10 @@ msgid "Current version"
 msgstr "現在のバージョン"
 
 #: src/renderer/src/components/EmergencyAccessPage.tsx:214
-msgid "Currently read-only. Inviting, confirming, viewing, and taking over are not available yet."
-msgstr "現在は読み取り専用です。招待、確認、表示、引き継ぎはまだ利用できません。"
+#~ msgid "Currently read-only. Inviting, confirming, viewing, and taking over are not available yet."
+#~ msgstr "現在は読み取り専用です。招待、確認、表示、引き継ぎはまだ利用できません。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:217
+#: src/renderer/src/components/EmergencyAccessPage.tsx:275
 msgid "Currently you can only view Emergency Access grants and statuses. Inviting, accepting, confirming, accessing, taking over grants, and key rotation are not supported yet."
 msgstr "現在は緊急アクセスの付与とステータスのみを表示できます。招待、受諾、確認、アクセス、付与の引き継ぎ、キーのローテーションはまだサポートされていません。"
 
@@ -2470,7 +2505,7 @@ msgstr "カスタム非アクティブタイムアウト（時間）"
 msgid "Custom inactivity timeout minutes"
 msgstr "カスタム非アクティブタイムアウト（分）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:42
+#: src/renderer/src/components/OrganizationsPage.tsx:53
 msgid "Custom role"
 msgstr "カスタムロール"
 
@@ -2534,7 +2569,7 @@ msgstr "既定の並べ替え"
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:99
 #: src/renderer/src/components/Dialogs.tsx:255
 #: src/renderer/src/components/LoginEditor.tsx:3020
-#: src/renderer/src/components/SendsPage.tsx:822
+#: src/renderer/src/components/SendsPage.tsx:897
 #: src/renderer/src/components/VaultItemListPane.tsx:301
 msgid "Delete"
 msgstr "削除"
@@ -2575,7 +2610,7 @@ msgstr "パスキーを削除"
 msgid "Delete permanently"
 msgstr "完全に削除"
 
-#: src/renderer/src/components/SendsPage.tsx:469
+#: src/renderer/src/components/SendsPage.tsx:546
 msgid "Delete Send"
 msgstr "Sendを削除"
 
@@ -2588,7 +2623,7 @@ msgstr "{0}のパスキーを削除"
 msgid "Delete this passkey?"
 msgstr "このパスキーを削除しますか？"
 
-#: src/renderer/src/components/SendsPage.tsx:800
+#: src/renderer/src/components/SendsPage.tsx:875
 msgid "Delete this Send?"
 msgstr "このSendを削除しますか？"
 
@@ -2614,7 +2649,7 @@ msgstr "削除済みの項目"
 msgid "Deleted items remain here until you restore or permanently delete them, or the server removes them according to its retention policy."
 msgstr "削除済みの項目は、復元するか完全に削除するまで、またはサーバーが保持ポリシーに従って削除するまでここに残ります。"
 
-#: src/renderer/src/components/SendsPage.tsx:524
+#: src/renderer/src/components/SendsPage.tsx:601
 msgid "Deletes"
 msgstr "削除"
 
@@ -2626,7 +2661,7 @@ msgstr "添付ファイルを削除中"
 msgid "Deleting…"
 msgstr "削除中…"
 
-#: src/renderer/src/components/SendsPage.tsx:686
+#: src/renderer/src/components/SendsPage.tsx:763
 msgid "Deletion date"
 msgstr "削除日"
 
@@ -2652,7 +2687,7 @@ msgstr "開発ビルドでは自動更新をサポートしていません。Git
 msgid "Diagnostic logs"
 msgstr "診断ログ"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:105
+#: src/renderer/src/components/OrganizationsPage.tsx:116
 msgid "Direct assignment"
 msgstr "直接割り当て"
 
@@ -2672,12 +2707,12 @@ msgstr "生体認証を無効にする"
 msgid "Disable PIN unlock"
 msgstr "PINによるロック解除を無効にする"
 
-#: src/renderer/src/components/SendsPage.tsx:721
+#: src/renderer/src/components/SendsPage.tsx:798
 msgid "Disable Send"
 msgstr "Sendを無効にする"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:58
-#: src/renderer/src/components/SendsPage.tsx:116
+#: src/renderer/src/components/OrganizationsPage.tsx:69
+#: src/renderer/src/components/SendsPage.tsx:141
 #: src/renderer/src/components/SettingsPage.tsx:612
 #: src/renderer/src/components/SettingsPage.tsx:1047
 #: src/renderer/src/components/SettingsPage.tsx:1193
@@ -2719,7 +2754,7 @@ msgstr "表示名"
 msgid "Display name saved."
 msgstr "表示名を保存しました。"
 
-#: src/renderer/src/components/SendsPage.tsx:739
+#: src/renderer/src/components/SendsPage.tsx:816
 msgid "Do not show your account email to recipients."
 msgstr "受信者にアカウントのメールアドレスを表示しません。"
 
@@ -2737,7 +2772,7 @@ msgstr "ダウンロード"
 msgid "Download {0}"
 msgstr "{0}をダウンロード"
 
-#: src/renderer/src/components/SendsPage.tsx:448
+#: src/renderer/src/components/SendsPage.tsx:525
 msgid "Download file Send"
 msgstr "ファイルSendをダウンロード"
 
@@ -2872,11 +2907,11 @@ msgstr "フォルダーを編集"
 msgid "Edit folder {0}"
 msgstr "フォルダー{0}を編集"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:92
+#: src/renderer/src/components/OrganizationsPage.tsx:103
 msgid "Edit items"
 msgstr "項目を編集"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:90
+#: src/renderer/src/components/OrganizationsPage.tsx:101
 msgid "Edit items, hide passwords"
 msgstr "項目を編集、パスワードを非表示"
 
@@ -2885,12 +2920,12 @@ msgstr "項目を編集、パスワードを非表示"
 msgid "Edit profile"
 msgstr "プロフィールを編集"
 
-#: src/renderer/src/components/SendsPage.tsx:459
-#: src/renderer/src/components/SendsPage.tsx:551
+#: src/renderer/src/components/SendsPage.tsx:536
+#: src/renderer/src/components/SendsPage.tsx:630
 msgid "Edit Send"
 msgstr "Sendを編集"
 
-#: src/renderer/src/components/SendsPage.tsx:209
+#: src/renderer/src/components/SendsPage.tsx:242
 msgid "Editing file Sends is not available yet."
 msgstr "ファイルSendの編集はまだ利用できません。"
 
@@ -2928,7 +2963,7 @@ msgstr "メールアドレス未確認"
 msgid "Email two-factor authentication has been enabled."
 msgstr "メールによる2要素認証を有効にしました。"
 
-#: src/renderer/src/components/SendsPage.tsx:115
+#: src/renderer/src/components/SendsPage.tsx:140
 msgid "Email verification"
 msgstr "メールアドレスの確認"
 
@@ -2940,16 +2975,16 @@ msgstr "メール確認コード"
 msgid "Email verified"
 msgstr "メールアドレス確認済み"
 
-#: src/renderer/src/components/SendsPage.tsx:480
+#: src/renderer/src/components/SendsPage.tsx:557
 msgid "Email-verified Send"
 msgstr "メール確認済みのSend"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:211
+#: src/renderer/src/components/EmergencyAccessPage.tsx:254
 #: src/renderer/src/components/VaultShellSidebar.tsx:429
 msgid "Emergency Access"
 msgstr "緊急アクセス"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:83
+#: src/renderer/src/components/EmergencyAccessPage.tsx:111
 msgid "Emergency Access is not configured"
 msgstr "緊急アクセスが設定されていません"
 
@@ -3024,11 +3059,11 @@ msgstr "フォルダー名を入力してください。"
 msgid "Enter a security key name and your master password."
 msgstr "セキュリティキー名とマスターパスワードを入力してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:205
+#: src/renderer/src/components/SendsPage.tsx:238
 msgid "Enter a Send name and content."
 msgstr "Send名と内容を入力してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:245
+#: src/renderer/src/components/SendsPage.tsx:278
 msgid "Enter a Send name first."
 msgstr "先にSend名を入力してください。"
 
@@ -3242,7 +3277,7 @@ msgid "Expand {0}"
 msgstr "{0}を展開"
 
 #: src/renderer/src/components/DocumentItemEditorFields.tsx:93
-#: src/renderer/src/components/SendsPage.tsx:664
+#: src/renderer/src/components/SendsPage.tsx:741
 #: src/renderer/src/components/VaultItemDetailViews.tsx:244
 msgid "Expiration date"
 msgstr "有効期限"
@@ -3259,11 +3294,11 @@ msgstr "有効期限（月）"
 msgid "Expiration year"
 msgstr "有効期限（年）"
 
-#: src/renderer/src/components/SendsPage.tsx:117
+#: src/renderer/src/components/SendsPage.tsx:142
 msgid "Expired"
 msgstr "期限切れ"
 
-#: src/renderer/src/components/SendsPage.tsx:518
+#: src/renderer/src/components/SendsPage.tsx:595
 msgid "Expires"
 msgstr "有効期限"
 
@@ -3340,17 +3375,22 @@ msgstr "ファイル エクスプローラー"
 msgid "file manager"
 msgstr "ファイル マネージャー"
 
-#: src/renderer/src/components/SendsPage.tsx:271
+#: src/renderer/src/components/SendsPage.tsx:304
 msgid "File Send created"
 msgstr "ファイル Send を作成しました"
 
-#: src/renderer/src/components/SendsPage.tsx:198
+#. Sends dialog sidebar category and pane heading: Sends that share a file.
+#: src/renderer/src/components/SendsPage.tsx:101
+msgid "File Sends"
+msgstr "ファイル Send"
+
 #: src/renderer/src/components/SendsPage.tsx:231
-#: src/renderer/src/components/SendsPage.tsx:325
+#: src/renderer/src/components/SendsPage.tsx:264
+#: src/renderer/src/components/SendsPage.tsx:358
 msgid "File Sends are read-only until file transfer support is enabled"
 msgstr "ファイル転送のサポートが有効になるまで、ファイル Send は読み取り専用です"
 
-#: src/renderer/src/components/SendsPage.tsx:192
+#: src/renderer/src/components/SendsPage.tsx:225
 msgid "File Sends can currently only be viewed and their links copied."
 msgstr "現在、ファイル Send は表示とリンクのコピーのみ可能です。"
 
@@ -3358,7 +3398,7 @@ msgstr "現在、ファイル Send は表示とリンクのコピーのみ可能
 msgid "File signing"
 msgstr "ファイル署名"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:258
+#: src/renderer/src/components/OrganizationsPage.tsx:287
 msgid "Filter shared items by Collection."
 msgstr "共有アイテムをコレクションで絞り込みます。"
 
@@ -3577,11 +3617,17 @@ msgctxt "master-password-strength"
 msgid "Good"
 msgstr "良い"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:126
+#: src/renderer/src/components/EmergencyAccessPage.tsx:258
+msgid "Grant directions"
+msgstr "付与の方向"
+
+#: src/renderer/src/components/EmergencyAccessPage.tsx:48
+#: src/renderer/src/components/EmergencyAccessPage.tsx:154
 msgid "Granted by me"
 msgstr "自分が付与"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:128
+#: src/renderer/src/components/EmergencyAccessPage.tsx:49
+#: src/renderer/src/components/EmergencyAccessPage.tsx:156
 msgid "Granted to me"
 msgstr "自分に付与"
 
@@ -3636,13 +3682,13 @@ msgstr "カスタムフィールドの内容を非表示"
 msgid "Hide master password"
 msgstr "マスターパスワードを非表示"
 
-#: src/renderer/src/components/SendsPage.tsx:121
-#: src/renderer/src/components/SendsPage.tsx:736
+#: src/renderer/src/components/SendsPage.tsx:146
+#: src/renderer/src/components/SendsPage.tsx:813
 msgid "Hide sender email"
 msgstr "送信者のメールアドレスを非表示"
 
-#: src/renderer/src/components/SendsPage.tsx:120
-#: src/renderer/src/components/SendsPage.tsx:706
+#: src/renderer/src/components/SendsPage.tsx:145
+#: src/renderer/src/components/SendsPage.tsx:783
 msgid "Hide text by default"
 msgstr "テキストをデフォルトで非表示"
 
@@ -3771,7 +3817,7 @@ msgstr "数字を 1 文字含める"
 msgid "Incorrect master password."
 msgstr "マスターパスワードが正しくありません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:105
+#: src/renderer/src/components/OrganizationsPage.tsx:116
 msgid "Indirect assignment"
 msgstr "間接割り当て"
 
@@ -3792,12 +3838,12 @@ msgstr "無効な日付"
 msgid "Investment / brokerage"
 msgstr "投資 / 証券口座"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:148
+#: src/renderer/src/components/EmergencyAccessPage.tsx:176
 msgid "Invitation accepted"
 msgstr "招待を承諾しました"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:146
-#: src/renderer/src/components/OrganizationsPage.tsx:62
+#: src/renderer/src/components/EmergencyAccessPage.tsx:174
+#: src/renderer/src/components/OrganizationsPage.tsx:73
 msgid "Invited"
 msgstr "招待済み"
 
@@ -3913,7 +3959,7 @@ msgstr "パスキーを保持"
 msgid "Keep the backup password safe"
 msgstr "バックアップパスワードを安全に保管"
 
-#: src/renderer/src/components/SendsPage.tsx:724
+#: src/renderer/src/components/SendsPage.tsx:801
 msgid "Keep the Send but prevent all recipient access."
 msgstr "Send を保持し、すべての受信者のアクセスを防止します。"
 
@@ -3971,7 +4017,7 @@ msgstr "最終編集"
 msgid "Last name"
 msgstr "姓"
 
-#: src/renderer/src/components/SendsPage.tsx:530
+#: src/renderer/src/components/SendsPage.tsx:607
 msgid "Last revised"
 msgstr "最終更新"
 
@@ -3991,7 +4037,7 @@ msgstr "ログイン時に BearWarden を起動"
 msgid "Launch BearWarden automatically after you log in to this computer."
 msgstr "このコンピューターにログイン後、BearWarden を自動的に起動します。"
 
-#: src/renderer/src/components/SendsPage.tsx:659
+#: src/renderer/src/components/SendsPage.tsx:736
 msgid "Leave blank for no limit."
 msgstr "無制限にするには空白のままにしてください。"
 
@@ -4084,7 +4130,7 @@ msgstr "デバイスを読み込み中…"
 msgid "Loading domain rules…"
 msgstr "ドメインルールを読み込み中…"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:48
+#: src/renderer/src/components/EmergencyAccessPage.tsx:76
 msgid "Loading Emergency Access…"
 msgstr "緊急アクセスを読み込み中…"
 
@@ -4100,7 +4146,7 @@ msgstr "アイテムの詳細を読み込み中…"
 msgid "Loading local accounts"
 msgstr "ローカルアカウントを読み込み中"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:178
+#: src/renderer/src/components/OrganizationsPage.tsx:244
 msgid "Loading organization items…"
 msgstr "組織のアイテムを読み込み中…"
 
@@ -4108,7 +4154,7 @@ msgstr "組織のアイテムを読み込み中…"
 msgid "Loading password history"
 msgstr "パスワード履歴を読み込み中"
 
-#: src/renderer/src/components/SendsPage.tsx:368
+#: src/renderer/src/components/SendsPage.tsx:424
 msgid "Loading Sends…"
 msgstr "Send を読み込み中…"
 
@@ -4116,7 +4162,7 @@ msgstr "Send を読み込み中…"
 msgid "Loading settings…"
 msgstr "設定を読み込み中…"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:333
+#: src/renderer/src/components/OrganizationsPage.tsx:362
 msgid "Loading shared item…"
 msgstr "共有アイテムを読み込み中…"
 
@@ -4284,7 +4330,7 @@ msgstr "保管庫が引き続きロック解除されていることを確認し
 #~ msgid "Manage collection"
 #~ msgstr "コレクションを管理"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:84
+#: src/renderer/src/components/OrganizationsPage.tsx:95
 msgid "Manage Collection"
 msgstr "コレクションを管理"
 
@@ -4386,7 +4432,7 @@ msgstr "ウェブサイト {0} の照合方法"
 msgid "Maximize / Restore"
 msgstr "最大化 / 元に戻す"
 
-#: src/renderer/src/components/SendsPage.tsx:641
+#: src/renderer/src/components/SendsPage.tsx:718
 msgid "Maximum access count"
 msgstr "最大アクセス回数"
 
@@ -4580,7 +4626,7 @@ msgstr "ほか {0} 件のアイテムとともに移動"
 #: src/renderer/src/components/Dialogs.tsx:195
 #: src/renderer/src/components/LoginEditor.tsx:1806
 #: src/renderer/src/components/LoginEditor.tsx:3030
-#: src/renderer/src/components/SendsPage.tsx:563
+#: src/renderer/src/components/SendsPage.tsx:642
 #: src/renderer/src/components/SettingsPage.tsx:453
 #: src/renderer/src/components/VaultItemDetailViews.tsx:245
 #: src/renderer/src/components/VaultShell.tsx:196
@@ -4706,6 +4752,10 @@ msgstr "カスタムフィールドはまだありません"
 msgid "No custom groups yet."
 msgstr "カスタムグループはまだありません。"
 
+#: src/renderer/src/components/SendsPage.tsx:451
+msgid "No file Sends yet"
+msgstr "ファイル Send はまだありません"
+
 #: src/renderer/src/components/CredentialGeneratorDialog.tsx:862
 msgid "No generated entries yet."
 msgstr "生成されたエントリはまだありません。"
@@ -4735,7 +4785,7 @@ msgstr "一致するルールは見つかりませんでした。"
 msgid "No matching vault items"
 msgstr "一致する保管庫アイテムはありません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:203
+#: src/renderer/src/components/OrganizationsPage.tsx:269
 msgid "No organizations have been synced"
 msgstr "同期された組織はありません"
 
@@ -4768,11 +4818,11 @@ msgstr "再利用されているパスワードはありません"
 msgid "No security keys are registered yet. You can add your first key."
 msgstr "セキュリティキーはまだ登録されていません。最初のキーを追加できます。"
 
-#: src/renderer/src/components/SendsPage.tsx:395
+#: src/renderer/src/components/SendsPage.tsx:453
 msgid "No Sends yet"
 msgstr "Send はまだありません"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:319
+#: src/renderer/src/components/OrganizationsPage.tsx:348
 #: src/renderer/src/components/VaultItemListPane.tsx:193
 msgid "No shared items"
 msgstr "共有アイテムはありません"
@@ -4816,6 +4866,10 @@ msgstr "脆弱なパスワードはありません"
 #: src/renderer/src/components/LoginEditor.tsx:1875
 msgid "No websites are set. You can save only a username and password."
 msgstr "ウェブサイトが設定されていません。ユーザー名とパスワードのみを保存できます。"
+
+#: src/renderer/src/components/EmergencyAccessPage.tsx:290
+msgid "Nobody has granted you access"
+msgstr "あなたにアクセスを付与した人はいません"
 
 #: src/renderer/src/components/VaultHealthPage.tsx:531
 msgid "None of the analyzed login items matched a service in the 2fa.directory TOTP list that does not yet have TOTP configured."
@@ -4916,7 +4970,7 @@ msgstr "保存時に使用するのは短期間のみ有効なインポートト
 msgid "Only approve a request you just made on another device, after verifying the verification phrase."
 msgstr "検証フレーズを確認したうえで、別のデバイスで自分が今行ったリクエストのみを承認してください。"
 
-#: src/renderer/src/components/SendsPage.tsx:636
+#: src/renderer/src/components/SendsPage.tsx:713
 msgid "Only you can see this. It is not shown to recipients."
 msgstr "これはあなただけが確認できます。受信者には表示されません。"
 
@@ -5023,7 +5077,7 @@ msgstr "組織の Duo"
 msgid "Organization encryption key"
 msgstr "組織の暗号化キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:165
+#: src/renderer/src/components/OrganizationsPage.tsx:187
 msgid "Organization items"
 msgstr "組織アイテム"
 
@@ -5035,7 +5089,7 @@ msgstr "組織キーとメンバーデータ"
 msgid "Organization profile data"
 msgstr "組織プロフィールデータ"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:218
+#: src/renderer/src/components/OrganizationsPage.tsx:191
 #: src/renderer/src/components/VaultOrganizationSidebarSection.tsx:50
 msgid "Organizations"
 msgstr "組織"
@@ -5068,7 +5122,7 @@ msgid "Other card issuer"
 msgstr "その他のカード発行会社"
 
 #: src/renderer/src/components/LoginEditor.tsx:2627
-#: src/renderer/src/components/OrganizationsPage.tsx:36
+#: src/renderer/src/components/OrganizationsPage.tsx:47
 msgid "Owner"
 msgstr "所有者"
 
@@ -5159,7 +5213,7 @@ msgstr "パスワード履歴"
 msgid "Password last updated"
 msgstr "パスワードの最終更新"
 
-#: src/renderer/src/components/SendsPage.tsx:114
+#: src/renderer/src/components/SendsPage.tsx:139
 msgid "Password required"
 msgstr "パスワードが必要です"
 
@@ -5167,11 +5221,11 @@ msgstr "パスワードが必要です"
 msgid "Passwords and attachments in the ZIP are unencrypted plaintext"
 msgstr "ZIP 内のパスワードと添付ファイルは暗号化されていない平文です"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:382
+#: src/renderer/src/components/OrganizationsPage.tsx:411
 msgid "Passwords and sensitive fields are masked"
 msgstr "パスワードと機密フィールドはマスクされています"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:117
+#: src/renderer/src/components/OrganizationsPage.tsx:128
 msgid "Passwords hidden"
 msgstr "パスワードを非表示"
 
@@ -5195,7 +5249,7 @@ msgstr "支払いカードとセキュリティコード"
 msgid "Pending confirmation"
 msgstr "確認待ち"
 
-#: src/renderer/src/components/SendsPage.tsx:119
+#: src/renderer/src/components/SendsPage.tsx:144
 msgid "Pending deletion"
 msgstr "削除待ち"
 
@@ -5240,7 +5294,7 @@ msgstr "ローカルデータを完全に削除"
 msgid "Permission required"
 msgstr "権限が必要です"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:134
+#: src/renderer/src/components/EmergencyAccessPage.tsx:162
 msgid "Permission:"
 msgstr "権限："
 
@@ -5393,8 +5447,8 @@ msgstr "秘密鍵のパスワード"
 msgid "Private key, public key, and fingerprint"
 msgstr "秘密鍵、公開鍵、およびフィンガープリント"
 
-#: src/renderer/src/components/SendsPage.tsx:510
-#: src/renderer/src/components/SendsPage.tsx:625
+#: src/renderer/src/components/SendsPage.tsx:587
+#: src/renderer/src/components/SendsPage.tsx:704
 msgid "Private notes"
 msgstr "プライベートメモ"
 
@@ -5444,7 +5498,7 @@ msgstr "プロバイダー {providerType}"
 msgid "Provider-managed organization key"
 msgstr "プロバイダー管理の組織キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:68
+#: src/renderer/src/components/OrganizationsPage.tsx:79
 msgid "Provisioned"
 msgstr "プロビジョニング済み"
 
@@ -5482,7 +5536,7 @@ msgstr "ランダムな単語"
 msgid "Read the foreground browser’s URL and form only when you press the shortcut. Multiple matches appear in a mini picker."
 msgstr "ショートカットを押したときにのみ、前面のブラウザーの URL とフォームを読み取ります。複数の候補がある場合はミニピッカーに表示されます。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:114
+#: src/renderer/src/components/OrganizationsPage.tsx:125
 msgid "Read-only"
 msgstr "読み取り専用"
 
@@ -5521,7 +5575,7 @@ msgctxt "recent-items-filter"
 msgid "Recently used"
 msgstr "最近使用した項目"
 
-#: src/renderer/src/components/SendsPage.tsx:709
+#: src/renderer/src/components/SendsPage.tsx:786
 msgid "Recipients must actively reveal the text to see it."
 msgstr "受信者がテキストを表示する操作を行うまで、内容は表示されません。"
 
@@ -5642,7 +5696,7 @@ msgstr "{0}を削除しますか？"
 #~ msgid "Remove {label}?"
 #~ msgstr ""
 
-#: src/renderer/src/components/SendsPage.tsx:619
+#: src/renderer/src/components/SendsPage.tsx:698
 msgid "Remove current password"
 msgstr "現在のパスワードを削除"
 
@@ -5810,7 +5864,7 @@ msgstr "リクエストを確認"
 msgid "Review the authentication providers currently enabled on the server and securely copy your recovery code."
 msgstr "サーバーで現在有効になっている認証プロバイダーを確認し、リカバリーコードを安全にコピーしてください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:34
+#: src/renderer/src/components/OrganizationsPage.tsx:45
 msgid "Role unavailable"
 msgstr "ロールを利用できません"
 
@@ -5857,7 +5911,7 @@ msgstr "ファイルを安全に読み取っています"
 #: src/renderer/src/components/AccountSwitcherCard.tsx:381
 #: src/renderer/src/components/Dialogs.tsx:291
 #: src/renderer/src/components/LoginEditor.tsx:3257
-#: src/renderer/src/components/SendsPage.tsx:766
+#: src/renderer/src/components/SendsPage.tsx:843
 msgid "Save"
 msgstr "保存"
 
@@ -5897,7 +5951,7 @@ msgstr "保存中"
 msgid "Saving replaces all equivalent domains on the server and syncs them to other Bitwarden clients."
 msgstr "保存すると、サーバー上のすべての同等ドメインが置き換えられ、他の Bitwarden クライアントに同期されます。"
 
-#: src/renderer/src/components/SendsPage.tsx:762
+#: src/renderer/src/components/SendsPage.tsx:839
 msgid "Saving…"
 msgstr "保存しています…"
 
@@ -6078,7 +6132,7 @@ msgstr "カタログから選択済み"
 msgid "Selected items"
 msgstr "選択した項目"
 
-#: src/renderer/src/components/SendsPage.tsx:234
+#: src/renderer/src/components/SendsPage.tsx:267
 msgid "Send created"
 msgstr "Send を作成しました"
 
@@ -6087,7 +6141,7 @@ msgstr "Send を作成しました"
 msgid "Send data"
 msgstr "Send データ"
 
-#: src/renderer/src/components/SendsPage.tsx:289
+#: src/renderer/src/components/SendsPage.tsx:322
 msgid "Send deleted"
 msgstr "Send を削除しました"
 
@@ -6095,7 +6149,7 @@ msgstr "Send を削除しました"
 msgid "Send email code"
 msgstr "メールコードを送信"
 
-#: src/renderer/src/components/SendsPage.tsx:327
+#: src/renderer/src/components/SendsPage.tsx:360
 msgid "Send password removed"
 msgstr "Send のパスワードを削除しました"
 
@@ -6104,7 +6158,11 @@ msgstr "Send のパスワードを削除しました"
 msgid "Send password required"
 msgstr "Sendのパスワードが必要です"
 
-#: src/renderer/src/components/SendsPage.tsx:234
+#: src/renderer/src/components/SendsPage.tsx:376
+msgid "Send types"
+msgstr "Send の種類"
+
+#: src/renderer/src/components/SendsPage.tsx:267
 msgid "Send updated"
 msgstr "Send を更新しました"
 
@@ -6121,7 +6179,7 @@ msgstr "確認コードを送信"
 msgid "Sending the sign-in request…"
 msgstr "サインインリクエストを送信しています…"
 
-#: src/renderer/src/components/SendsPage.tsx:337
+#: src/renderer/src/components/SendsPage.tsx:375
 #: src/renderer/src/components/VaultShellSidebar.tsx:433
 msgid "Sends"
 msgstr "Sends"
@@ -6238,7 +6296,7 @@ msgstr "設定キーをコピーしました"
 msgid "Sex"
 msgstr "性別"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:296
+#: src/renderer/src/components/OrganizationsPage.tsx:325
 msgid "Shared item"
 msgstr "共有アイテム"
 
@@ -6246,7 +6304,7 @@ msgstr "共有アイテム"
 msgid "Shared items"
 msgstr "共有アイテム"
 
-#: src/renderer/src/components/SendsPage.tsx:437
+#: src/renderer/src/components/SendsPage.tsx:514
 msgid "Sharing link copied"
 msgstr "共有リンクをコピーしました"
 
@@ -6370,11 +6428,11 @@ msgstr "SSH キー"
 msgid "SSH keys"
 msgstr "SSH キー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:117
+#: src/renderer/src/components/OrganizationsPage.tsx:128
 msgid "Standard view"
 msgstr "標準ビュー"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:380
+#: src/renderer/src/components/OrganizationsPage.tsx:409
 msgid "Standard view permission"
 msgstr "標準ビューの権限"
 
@@ -6405,11 +6463,11 @@ msgstr "次で始まる"
 msgid "State / Province"
 msgstr "州 / 都道府県"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:60
+#: src/renderer/src/components/OrganizationsPage.tsx:71
 msgid "Status unavailable"
 msgstr "ステータスを利用できません"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:144
+#: src/renderer/src/components/EmergencyAccessPage.tsx:172
 msgid "Status:"
 msgstr "ステータス:"
 
@@ -6541,7 +6599,7 @@ msgstr "同期中…"
 msgid "System"
 msgstr "システム"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:138
+#: src/renderer/src/components/EmergencyAccessPage.tsx:166
 msgid "Takeover"
 msgstr "引き継ぎ"
 
@@ -6555,16 +6613,21 @@ msgid "Text"
 msgstr "テキスト"
 
 #: src/renderer/src/components/SendsPage.tsx:340
-msgid "Text and file Send metadata is decrypted in the main process first."
-msgstr "テキストおよびファイル Send のメタデータは、最初にメインプロセスで復号されます。"
+#~ msgid "Text and file Send metadata is decrypted in the main process first."
+#~ msgstr "テキストおよびファイル Send のメタデータは、最初にメインプロセスで復号されます。"
 
-#: src/renderer/src/components/SendsPage.tsx:583
+#: src/renderer/src/components/SendsPage.tsx:662
 msgid "Text content is not included in the sharing link."
 msgstr "テキストの内容は共有リンクに含まれません。"
 
 #: src/renderer/src/components/send-ui.ts:56
 #~ msgid "Text hidden by default"
 #~ msgstr "テキストは初期設定で非表示"
+
+#. Sends dialog sidebar category and pane heading: Sends that share text.
+#: src/renderer/src/components/SendsPage.tsx:97
+msgid "Text Sends"
+msgstr "テキスト Send"
 
 #: src/renderer/src/hooks/use-vault-drag-and-drop.ts:193
 msgid "That folder can't be moved there."
@@ -6718,7 +6781,7 @@ msgstr "ローテーション中に接続が中断されたため、結果は不
 msgid "The current account cannot be removed. Switch to another account first."
 msgstr "現在のアカウントは削除できません。先に別のアカウントに切り替えてください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:322
+#: src/renderer/src/components/OrganizationsPage.tsx:351
 #: src/renderer/src/components/VaultItemListPane.tsx:204
 msgid "The current organization or Collection has no items you can read."
 msgstr "現在の組織またはコレクションには、読み取り可能なアイテムがありません。"
@@ -6998,11 +7061,11 @@ msgstr "選択内容が変更されたため、操作は実行されませんで
 msgid "The send result is unknown. The status has been refreshed. Do not resend immediately."
 msgstr "送信結果は不明です。状態を更新しました。すぐに再送しないでください。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:363
+#: src/renderer/src/components/OrganizationsPage.tsx:392
 msgid "The server allows standard viewing. This read-only page does not show or copy passwords."
 msgstr "サーバーでは標準表示が許可されています。この読み取り専用ページでは、パスワードの表示やコピーはできません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:368
+#: src/renderer/src/components/OrganizationsPage.tsx:397
 msgid "The server applies hidden-password permissions, so sensitive fields are masked."
 msgstr "サーバーでパスワード非表示の権限が適用されているため、機密フィールドはマスクされています。"
 
@@ -7034,7 +7097,7 @@ msgstr "現在、サーバーの既定の色が使用されています。"
 msgid "The server did not return any account devices."
 msgstr "サーバーからアカウントのデバイスが返されませんでした。"
 
-#: src/renderer/src/components/EmergencyAccessPage.tsx:86
+#: src/renderer/src/components/EmergencyAccessPage.tsx:114
 msgid "The server did not return any trusted contacts or grantors."
 msgstr "サーバーから信頼できる連絡先または付与者が返されませんでした。"
 
@@ -7447,15 +7510,15 @@ msgstr "このリクエストには承認できるパスキーがありません
 msgid "This rule has no domains"
 msgstr "このルールにはドメインがありません"
 
-#: src/renderer/src/components/SendsPage.tsx:311
+#: src/renderer/src/components/SendsPage.tsx:344
 msgid "This Send requires email OTP verification. BearWarden does not yet support downloading it."
 msgstr "この Send にはメール OTP 検証が必要です。BearWarden はまだそのダウンロードをサポートしていません。"
 
-#: src/renderer/src/components/SendsPage.tsx:187
+#: src/renderer/src/components/SendsPage.tsx:220
 msgid "This Send uses email verification. BearWarden does not yet support OTP, so it cannot be safely edited."
 msgstr "この Send はメール検証を使用しています。BearWarden はまだ OTP をサポートしていないため、安全に編集できません。"
 
-#: src/renderer/src/components/SendsPage.tsx:214
+#: src/renderer/src/components/SendsPage.tsx:247
 msgid "This Send uses email verification. Editing is disabled because OTP is not yet supported, preserving its security requirements."
 msgstr "この Send はメール検証を使用しています。セキュリティ要件を維持するため、OTP がまだサポートされていない間は編集できません。"
 
@@ -7620,6 +7683,10 @@ msgstr "信頼状態"
 msgid "Trusted"
 msgstr "信頼済み"
 
+#: src/renderer/src/components/EmergencyAccessPage.tsx:53
+msgid "Trusted contacts you chose and accounts that chose you."
+msgstr "あなたが選んだ信頼できる連絡先と、あなたを選んだアカウントです。"
+
 #: src/renderer/src/components/SyncDialog.tsx:415
 msgid "Trusted-device encryption is not supported"
 msgstr "信頼できるデバイスの暗号化はサポートされていません"
@@ -7629,10 +7696,10 @@ msgid "Try a shorter search term or switch to All items."
 msgstr "検索語を短くするか、「すべてのアイテム」に切り替えてください。"
 
 #: src/renderer/src/components/AuthScreen.tsx:312
-#: src/renderer/src/components/EmergencyAccessPage.tsx:69
-#: src/renderer/src/components/OrganizationsPage.tsx:192
-#: src/renderer/src/components/OrganizationsPage.tsx:352
-#: src/renderer/src/components/SendsPage.tsx:384
+#: src/renderer/src/components/EmergencyAccessPage.tsx:97
+#: src/renderer/src/components/OrganizationsPage.tsx:258
+#: src/renderer/src/components/OrganizationsPage.tsx:381
+#: src/renderer/src/components/SendsPage.tsx:440
 msgid "Try again"
 msgstr "もう一度試す"
 
@@ -7968,7 +8035,7 @@ msgstr "利用できません"
 msgid "Uncategorized"
 msgstr "未分類"
 
-#: src/renderer/src/components/FeatureUnderConstructionNotice.tsx:19
+#: src/renderer/src/components/FeatureUnderConstructionNotice.tsx:17
 msgid "Under construction"
 msgstr "準備中"
 
@@ -8018,7 +8085,7 @@ msgstr "不明なデバイス"
 msgid "Unknown device type ({type})"
 msgstr "不明なデバイスの種類（{type}）"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:44
+#: src/renderer/src/components/OrganizationsPage.tsx:55
 msgid "Unknown role ({type})"
 msgstr "不明なロール（{type}）"
 
@@ -8027,7 +8094,7 @@ msgid "Unknown SSHSIG"
 msgstr "不明な SSHSIG"
 
 #. placeholder {0}: organization.status
-#: src/renderer/src/components/OrganizationsPage.tsx:70
+#: src/renderer/src/components/OrganizationsPage.tsx:81
 msgid "Unknown status ({0})"
 msgstr "不明な状態（{0}）"
 
@@ -8037,7 +8104,7 @@ msgid "Unknown time"
 msgstr "不明な時刻"
 
 #. placeholder {0}: entry.type
-#: src/renderer/src/components/EmergencyAccessPage.tsx:140
+#: src/renderer/src/components/EmergencyAccessPage.tsx:168
 msgid "Unknown type ({0})"
 msgstr "不明な種類（{0}）"
 
@@ -8062,16 +8129,16 @@ msgstr "ロック解除が必要です"
 msgid "Unlock the local vault with a temporary PIN."
 msgstr "一時 PIN でローカル保管庫のロックを解除します。"
 
-#: src/renderer/src/components/AuthScreen.tsx:472
+#: src/renderer/src/components/AuthScreen.tsx:468
 msgid "Unlock vault"
 msgstr "保管庫のロックを解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:504
+#: src/renderer/src/components/AuthScreen.tsx:500
 msgid "Unlock with biometrics"
 msgstr "生体認証でロック解除"
 
-#: src/renderer/src/components/AuthScreen.tsx:471
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:467
+#: src/renderer/src/components/AuthScreen.tsx:484
 msgid "Unlock with PIN"
 msgstr "PIN でロック解除"
 
@@ -8189,7 +8256,7 @@ msgstr "Bitwarden Cloud には bitwarden.com を使用してください。Vault
 msgid "Use long passwords created by the password generator instead."
 msgstr "代わりに、パスワードジェネレーターで作成した長いパスワードを使用してください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:488
+#: src/renderer/src/components/AuthScreen.tsx:484
 msgid "Use master password"
 msgstr "マスターパスワードを使用"
 
@@ -8214,7 +8281,7 @@ msgstr "Bitwarden CLI のクライアント認証情報に使用します。Bear
 msgid "Used only by the main process to create a one-time server proof. It is not stored."
 msgstr "メインプロセスが一回限りのサーバー証明を作成するためにのみ使用します。保存されません。"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:40
+#: src/renderer/src/components/OrganizationsPage.tsx:51
 msgid "User"
 msgstr "ユーザー"
 
@@ -8240,7 +8307,7 @@ msgid "Username, password, and websites"
 msgstr "ユーザー名、パスワード、Web サイト"
 
 #. placeholder {0}: selected.username
-#: src/renderer/src/components/OrganizationsPage.tsx:388
+#: src/renderer/src/components/OrganizationsPage.tsx:417
 msgid "Username: {0}"
 msgstr "ユーザー名: {0}"
 
@@ -8353,14 +8420,14 @@ msgid "Very weak"
 msgstr "非常に弱い"
 
 #: src/renderer/src/components/ApplicationTitlebarMenu.tsx:154
-#: src/renderer/src/components/EmergencyAccessPage.tsx:136
-#: src/renderer/src/components/OrganizationsPage.tsx:307
+#: src/renderer/src/components/EmergencyAccessPage.tsx:164
+#: src/renderer/src/components/OrganizationsPage.tsx:336
 #: src/renderer/src/components/VaultHealthPage.tsx:208
 msgid "View"
 msgstr "表示"
 
 #. placeholder {0}: item.name
-#: src/renderer/src/components/OrganizationsPage.tsx:304
+#: src/renderer/src/components/OrganizationsPage.tsx:333
 msgid "View {0}"
 msgstr "{0} を表示"
 
@@ -8385,11 +8452,11 @@ msgstr "サーバー上のデバイスのアクティビティと信頼状態を
 msgid "View item"
 msgstr "項目を表示"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:88
+#: src/renderer/src/components/OrganizationsPage.tsx:99
 msgid "View items"
 msgstr "項目を表示"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:86
+#: src/renderer/src/components/OrganizationsPage.tsx:97
 msgid "View items, hide passwords"
 msgstr "項目を表示、パスワードを非表示"
 
@@ -8492,7 +8559,7 @@ msgid "Website was not moved."
 msgstr "ウェブサイトは移動されませんでした。"
 
 #. placeholder {0}: selected.uri
-#: src/renderer/src/components/OrganizationsPage.tsx:393
+#: src/renderer/src/components/OrganizationsPage.tsx:422
 msgid "Website: {0}"
 msgstr "Web サイト: {0}"
 
@@ -8551,7 +8618,7 @@ msgstr "はい"
 msgid "Yesterday"
 msgstr "昨日"
 
-#: src/renderer/src/components/OrganizationsPage.tsx:170
+#: src/renderer/src/components/OrganizationsPage.tsx:235
 msgid "You can currently browse synced organizations and shared items in read-only mode. Creating, editing, deleting, sharing, and other management actions are not supported yet."
 msgstr "現在、同期済みの組織と共有項目は読み取り専用モードで参照できます。作成、編集、削除、共有、その他の管理操作にはまだ対応していません。"
 
@@ -8571,6 +8638,10 @@ msgstr "項目の編集中にパスキーを安全に削除できます。秘密
 #: src/renderer/src/components/SettingsPage.tsx:1220
 msgid "You can use biometrics to unlock after the next lock."
 msgstr "次回のロック後から生体認証でロックを解除できます。"
+
+#: src/renderer/src/components/EmergencyAccessPage.tsx:288
+msgid "You have not granted anyone access"
+msgstr "まだ誰にもアクセスを付与していません"
 
 #: src/renderer/src/components/AccountTwoFactorDialog.tsx:1250
 msgid "You will no longer be able to sign in with this security key after removing it. Enter your master password again to confirm; previous verification is never reused."
@@ -8616,7 +8687,7 @@ msgstr "現在のマスターパスワードは {MIN_PASSWORD_LENGTH} ～ {MAX_P
 msgid "Your current session has expired. Please sign in again."
 msgstr "現在のセッションは期限切れです。もう一度サインインしてください。"
 
-#: src/renderer/src/components/AuthScreen.tsx:512
+#: src/renderer/src/components/AuthScreen.tsx:508
 msgid "Your master password and decrypted data never leave this device."
 msgstr "マスターパスワードと復号されたデータがこのデバイスから送信されることはありません。"
 
