@@ -7,9 +7,12 @@ export const detailActionClassName = 'size-7 min-w-7'
 /** Value text of a stacked row; copy buttons and plain values share it. */
 export const detailValueClassName = 'min-w-0 truncate text-sm font-medium'
 
-/** The value of a row that copies on click: flush with the label above, quiet until hovered. */
+/**
+ * The value of a row that copies on click. Its hit area stretches over the whole row, so
+ * clicking anywhere outside the action buttons copies; the row draws the hover and focus.
+ */
 export const detailValueButtonClassName =
-  '-mx-1.5 h-auto min-w-0 flex-1 justify-start overflow-hidden px-1.5 py-0.5 text-sm'
+  "h-auto min-w-0 flex-1 justify-start overflow-hidden px-0 py-0.5 text-sm hover:bg-transparent focus-visible:ring-0 active:not-aria-[haspopup]:scale-100 after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-3 focus-visible:after:ring-ring/50 focus-visible:after:ring-inset"
 
 interface DetailGroupProps extends Omit<ComponentProps<'section'>, 'children'> {
   /** Small caption above the card; omit for the primary card. */
@@ -70,7 +73,13 @@ export function DetailRow({
   ...props
 }: DetailRowProps): JSX.Element {
   return (
-    <div className={cn('flex min-w-0 items-center gap-1 py-1.5 pr-1.5 pl-3', className)} {...props}>
+    <div
+      className={cn(
+        'relative flex min-w-0 items-center gap-1 py-1.5 pr-1.5 pl-3 transition-colors duration-150 has-[[data-field-copy-value]:not(:disabled):hover]:bg-[color-mix(in_oklch,var(--card),var(--foreground)_3%)]',
+        className
+      )}
+      {...props}
+    >
       {leading && <span className="mr-1.5 flex flex-none">{leading}</span>}
       <div className="min-w-0 flex-1">
         {label && (
@@ -80,7 +89,7 @@ export function DetailRow({
         )}
         {children}
       </div>
-      {actions && <div className="flex flex-none items-center">{actions}</div>}
+      {actions && <div className="relative flex flex-none items-center">{actions}</div>}
     </div>
   )
 }
