@@ -167,7 +167,7 @@ export const ItemRow = memo(function ItemRow({
             'bg-card dark:bg-muted text-muted-foreground rounded-control grid size-7.5 place-items-center shadow-(--keycap-shadow) forced-colors:[forced-color-adjust:none] [&>svg]:size-4',
             item.type === 'login' && 'overflow-hidden',
             item.type === 'card' &&
-              'text-chart-4 [&>span]:w-6 [&>span]:min-w-0 [[data-theme=dark]_&]:bg-[var(--website-icon-background)]',
+              'text-chart-4 dark:bg-(--website-icon-background) [&>span]:w-6 [&>span]:min-w-0',
             item.type === 'identity' && 'bg-accent text-brand',
             item.type === 'secureNote' && 'text-chart-3',
             item.type === 'sshKey' && 'bg-accent text-chart-2',

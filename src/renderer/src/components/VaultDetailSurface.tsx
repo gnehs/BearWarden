@@ -51,7 +51,7 @@ export function detailIconClassName(type?: VaultItemType): string {
   return cn(
     'bg-card text-brand dark:bg-muted dark:text-muted-foreground rounded-control grid size-13 flex-none place-items-center shadow-(--keycap-shadow) max-[680px]:size-10 max-[430px]:hidden forced-colors:[forced-color-adjust:none] [&>svg]:size-5',
     type === 'login' && 'overflow-hidden',
-    type === 'card' && 'bg-muted text-chart-4 dark:bg-website-icon-background',
+    type === 'card' && 'bg-muted text-chart-4 dark:bg-(--website-icon-background)',
     type === 'identity' && 'bg-accent text-brand',
     type === 'secureNote' && 'bg-muted text-chart-3',
     type === 'sshKey' && 'bg-accent text-chart-2',
