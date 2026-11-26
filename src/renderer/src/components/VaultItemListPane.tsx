@@ -212,7 +212,7 @@ export function VaultItemListPane({
               </Button>
             ) : !list.readOnly && scope.kind !== 'trash' && scope.kind !== 'archive' ? (
               <Button
-                className="before:ring-primary-foreground/20 relative h-10 gap-2 rounded-lg border-0 px-3.5 font-bold shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
+                className="before:ring-primary-foreground/20 rounded-control relative h-10 gap-2 border-0 px-3.5 font-bold shadow-[var(--subtle-primary-action-shadow)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:ring-1 before:ring-inset has-data-[icon=inline-start]:pl-3.5"
                 type="button"
                 onClick={actions.onOpenCreate}
               >

@@ -455,11 +455,7 @@ function AuthScreen({ state, onAuthenticated, onRetry }: AuthScreenProps): React
                 </p>
               )}
 
-              <Button
-                className="w-full"
-                type="submit"
-                disabled={submitting || accountSwitching}
-              >
+              <Button className="w-full" type="submit" disabled={submitting || accountSwitching}>
                 {submitting ? (
                   <Spinner data-icon="inline-start" aria-hidden="true" />
                 ) : (

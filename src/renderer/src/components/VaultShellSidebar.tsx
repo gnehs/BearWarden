@@ -249,7 +249,7 @@ export function VaultShellSidebar({
           <header
             ref={setFolderRootRef}
             className={cn(
-              'rounded-lg transition-shadow',
+              'rounded-control transition-shadow',
               activeFolderDrag &&
                 isOverFolderRoot &&
                 'bg-sidebar-overlay-active ring-sidebar-ring ring-2'
@@ -261,7 +261,7 @@ export function VaultShellSidebar({
             <SidebarTooltipIconButton
               variant="sidebar"
               size="icon"
-              className="size-7 min-w-7 rounded-lg"
+              className="rounded-control size-7 min-w-7"
               type="button"
               label={t`Add folder`}
               onClick={actions.onAddFolder}

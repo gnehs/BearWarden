@@ -307,7 +307,7 @@ export function VaultSearchDialog({
                   >
                     <span
                       className={cn(
-                        'bg-foreground/5 text-muted-foreground grid size-8 flex-none place-items-center rounded',
+                        'bg-foreground/5 text-muted-foreground rounded-control grid size-8 flex-none place-items-center',
                         item.type === 'login' && !presentation.isTrash && 'overflow-hidden'
                       )}
                       aria-hidden="true"

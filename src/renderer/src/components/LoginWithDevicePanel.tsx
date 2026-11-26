@@ -13,13 +13,13 @@ export function LoginWithDevicePanel({
   onUseMasterPassword: () => void
 }): React.JSX.Element {
   return (
-    <Field className="bg-muted grid gap-2 rounded-lg border p-3">
+    <Field className="bg-muted rounded-nested grid gap-2 border p-3">
       <FieldLabel htmlFor="login-with-device-phrase">
         <Trans>Verification phrase</Trans>
       </FieldLabel>
       <output
         id="login-with-device-phrase"
-        className="bg-background min-h-9 rounded-md border px-2.5 py-2 font-mono text-sm break-words select-text"
+        className="bg-background rounded-control min-h-9 border px-2.5 py-2 font-mono text-sm break-words select-text"
         aria-live="polite"
       >
         {state.phase === 'requesting' ? <Spinner aria-hidden="true" /> : state.fingerprint}

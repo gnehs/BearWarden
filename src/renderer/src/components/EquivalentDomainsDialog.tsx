@@ -221,7 +221,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
         <DialogHeader>
           <div className="flex items-start gap-3">
             <span
-              className="bg-brand/10 text-brand grid size-9 shrink-0 place-items-center rounded-lg"
+              className="bg-brand/10 text-brand rounded-control grid size-9 shrink-0 place-items-center"
               aria-hidden="true"
             >
               <Globe2 className="size-4" />
@@ -298,7 +298,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                   </div>
                   <FieldGroup className="gap-3">
                     {rows.length === 0 ? (
-                      <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-sm">
+                      <div className="text-muted-foreground rounded-nested border border-dashed p-4 text-center text-sm">
                         <Trans>No custom groups yet.</Trans>
                       </div>
                     ) : (
@@ -374,7 +374,7 @@ function EquivalentDomainsDialog(): React.JSX.Element {
                       />
                     </div>
                   </Field>
-                  <div className="divide-y rounded-lg border">
+                  <div className="rounded-nested divide-y border">
                     {filteredGlobals.length === 0 ? (
                       <p className="text-muted-foreground p-4 text-center text-sm">
                         <Trans>No matching rules found.</Trans>

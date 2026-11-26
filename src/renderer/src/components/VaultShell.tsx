@@ -1408,7 +1408,7 @@ function VaultShellContent({
               </DialogDescription>
             </DialogHeader>
             {attachments.imagePreview && (
-              <div className="bg-muted grid max-h-[min(70vh,720px)] place-items-center overflow-auto rounded-md border p-2">
+              <div className="bg-muted rounded-nested grid max-h-[min(70vh,720px)] place-items-center overflow-auto border p-2">
                 <img
                   className="max-h-[min(66vh,680px)] max-w-full object-contain"
                   src={attachments.imagePreview.dataUrl}

@@ -216,7 +216,7 @@ const editorTypeScaleClassName =
   '[&_[data-slot=field-description]]:text-xs [&_[data-slot=empty-title]]:text-sm [&_[data-slot=empty-description]]:text-xs'
 const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3'
 const checkFieldClassName =
-  'flex items-start gap-2.5 rounded-lg border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--brand)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1'
+  'flex items-start gap-2.5 rounded-nested border bg-muted p-2.5 [&_[data-slot=checkbox]]:size-4 [&_[data-slot=checkbox]]:accent-[var(--brand)] [&_[data-slot=field-content]]:grid [&_[data-slot=field-content]]:gap-1'
 
 const emptyFields: VaultItemFields = {
   username: '',
@@ -557,7 +557,7 @@ function SortableUriRow({
     <div
       ref={setNodeRef}
       className={cn(
-        'grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 rounded-md border p-3',
+        'rounded-nested grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 border p-3',
         isDragging && 'opacity-60'
       )}
       style={{ transform: CSS.Transform.toString(transform), transition }}
@@ -2024,14 +2024,14 @@ function LoginEditor({
                             </Trans>
                           )}
                         </FieldDescription>
-                        <div className="grid overflow-hidden rounded-md border">
+                        <div className="rounded-nested grid overflow-hidden border">
                           {login.passkeys.map((passkey, index) => (
                             <article
                               key={`${passkey.credentialId}:${index}`}
                               className="border-border [&_small]:text-muted-foreground grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b px-(--card-spacing) py-3 last:border-b-0 [&_small]:truncate [&_small]:text-xs [&_span]:truncate [&_span]:text-xs [&_strong]:truncate [&_strong]:text-xs [&>div]:grid [&>div]:min-w-0 [&>div]:gap-1"
                             >
                               <span
-                                className="text-brand grid size-8 place-items-center rounded-md bg-(--accent-soft)"
+                                className="text-brand rounded-control grid size-8 place-items-center bg-(--accent-soft)"
                                 aria-hidden="true"
                               >
                                 <KeyRound size={16} />
@@ -2130,7 +2130,7 @@ function LoginEditor({
                           className="grid gap-3 sm:grid-cols-[96px_minmax(0,1fr)]"
                         >
                           <div className="grid min-w-0 gap-2">
-                            <div className="bg-muted grid aspect-[1.586/1] w-24 place-items-center overflow-hidden rounded-md">
+                            <div className="bg-muted rounded-control grid aspect-[1.586/1] w-24 place-items-center overflow-hidden">
                               {draft.cardCoverPreviewUrl ? (
                                 <img
                                   className="h-full w-full object-contain"
@@ -2661,7 +2661,7 @@ function LoginEditor({
                           aria-labelledby="editor-collections-label"
                           aria-invalid={errorKind === 'collection'}
                           aria-describedby={errorKind === 'collection' ? 'editor-error' : undefined}
-                          className="bg-muted grid gap-2 rounded-lg px-3 py-2"
+                          className="bg-muted rounded-nested grid gap-2 px-3 py-2"
                         >
                           {organizationCollections.length > 0 ? (
                             organizationCollections.map((collection) => (
@@ -3344,10 +3344,10 @@ function LoginEditor({
                       <button
                         key={entry.id}
                         type="button"
-                        className="focus-visible:ring-ring hover:bg-muted/60 grid min-w-0 grid-cols-[80px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                        className="focus-visible:ring-ring hover:bg-muted/60 rounded-control grid min-w-0 grid-cols-[80px_minmax(0,1fr)] items-center gap-2 px-1 py-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
                         onClick={() => selectCardCover(entry)}
                       >
-                        <span className="bg-muted grid aspect-[1.586/1] w-20 place-items-center overflow-hidden rounded-sm">
+                        <span className="bg-muted rounded-control grid aspect-[1.586/1] w-20 place-items-center overflow-hidden">
                           <img
                             className="h-full w-full object-contain"
                             src={entry.imageUrl}
@@ -3370,8 +3370,8 @@ function LoginEditor({
               </ScrollArea>
             </TabsContent>
             <TabsContent value="upload">
-              <div className="border-border bg-muted/40 grid gap-4 rounded-lg border p-4 sm:grid-cols-[120px_minmax(0,1fr)]">
-                <div className="bg-background grid aspect-[1.586/1] place-items-center rounded-md border">
+              <div className="border-border bg-muted/40 rounded-nested grid gap-4 border p-4 sm:grid-cols-[120px_minmax(0,1fr)]">
+                <div className="bg-background rounded-control grid aspect-[1.586/1] place-items-center border">
                   <Upload className="text-muted-foreground size-8" aria-hidden />
                 </div>
                 <div className="grid min-w-0 gap-3">

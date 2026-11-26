@@ -193,7 +193,7 @@ export default function AutofillPicker({
                   onSelect={() => onSelect(choice.id)}
                   className="min-h-12"
                 >
-                  <div className="bg-muted flex size-8 shrink-0 items-center justify-center rounded-lg">
+                  <div className="bg-muted rounded-control flex size-8 shrink-0 items-center justify-center">
                     {hostname ? <Globe aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col">
@@ -219,7 +219,7 @@ export default function AutofillPicker({
     <section
       data-request-id={requestId}
       aria-label={t`BearWarden autofill`}
-      className="bg-popover text-popover-foreground overflow-hidden rounded-xl border shadow-lg"
+      className="bg-popover text-popover-foreground rounded-pane overflow-hidden border shadow-lg"
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return
         event.preventDefault()

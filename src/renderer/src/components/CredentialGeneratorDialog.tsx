@@ -866,7 +866,7 @@ export default function CredentialGeneratorDialog({
                       {history.map((entry, index) => (
                         <li
                           key={`${entry.generationDate}:${index}`}
-                          className="bg-muted flex items-center gap-2 rounded-lg p-2"
+                          className="bg-muted rounded-nested flex items-center gap-2 p-2"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="truncate font-mono text-sm">{entry.credential}</div>

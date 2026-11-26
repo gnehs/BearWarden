@@ -120,7 +120,7 @@ export function SyncErrorDetailsDialog({
             </dt>
             <dd className="m-0 font-mono break-all">{appVersion || t`Unknown`}</dd>
           </dl>
-          <pre className="bg-muted text-muted-foreground max-h-48 overflow-auto rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap select-text">
+          <pre className="bg-muted text-muted-foreground rounded-nested max-h-48 overflow-auto p-3 text-xs leading-relaxed whitespace-pre-wrap select-text">
             {report}
           </pre>
           {copyState === 'error' && (

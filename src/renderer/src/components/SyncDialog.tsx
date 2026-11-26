@@ -497,7 +497,7 @@ export function SyncOperationFailureAlert({
   return (
     <Alert
       className={cn(
-        '-mt-1 rounded-lg bg-[var(--danger-soft)] px-3 py-2 text-xs leading-normal',
+        'rounded-nested -mt-1 bg-[var(--danger-soft)] px-3 py-2 text-xs leading-normal',
         className
       )}
       variant="destructive"
@@ -1062,7 +1062,7 @@ function SyncDialog({
 
         <ModalBody className="min-h-0 gap-3.5 overflow-y-auto overscroll-contain px-5 pt-4 pb-0">
           <Alert
-            className="[&_small]:text-muted-foreground bg-muted grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg px-3 py-2.5 [&_small]:text-xs [&_small]:leading-snug [&_strong]:text-xs [&>div]:grid [&>div]:gap-1"
+            className="[&_small]:text-muted-foreground bg-muted rounded-nested grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 [&_small]:text-xs [&_small]:leading-snug [&_strong]:text-xs [&>div]:grid [&>div]:gap-1"
             role="status"
             aria-live="polite"
           >
@@ -1173,7 +1173,7 @@ function SyncDialog({
                 )}
                 {configured && (
                   <Alert
-                    className="text-brand m-0 flex items-center gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs [&_[data-slot=alert-description]]:text-xs"
+                    className="text-brand rounded-nested m-0 flex items-center gap-2 border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs [&_[data-slot=alert-description]]:text-xs"
                     role="status"
                   >
                     <ShieldCheck aria-hidden="true" />
@@ -1270,7 +1270,7 @@ function SyncDialog({
                     className="overflow-hidden pt-3 opacity-0 blur-[2px] transition-[opacity,filter] duration-[var(--acc-collapse)] ease-[var(--acc-ease)] motion-reduce:!transition-none"
                     inert={!showAdvanced}
                   >
-                    <FieldGroup className="bg-muted grid w-auto gap-3 rounded-lg border p-3">
+                    <FieldGroup className="bg-muted rounded-nested grid w-auto gap-3 border p-3">
                       <Field>
                         <FieldLabel htmlFor="two-factor-method">
                           {twoFactorChallengeActive ? (
@@ -1504,7 +1504,7 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-brand m-0 mx-5 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
+                  className="text-brand rounded-nested m-0 mx-5 flex items-start gap-2 border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />
@@ -1544,7 +1544,7 @@ function SyncDialog({
           ) : (
             <>
               <section
-                className="[&_svg]:text-brand [&_span]:text-muted-foreground grid gap-px overflow-hidden rounded-lg border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-1.5 [&>div]:border-b [&>div]:p-2.5 [&>div]:text-xs [&>div:last-child]:border-b-0"
+                className="[&_svg]:text-brand [&_span]:text-muted-foreground rounded-nested grid gap-px overflow-hidden border [&_strong]:truncate [&_strong]:text-right [&_strong]:font-semibold [&>div]:grid [&>div]:min-w-0 [&>div]:grid-cols-[16px_76px_minmax(0,1fr)] [&>div]:items-center [&>div]:gap-1.5 [&>div]:border-b [&>div]:p-2.5 [&>div]:text-xs [&>div:last-child]:border-b-0"
                 aria-label={t`Sync connection information`}
               >
                 <div>
@@ -1660,7 +1660,7 @@ function SyncDialog({
               )}
               {success && (
                 <Alert
-                  className="text-brand m-0 flex items-start gap-2 rounded-lg border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
+                  className="text-brand rounded-nested m-0 flex items-start gap-2 border-0 bg-[color-mix(in_oklch,var(--brand)_10%,var(--background))] px-2.5 py-2 text-xs leading-normal [&_[data-slot=alert-description]]:text-xs"
                   role="status"
                 >
                   <CheckCircle2 aria-hidden="true" />

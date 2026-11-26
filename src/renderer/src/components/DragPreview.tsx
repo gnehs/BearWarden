@@ -35,7 +35,7 @@ export function ItemDragPreview({
             key={depth}
             data-drag-preview-layer={depth}
             className={cn(
-              'absolute inset-0 rounded-xl border shadow-sm',
+              'rounded-pane absolute inset-0 border shadow-sm',
               depth === 2
                 ? 'bg-popover/65 translate-x-2 translate-y-2 rotate-2 opacity-70'
                 : 'bg-popover/80 translate-x-1 translate-y-1 rotate-1 opacity-85'
@@ -43,8 +43,8 @@ export function ItemDragPreview({
           />
         )
       })}
-      <div className="bg-popover/95 text-foreground relative grid min-h-14 w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]">
-        <span className="bg-muted text-brand outline-foreground/5 grid size-9 shrink-0 place-items-center overflow-hidden rounded-md shadow-(--control-highlight) outline">
+      <div className="bg-popover/95 text-foreground rounded-pane relative grid min-h-14 w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2.5 border px-2.5 py-2 shadow-lg backdrop-blur-md forced-colors:outline-2 forced-colors:outline-[CanvasText]">
+        <span className="bg-muted text-brand outline-foreground/5 rounded-control grid size-9 shrink-0 place-items-center overflow-hidden shadow-(--control-highlight) outline">
           {item.type === 'card' ? (
             <PaymentCardBrandMark brand={normalizeBitwardenCardBrand(item.cardBrand)} />
           ) : item.type === 'login' ? (

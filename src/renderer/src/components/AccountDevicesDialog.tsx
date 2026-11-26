@@ -98,7 +98,7 @@ export function DeauthorizeSessionsForm({
   const confirmed = confirmation === DEAUTHORIZE_SESSIONS_CONFIRMATION
 
   return (
-    <div className="border-destructive/40 grid gap-4 rounded-lg border p-4">
+    <div className="border-destructive/40 rounded-nested grid gap-4 border p-4">
       <Alert variant="destructive">
         <TriangleAlert aria-hidden="true" />
         <AlertTitle>
@@ -375,7 +375,7 @@ function AccountDevicesDialog(): React.JSX.Element {
           <div className="scroll-fade-y forced-colors:scroll-fade-none -mx-4 min-h-0 overflow-y-auto px-4">
             <div className="flex flex-col gap-4 pb-1">
               {pendingApprovals.length > 0 && (
-                <section className="grid gap-3 rounded-lg border p-3">
+                <section className="rounded-nested grid gap-3 border p-3">
                   <div>
                     <h3 className="font-medium">
                       <Trans>Pending sign-in requests</Trans>
@@ -390,7 +390,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                   {pendingApprovals.map((approval) => (
                     <div
                       key={approval.token}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
+                      className="rounded-control flex flex-wrap items-center justify-between gap-2 border p-2"
                     >
                       <div className="text-sm">
                         <p className="font-medium">
@@ -439,7 +439,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                   {result.devices.map((device, index) => (
                     <section
                       key={`${device.name}-${device.createdAt}-${index}`}
-                      className="grid gap-3 rounded-lg border p-3"
+                      className="rounded-nested grid gap-3 border p-3"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
@@ -525,7 +525,7 @@ function AccountDevicesDialog(): React.JSX.Element {
                   />
                 </form>
               ) : (
-                <div className="grid gap-2 rounded-lg border p-3">
+                <div className="rounded-nested grid gap-2 border p-3">
                   <div>
                     <h3 className="font-medium">
                       <Trans>Deauthorize all sessions</Trans>

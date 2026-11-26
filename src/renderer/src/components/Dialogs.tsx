@@ -721,7 +721,7 @@ export function PasswordHistoryDialog({
                           </CardAction>
                         </CardHeader>
                         <CardContent>
-                          <div className="bg-muted/60 min-h-9 rounded-lg px-3 py-2">
+                          <div className="bg-muted/60 rounded-control min-h-9 px-3 py-2">
                             {isRevealed ? (
                               <code className="text-sm break-all select-text">{revealedValue}</code>
                             ) : (

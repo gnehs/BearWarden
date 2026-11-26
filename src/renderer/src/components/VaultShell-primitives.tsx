@@ -280,7 +280,7 @@ export function DetailPlaceholder({
             key={action}
             aria-hidden="true"
           >
-            <Skeleton className="size-4 rounded-sm" />
+            <Skeleton className="rounded-control size-4" />
           </span>
         ))}
         <span className="sr-only" role="status">
@@ -321,7 +321,7 @@ export function DetailPlaceholder({
               label={<Skeleton className="my-0.5 h-3 w-16" />}
               actions={
                 <span className="grid size-7 place-items-center">
-                  <Skeleton className="size-4 rounded-sm" />
+                  <Skeleton className="rounded-control size-4" />
                 </span>
               }
             >

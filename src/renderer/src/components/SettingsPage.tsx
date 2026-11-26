@@ -1385,7 +1385,7 @@ function SettingsPage({
                 <SettingsCardContent>
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span
-                      className="text-brand grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent-soft)] [&>svg]:size-4"
+                      className="text-brand rounded-control grid size-9 shrink-0 place-items-center bg-[var(--accent-soft)] [&>svg]:size-4"
                       aria-hidden="true"
                     >
                       <Cloud />
